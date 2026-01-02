@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="p-5 mb-4 bg-white rounded-3 shadow-sm text-center">
+    <div class="container-fluid py-5">
+      <h1 class="display-5 fw-bold text-primary">Sistem Informasi Sekolah</h1>
+      <p class="col-md-8 fs-4 mx-auto">Platform terintegrasi untuk manajemen Akademik, Keuangan, dan Program Tahfidz Qur'an.</p>
+      {% if not current_user.is_authenticated %}
+        <a href="{{ url_for('auth.login') }}" class="btn btn-primary btn-lg px-4 gap-3">Login Sekarang</a>
+      {% else %}
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-success btn-lg px-4 gap-3">Ke Dashboard</a>
+      {% endif %}
+    </div>
+</div>
+{% endblock %}

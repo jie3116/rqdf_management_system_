@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6 text-center">
+        <div class="card shadow-lg border-0">
+            <div class="card-body p-5">
+                <div class="mb-4 text-success">
+                    <i class="fas fa-check-circle fa-5x"></i>
+                </div>
+                <h2 class="fw-bold mb-3">Pendaftaran Berhasil!</h2>
+                <p class="text-muted">Terima kasih telah mendaftar. Data Anda telah kami terima.</p>
+                
+                <div class="alert alert-info py-4 mt-4">
+                    <h5 class="fw-bold">Nomor Pendaftaran:</h5>
+                    <h1 class="display-6 fw-bold mb-0 text-primary">{{ candidate.registration_no }}</h1>
+                </div>
+
+                <p class="mt-4">
+                    Silakan simpan nomor pendaftaran di atas.<br>
+                    Admin kami akan segera menghubungi Anda via WhatsApp di nomor:
+                    <strong>{{ candidate.parent_phone }}</strong>
+                </p>
+
+                <div class="mt-5 d-grid gap-2">
+                    <a href="{{ url_for('main.ppdb_register') }}" class="btn btn-outline-primary">Daftar Peserta Lain</a>
+                    <a href="{{ url_for('auth.login') }}" class="btn btn-primary">Kembali ke Login</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

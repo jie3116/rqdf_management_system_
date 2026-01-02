@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow mb-4">
+            <div class="card-body text-center">
+                <h4 class="fw-bold">{{ student.full_name }}</h4>
+                <p class="text-muted">{{ student.nis }}</p>
+                <hr>
+                <div class="d-grid">
+                    <a href="{{ url_for('staff.cashier_search') }}" class="btn btn-outline-secondary">Kembali ke Pencarian</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-white py-3">
+                <h5 class="m-0 fw-bold text-primary">Tagihan Belum Lunas</h5>
+            </div>
+            <div class="card-body p-0">
+                {% if invoices %}
+                    <div class="accordion" id="invoiceList">
+                        {% for inv in invoices %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#inv{{ inv.id }}">
+                                    <div class="d-flex justify-content-between w-100 me-3">
+                                        <span><strong>{{ inv.fee_type.name }}</strong></span>
+                                        <span class="text-danger fw-bold">Sisa: Rp {{ "{:,.0f}".format(inv.total_amount - inv.paid_amount) }}</span>
+                                    </div>
+                                </button>
+                            </h2>
+                            <div id="inv{{ inv.id }}" class="accordion-collapse collapse" data-bs-parent="#invoiceList">
+                                <div class="accordion-body bg-light">
+                                    <p class="small mb-2">Total Tagihan: Rp {{ "{:,.0f}".format(inv.total_amount) }} | Sudah Bayar: Rp {{ "{:,.0f}".format(inv.paid_amount) }}</p>
+                                    
+                                    <form method="POST" class="card card-body border-0 shadow-sm">
+                                        {{ form.hidden_tag() }}
+                                        <input type="hidden" name="invoice_id" value="{{ inv.id }}">
+                                        
+                                        <div class="row">
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label small fw-bold">Jumlah Bayar</label>
+                                                {{ form.amount(class="form-control", value=(inv.total_amount - inv.paid_amount)) }}
+                                            </div>
+                                            <div class="col-md-6 mb-2">
+                                                <label class="form-label small fw-bold">Metode</label>
+                                                {{ form.method(class="form-select") }}
+                                            </div>
+                                        </div>
+                                        <button type="submit" class="btn btn-success w-100 mt-2">
+                                            <i class="fas fa-save me-2"></i>Terima Pembayaran
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="p-5 text-center text-muted">
+                        <i class="fas fa-check-circle fa-3x mb-3 text-success"></i>
+                        <p>Tidak ada tagihan tertunggak. Siswa ini lunas!</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

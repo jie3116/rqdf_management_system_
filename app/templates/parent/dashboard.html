@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2 class="text-primary fw-bold">
+            <i class="fas fa-user-tie me-2"></i>Dashboard Wali Murid
+        </h2>
+        <p class="text-muted">Selamat datang, Bapak/Ibu <strong>{{ current_user.parent_profile.full_name }}</strong>. Berikut adalah perkembangan putra/putri Anda.</p>
+    </div>
+</div>
+
+{% if anak %}
+    {% for child in anak %}
+    <div class="card shadow-lg mb-5 border-0 rounded-4 overflow-hidden">
+        <div class="card-header bg-primary text-white p-3 d-flex justify-content-between align-items-center">
+            <h4 class="mb-0"><i class="fas fa-child me-2"></i>{{ child.full_name }}</h4>
+            <span class="badge bg-light text-primary fs-6">{{ child.current_class.name }} ({{ child.nis }})</span>
+        </div>
+
+        <div class="card-body p-4 bg-light">
+            <div class="row g-4">
+                
+                <div class="col-md-4">
+                    <div class="card h-100 border-start border-4 border-danger shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title text-danger mb-3"><i class="fas fa-file-invoice-dollar me-2"></i>Tagihan Aktif</h5>
+                            
+                            {% set total_tagihan = 0 %}
+                            {% for inv in child.invoices if inv.status.value != 'Lunas' %}
+                                {% set total_tagihan = total_tagihan + (inv.total_amount - inv.paid_amount) %}
+                            {% endfor %}
+
+                            {% if total_tagihan > 0 %}
+                                <h3 class="fw-bold">Rp {{ "{:,.0f}".format(total_tagihan) }}</h3>
+                                <p class="text-muted small">Total tunggakan yang perlu diselesaikan.</p>
+                                <button class="btn btn-danger btn-sm w-100">Lihat Detail Tagihan</button>
+                            {% else %}
+                                <h3 class="text-success fw-bold">LUNAS</h3>
+                                <p class="text-muted small">Terima kasih, tidak ada tunggakan.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card h-100 border-start border-4 border-info shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title text-info mb-3"><i class="fas fa-graduation-cap me-2"></i>Akademik</h5>
+                            
+                            <div class="mb-3">
+                                <span class="d-block text-muted small">Kehadiran Hari Ini:</span>
+                                <span class="badge bg-success">Hadir</span> 
+                            </div>
+
+                            <hr>
+                            
+                            {% if child.grades %}
+                                {% set last_grade = child.grades[-1] %}
+                                <span class="d-block text-muted small">Nilai Terakhir ({{ last_grade.subject.name }}):</span>
+                                <span class="fs-4 fw-bold text-dark">{{ last_grade.score }}</span>
+                                <span class="badge bg-secondary">{{ last_grade.type.value }}</span>
+                            {% else %}
+                                <p class="text-muted fst-italic">Belum ada data nilai.</p>
+                            {% endif %}
+                            
+                            <a href="{{ url_for('academic.my_report') }}" class="btn btn-outline-info btn-sm w-100 mt-2">Lihat Rapor Lengkap</a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card h-100 border-start border-4 border-success shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title text-success mb-3"><i class="fas fa-quran me-2"></i>Program Tahfidz</h5>
+                            
+                            {% if child.tahfidz_summary %}
+                                <div class="text-center mb-3">
+                                    <h2 class="display-6 fw-bold">{{ child.tahfidz_summary.total_juz }} <span class="fs-6 text-muted">Juz</span></h2>
+                                    <p class="text-muted small">Total Hafalan</p>
+                                </div>
+                                <ul class="list-group list-group-flush small">
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        <span>Terakhir:</span>
+                                        <strong>QS. {{ child.tahfidz_summary.last_surah }} : {{ child.tahfidz_summary.last_ayat }}</strong>
+                                    </li>
+                                </ul>
+                            {% else %}
+                                <div class="text-center py-4 text-muted">
+                                    <i class="fas fa-book-reader fa-2x mb-2"></i>
+                                    <p>Belum ada data hafalan.</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+            </div> </div>
+    </div>
+    {% endfor %}
+
+{% else %}
+    <div class="alert alert-warning text-center">
+        <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
+        <h4>Data Siswa Tidak Ditemukan</h4>
+        <p>Akun Anda belum terhubung dengan data siswa manapun. Silakan hubungi Tata Usaha.</p>
+    </div>
+{% endif %}
+{% endblock %}

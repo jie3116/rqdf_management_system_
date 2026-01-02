@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2 class="text-primary">
+            <i class="fas fa-cash-register me-2"></i>Dashboard Tata Usaha
+        </h2>
+        <p class="text-muted">
+            Selamat Datang, <strong>{{ current_user.staff_profile.full_name }}</strong>. 
+            Siap melayani administrasi hari ini?
+        </p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card bg-success text-white shadow h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-white-50">Pemasukan Hari Ini</h6>
+                        <h3 class="fw-bold">Rp 0</h3>
+                    </div>
+                    <i class="fas fa-wallet fa-3x opacity-50"></i>
+                </div>
+                <small class="text-white-50">Belum ada transaksi masuk</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card bg-warning text-dark shadow h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted">Tagihan Jatuh Tempo</h6>
+                        <h3 class="fw-bold">0 Siswa</h3>
+                    </div>
+                    <i class="fas fa-file-invoice-dollar fa-3x opacity-25"></i>
+                </div>
+                <small class="text-muted">Perlu difollow-up segera</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card bg-info text-white shadow h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-white-50">Total Transaksi</h6>
+                        <h3 class="fw-bold">0</h3>
+                    </div>
+                    <i class="fas fa-receipt fa-3x opacity-50"></i>
+                </div>
+                <small class="text-white-50">Kwitansi diterbitkan hari ini</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <h5 class="mb-3"><i class="fas fa-th-large me-2"></i>Menu Operasional</h5>
+    
+    <div class="col-md-3 mb-3">
+        <div class="card shadow-sm h-100 border-start border-4 border-success">
+            <div class="card-body text-center p-4">
+                <div class="mb-3 text-success">
+                    <i class="fas fa-hand-holding-usd fa-3x"></i>
+                </div>
+                <h5>Terima Pembayaran</h5>
+                <p class="text-muted small">Input pembayaran SPP atau uang gedung dari siswa.</p>
+                <a href="{{ url_for('staff.cashier_search') }}" class="btn btn-outline-success w-100">Buka Kasir</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card shadow-sm h-100 border-start border-4 border-primary">
+            <div class="card-body text-center p-4">
+                <div class="mb-3 text-primary">
+                    <i class="fas fa-search-dollar fa-3x"></i>
+                </div>
+                <h5>Cek Status Tagihan</h5>
+                <p class="text-muted small">Lihat riwayat pembayaran dan tunggakan siswa.</p>
+                <a href="#" class="btn btn-outline-primary w-100 disabled">Cari Data</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card shadow-sm h-100 border-start border-4 border-secondary">
+            <div class="card-body text-center p-4">
+                <div class="mb-3 text-secondary">
+                    <i class="fas fa-print fa-3x"></i>
+                </div>
+                <h5>Laporan Harian</h5>
+                <p class="text-muted small">Cetak rekap pemasukan hari ini untuk Yayasan.</p>
+                <a href="#" class="btn btn-outline-secondary w-100 disabled">Cetak Laporan</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card shadow-sm h-100 border-start border-4 border-danger">
+            <div class="card-body text-center p-4">
+                <div class="mb-3 text-danger">
+                    <i class="fas fa-paper-plane fa-3x"></i>
+                </div>
+                <h5>Kirim Tagihan (WA)</h5>
+                <p class="text-muted small">Broadcast tagihan bulanan ke WhatsApp Wali Murid.</p>
+                <a href="#" class="btn btn-outline-danger w-100 disabled">Kirim Pesan</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

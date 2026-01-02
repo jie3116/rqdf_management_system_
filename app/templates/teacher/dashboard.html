@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-8">
+        <h2>Selamat Datang, {{ current_user.teacher_profile.full_name }}</h2>
+        <p class="text-muted">NIP: {{ current_user.teacher_profile.nip }}</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-edit fa-3x text-primary mb-3"></i>
+                <h5>Input Nilai</h5>
+                <p>Masukkan nilai tugas, UTS, dan UAS siswa.</p>
+                <a href="{{ url_for('academic.input_grade') }}" class="btn btn-outline-primary">Buka</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-quran fa-3x text-success mb-3"></i>
+                <h5>Setoran Tahfidz</h5>
+                <p>Catat ziyadah dan murajaah siswa.</p>
+                <a href="#" class="btn btn-outline-success">Catat Hafalan</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-clipboard-check fa-3x text-warning mb-3"></i>
+                <h5>Absensi Kelas</h5>
+                <p>Kelola kehadiran harian kelas.</p>
+                <a href="#" class="btn btn-outline-warning">Absen Sekarang</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
