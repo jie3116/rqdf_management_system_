@@ -252,7 +252,7 @@ class AcademicYear(BaseModel):
 class ClassRoom(BaseModel):
     __tablename__ = 'class_rooms'
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(20), nullable=False)
+    name = db.Column(db.String(50), nullable=False)
     grade_level = db.Column(db.Integer)
     homeroom_teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'))
 

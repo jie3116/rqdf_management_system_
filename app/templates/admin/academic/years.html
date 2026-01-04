@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-primary text-white">
+                <h6 class="m-0 fw-bold"><i class="fas fa-calendar-plus me-2"></i>Tahun Ajaran Baru</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label>Nama Tahun (Cth: 2025/2026)</label>
+                        <input type="text" name="name" class="form-control" placeholder="YYYY/YYYY" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Semester</label>
+                        <select name="semester" class="form-select">
+                            <option value="Ganjil">Ganjil</option>
+                            <option value="Genap">Genap</option>
+                        </select>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="is_active" id="checkActive">
+                        <label class="form-check-label" for="checkActive">
+                            Langsung Aktifkan?
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Simpan</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Data Tahun Ajaran</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-bordered table-hover">
+                    <thead>
+                        <tr>
+                            <th>Tahun & Semester</th>
+                            <th>Status</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for y in years %}
+                        <tr class="{% if y.is_active %}table-success{% endif %}">
+                            <td>
+                                <strong>{{ y.name }}</strong>
+                                <br><small>{{ y.semester }}</small>
+                            </td>
+                            <td>
+                                {% if y.is_active %}
+                                    <span class="badge bg-success">AKTIF</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Tidak Aktif</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if not y.is_active %}
+                                    <a href="{{ url_for('admin.activate_academic_year', id=y.id) }}" class="btn btn-sm btn-outline-success">
+                                        <i class="fas fa-check me-1"></i> Aktifkan
+                                    </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-center">Belum ada data.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

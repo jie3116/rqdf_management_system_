@@ -1,18 +1,55 @@
 {% extends "base.html" %}
 
 {% block content %}
+
+<style>
+    /* Membuat warna latar belakang biru tua khusus */
+    .bg-rqdf-dark {
+        background-color: #2c3e50 !important; /* Warna biru tua gelap dari logo */
+        color: white;
+    }
+
+    /* Membuat warna teks biru tua khusus untuk ikon */
+    .text-rqdf-dark {
+        color: #2c3e50 !important;
+    }
+
+    /* Membuat tombol biru tua khusus */
+    .btn-rqdf-dark {
+        background-color: #2c3e50;
+        border-color: #2c3e50;
+        color: white;
+        font-weight: bold;
+    }
+    .btn-rqdf-dark:hover {
+        background-color: #1a252f; /* Warna sedikit lebih gelap saat di-hover */
+        border-color: #1a252f;
+        color: white;
+    }
+</style>
 <div class="row justify-content-center mt-5">
-    <div class="col-md-4">
-        <div class="card shadow">
-            <div class="card-header bg-primary text-white text-center">
-                <h4>Silakan Login</h4>
+    <div class="col-md-4 col-sm-8">
+        <div class="card shadow-lg border-0">
+
+            <div class="card-header bg-rqdf-dark py-4">
+
+                <div class="d-flex align-items-center justify-content-center mb-4">
+                    <img src="{{ url_for('static', filename='img/logo-rqdf-white.png') }}"
+                         alt="Logo Sekolah"
+                         class="img-fluid me-3"
+                         style="max-height: 85px; width: auto;"> <div class="text-start text-white lh-sm">
+                        <h3 class="fw-bold mb-0">RQDF</h3>
+                        <h6 class="mb-0 fw-bold ls-1">MANAGEMENT<br>SYSTEM</h6>
+                    </div>
+                </div>
+
+                <h5 class="fw-light mb-0 text-center">Silakan Login</h5>
             </div>
             <div class="card-body p-4">
-
                 {% with messages = get_flashed_messages(with_categories=true) %}
                   {% if messages %}
                     {% for category, message in messages %}
-                      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                      <div class="alert alert-{{ category }} alert-dismissible fade show small" role="alert">
                         {{ message }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                       </div>
@@ -24,32 +61,40 @@
                     {{ form.hidden_tag() }}
 
                     <div class="mb-3">
-                        <label class="form-label">Username / Email / No. HP</label>
-
-                        {{ form.login_id(class="form-control", placeholder="Masukan Admin, NIS, atau No WA") }}
-
+                        <label class="form-label fw-bold small text-muted">Username / Email / No. HP</label>
+                        <div class="input-group">
+                             <span class="input-group-text bg-light border-end-0">
+                                 <i class="fas fa-user text-rqdf-dark"></i>
+                             </span>
+                             {{ form.login_id(class="form-control border-start-0 ps-0 bg-light", placeholder="admin") }}
+                        </div>
                         {% for error in form.login_id.errors %}
                             <div class="text-danger small mt-1">{{ error }}</div>
                         {% endfor %}
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label">Password</label>
-                        {{ form.password(class="form-control") }}
+                        <label class="form-label fw-bold small text-muted">Password</label>
+                         <div class="input-group">
+                             <span class="input-group-text bg-light border-end-0">
+                                 <i class="fas fa-lock text-rqdf-dark"></i>
+                             </span>
+                             {{ form.password(class="form-control border-start-0 ps-0 bg-light") }}
+                        </div>
                     </div>
 
-                    <div class="mb-3 form-check">
+                    <div class="mb-3 form-check small">
                         {{ form.remember(class="form-check-input") }}
-                        <label class="form-check-label">Ingat Saya</label>
+                        <label class="form-check-label text-muted">Ingat Saya di perangkat ini</label>
                     </div>
 
-                    <div class="d-grid">
-                        {{ form.submit(class="btn btn-primary") }}
+                    <div class="d-grid mt-4">
+                        {{ form.submit(class="btn btn-rqdf-dark btn-lg") }}
                     </div>
                 </form>
             </div>
-            <div class="card-footer text-center text-muted">
-                <small>Aplikasi Sekolah & Tahfidz</small>
+            <div class="card-footer text-center bg-light py-3">
+                <small class="text-muted">RQDF Management System <br> © {{ now.year if now else '2026' }} Yayasan RQC All Right Reserved</small>
             </div>
         </div>
     </div>

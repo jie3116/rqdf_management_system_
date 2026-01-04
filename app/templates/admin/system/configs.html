@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-dark text-white">
+                <h6 class="m-0 fw-bold"><i class="fas fa-cogs me-2"></i>Setting Variabel</h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info small">
+                    <i class="fas fa-info-circle"></i> Jika <b>Key</b> sudah ada, maka nilai akan di-update. Jika belum, akan dibuat baru.
+                </div>
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="fw-bold small">Kunci (Key)</label>
+                        <input type="text" name="key" class="form-control" placeholder="Cth: denda_keterlambatan" required>
+                        <div class="form-text text-muted" style="font-size:11px;">Gunakan huruf kecil & underscore (_). Jangan pakai spasi.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="fw-bold small">Nilai (Value)</label>
+                        <input type="text" name="value" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="fw-bold small">Keterangan</label>
+                        <textarea name="description" class="form-control" rows="2"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-dark w-100">Simpan Konfigurasi</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Daftar Konfigurasi Sistem</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-bordered table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Key (Kunci)</th>
+                            <th>Value (Nilai)</th>
+                            <th>Keterangan</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in configs %}
+                        <tr>
+                            <td class="font-monospace text-primary fw-bold">{{ c.key }}</td>
+                            <td>{{ c.value }}</td>
+                            <td class="small text-muted">{{ c.description }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-warning" 
+                                        onclick="editConfig('{{ c.key }}', '{{ c.value }}', '{{ c.description }}')">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center">Belum ada konfigurasi.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function editConfig(key, value, desc) {
+    document.querySelector('input[name="key"]').value = key;
+    // Kunci Key agar tidak bisa diedit saat mode edit (Opsional, tapi lebih aman)
+    // document.querySelector('input[name="key"]').readOnly = true; 
+    document.querySelector('input[name="value"]').value = value;
+    document.querySelector('textarea[name="description"]').value = desc;
+}
+</script>
+{% endblock %}

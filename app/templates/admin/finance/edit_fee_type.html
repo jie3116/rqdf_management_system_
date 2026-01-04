@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-header py-3 bg-warning text-dark">
+                <h6 class="m-0 fw-bold"><i class="fas fa-edit me-2"></i>Edit Master Biaya</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label>Nama Biaya</label>
+                        <input type="text" name="name" class="form-control" value="{{ fee.name }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label>Nominal (Rp)</label>
+                        <input type="number" name="amount" class="form-control fw-bold" value="{{ "{:.0f}".format(fee.amount) }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label>Berlaku Untuk Tahun Ajaran</label>
+                        <select name="academic_year_id" class="form-select">
+                            <option value="">-- Berlaku Umum (Semua Tahun) --</option>
+                            {% for y in years %}
+                                <option value="{{ y.id }}" {% if fee.academic_year_id == y.id %}selected{% endif %}>
+                                    {{ y.name }} - {{ y.semester }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text text-muted small">
+                            Pilih "Berlaku Umum" jika biaya ini selalu ada tiap tahun (misal: Uang Pendaftaran).
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between mt-4">
+                        <a href="{{ url_for('admin.manage_fee_types') }}" class="btn btn-outline-secondary">Batal</a>
+                        <button type="submit" class="btn btn-warning fw-bold px-4">Simpan Perubahan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

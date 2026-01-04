@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 text-gray-800">Detail: {{ fee.name }}</h1>
+    <a href="{{ url_for('admin.manage_fee_types') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>Kembali</a>
+</div>
+
+<div class="row mb-4">
+    <div class="col-xl-4 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Tagihan (Target)</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">Rp {{ "{:,.0f}".format(total_bill) }}</div>
+                    </div>
+                    <div class="col-auto"><i class="fas fa-calendar fa-2x text-gray-300"></i></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-4 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Sudah Diterima (Realisasi)</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">Rp {{ "{:,.0f}".format(total_paid) }}</div>
+                    </div>
+                    <div class="col-auto"><i class="fas fa-dollar-sign fa-2x text-gray-300"></i></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-4 col-md-6 mb-4">
+        <div class="card border-left-info shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Progress Pencapaian</div>
+                        <div class="row no-gutters align-items-center">
+                            <div class="col-auto">
+                                <div class="h5 mb-0 mr-3 font-weight-bold text-gray-800">{{ "{:,.1f}".format(progress) }}%</div>
+                            </div>
+                            <div class="col">
+                                <div class="progress progress-sm mr-2">
+                                    <div class="progress-bar bg-info" role="progressbar" style="width: {{ progress }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-auto"><i class="fas fa-clipboard-list fa-2x text-gray-300"></i></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 fw-bold text-primary">Daftar Siswa Terkait</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover" id="dataTable" width="100%">
+                <thead class="table-light">
+                    <tr>
+                        <th>Invoice</th>
+                        <th>Nama Siswa</th>
+                        <th>Kelas</th>
+                        <th>Nominal Tagihan</th>
+                        <th>Sudah Bayar</th>
+                        <th>Status</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inv in invoices %}
+                    <tr>
+                        <td>{{ inv.invoice_number }}</td>
+                        <td>
+                            <strong>{{ inv.student.full_name }}</strong><br>
+                            <small class="text-muted">{{ inv.student.nis }}</small>
+                        </td>
+                        <td>{{ inv.student.current_class.name if inv.student.current_class else '-' }}</td>
+                        <td class="text-end">Rp {{ "{:,.0f}".format(inv.total_amount) }}</td>
+                        <td class="text-end text-success">Rp {{ "{:,.0f}".format(inv.paid_amount) }}</td>
+                        <td>
+                            {% if inv.status.name == 'PAID' %}
+                                <span class="badge bg-success">Lunas</span>
+                            {% elif inv.status.name == 'PARTIAL' %}
+                                <span class="badge bg-warning text-dark">Dicicil</span>
+                            {% else %}
+                                <span class="badge bg-danger">Belum</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="#" class="btn btn-sm btn-light border disabled">Detail Siswa</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

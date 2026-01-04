@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-success text-white">
+                <h6 class="m-0 fw-bold"><i class="fas fa-user-plus me-2"></i>Tambah Staff TU</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label>Nama Lengkap</label>
+                        <input type="text" name="full_name" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Posisi / Jabatan</label>
+                        <input type="text" name="position" class="form-control" placeholder="Cth: Bendahara">
+                    </div>
+                    <div class="mb-3">
+                        <label>Username (Login)</label>
+                        <input type="text" name="username" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Password</label>
+                        <input type="password" name="password" class="form-control" placeholder="Default: staff123">
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Simpan Staff</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Daftar Tata Usaha</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Nama</th>
+                            <th>Jabatan</th>
+                            <th>Username</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in staff_list %}
+                        <tr>
+                            <td>{{ s.full_name }}</td>
+                            <td><span class="badge bg-secondary">{{ s.position }}</span></td>
+                            <td>{{ s.user.username }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-danger disabled"><i class="fas fa-trash"></i></button>
+                            </td>
+                            <td>
+                            <a href="{{ url_for('admin.edit_staff', id=s.id) }}" class="btn btn-sm btn-warning" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a><button class="btn btn-sm btn-danger disabled"><i class="fas fa-trash"></i></button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center">Belum ada staff.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

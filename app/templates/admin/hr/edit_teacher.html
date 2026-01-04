@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-warning text-dark">
+                    <h6 class="m-0 fw-bold"><i class="fas fa-user-edit me-2"></i>Edit Data Guru</h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="mb-3">
+                            <label class="form-label">NIP (Username Login)</label>
+                            <input type="text" name="nip" class="form-control" value="{{ teacher.nip }}" required>
+                            <small class="text-muted">Mengubah NIP akan mengubah Username login guru ini.</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Nama Lengkap & Gelar</label>
+                            <input type="text" name="full_name" class="form-control" value="{{ teacher.full_name }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Spesialisasi (Mapel)</label>
+                            <input type="text" name="specialty" class="form-control" value="{{ teacher.specialty }}" placeholder="Cth: Matematika, Tahfidz">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">No. WhatsApp</label>
+                            <input type="text" name="phone" class="form-control" value="{{ teacher.phone }}">
+                        </div>
+
+                        <hr>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Ubah Password</label>
+                            <input type="password" name="password" class="form-control" placeholder="Biarkan kosong jika password tidak diganti">
+                        </div>
+
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{{ url_for('admin.manage_teachers') }}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left me-1"></i> Batal
+                            </a>
+                            <button type="submit" class="btn btn-warning">
+                                <i class="fas fa-save me-1"></i> Simpan Perubahan
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

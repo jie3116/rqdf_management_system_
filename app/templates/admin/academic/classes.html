@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-info text-white">
+                <h6 class="m-0 fw-bold"><i class="fas fa-school me-2"></i>Buat Kelas Baru</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label>Nama Kelas (Cth: X-A)</label>
+                        <input type="text" name="name" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Tingkat / Level</label>
+                        <select name="grade_level" class="form-select">
+                            <option value="1">1 (Tahfidz Reguler)</option>
+                            <option value="1">1 (SD)</option>
+                            <option value="1">2 (SD)</option>
+                            <option value="1">3 (SD)</option>
+                            <option value="1">4 (SD)</option>
+                            <option value="1">5 (SD)</option>
+                            <option value="1">6 (SD)</option>
+                            <option value="1">1 / 7 (SMP)</option>
+                            <option value="2">2 / 8 (SMP)</option>
+                            <option value="3">3 / 9 (SMP)</option>
+                            <option value="10">10 (SMA)</option>
+                            <option value="11">11 (SMA)</option>
+                            <option value="12">12 (SMA)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label>Wali Kelas</label>
+                        <select name="homeroom_teacher_id" class="form-select">
+                            <option value="">-- Pilih Guru --</option>
+                            {% for t in teachers %}
+                                <option value="{{ t.id }}">{{ t.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text text-muted small">Jika guru belum ada, input di menu Data Guru dulu.</div>
+                    </div>
+                    <button type="submit" class="btn btn-info w-100 text-white fw-bold">Simpan Kelas</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Daftar Kelas</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Nama Kelas</th>
+                            <th>Wali Kelas</th>
+                            <th>Jml Santri</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in classes %}
+                        <tr>
+                            <td class="fw-bold">{{ c.name }}</td>
+                            <td>{{ c.homeroom_teacher.full_name if c.homeroom_teacher else '-' }}</td>
+                            <td>
+                                <span class="badge bg-secondary">{{ c.students|length }} Siswa</span>
+                            </td>
+                            <td>
+                                <a href="{{ url_for('admin.edit_class', class_id=c.id) }}" class="btn btn-sm btn-warning" title="Edit Kelas"><i class="fas fa-edit"></i></a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center">Belum ada kelas.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

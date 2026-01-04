@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 text-gray-800">Detail Calon Santri</h1>
+    <a href="{{ url_for('staff.ppdb_list') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>Kembali</a>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-primary text-white text-center">
+                <h5 class="m-0 fw-bold">{{ candidate.registration_no }}</h5>
+            </div>
+            <div class="card-body text-center">
+                <h4 class="fw-bold mb-1">{{ candidate.full_name }}</h4>
+                <p class="text-muted">{{ candidate.program_type.value }}</p>
+                
+                <hr>
+                
+                <div class="mb-3">
+                    <small class="text-uppercase text-muted fw-bold">Status Saat Ini</small><br>
+                    {% if candidate.status.name == 'PENDING' %}
+                        <span class="badge bg-warning text-dark fs-6 px-3 py-2">Menunggu Verifikasi</span>
+                    {% elif candidate.status.name == 'ACCEPTED' %}
+                        <span class="badge bg-success fs-6 px-3 py-2">Sudah Diterima</span>
+                    {% else %}
+                        <span class="badge bg-danger fs-6 px-3 py-2">Ditolak</span>
+                    {% endif %}
+                </div>
+
+                {% if candidate.status.name == 'PENDING' %}
+                <div class="d-grid gap-2 mt-4">
+                    <form action="{{ url_for('admin.accept_candidate', candidate_id=candidate.id) }}" method="POST" onsubmit="return confirm('Yakin terima santri ini? Akun User dan Tagihan akan dibuat otomatis.');">
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-check-circle me-2"></i>Verifikasi & Terima
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Data Lengkap</h6>
+            </div>
+            <div class="card-body">
+                <ul class="nav nav-tabs" id="myTab" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" id="pribadi-tab" data-bs-toggle="tab" data-bs-target="#pribadi" type="button">Data Diri</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="ortu-tab" data-bs-toggle="tab" data-bs-target="#ortu" type="button">Orang Tua</button>
+                    </li>
+                    {% if candidate.program_type.name == 'RQDF_SORE' %}
+                    <li class="nav-item">
+                        <button class="nav-link" id="rqdf-tab" data-bs-toggle="tab" data-bs-target="#rqdf" type="button">Detail RQDF</button>
+                    </li>
+                    {% endif %}
+                </ul>
+
+                <div class="tab-content p-3" id="myTabContent">
+                    <div class="tab-pane fade show active" id="pribadi">
+                        <table class="table table-borderless">
+                            <tr><td width="30%" class="text-muted">NIK</td><td class="fw-bold">{{ candidate.nik or '-' }}</td></tr>
+                            <tr><td class="text-muted">No. KK</td><td class="fw-bold">{{ candidate.kk_number or '-' }}</td></tr>
+                            <tr><td class="text-muted">TTL</td><td class="fw-bold">{{ candidate.place_of_birth }}, {{ candidate.date_of_birth }}</td></tr>
+                            <tr><td class="text-muted">Jenis Kelamin</td><td class="fw-bold">{{ candidate.gender.value }}</td></tr>
+                            <tr><td class="text-muted">Alamat</td><td>{{ candidate.address }}</td></tr>
+                            <tr><td class="text-muted">Sekolah Asal</td><td class="fw-bold">{{ candidate.previous_school }}</td></tr>
+                        </table>
+                    </div>
+
+                    <div class="tab-pane fade" id="ortu">
+                        <h6 class="fw-bold text-primary mt-3">Data Ayah</h6>
+                        <table class="table table-sm table-borderless mb-3">
+                            <tr><td width="30%" class="text-muted">Nama</td><td class="fw-bold">{{ candidate.father_name }}</td></tr>
+                            <tr><td class="text-muted">Pekerjaan</td><td>{{ candidate.father_job }}</td></tr>
+                            <tr><td class="text-muted">Penghasilan</td><td>{{ candidate.father_income_range or '-' }}</td></tr>
+                        </table>
+
+                        <h6 class="fw-bold text-primary">Data Ibu</h6>
+                        <table class="table table-sm table-borderless mb-3">
+                            <tr><td width="30%" class="text-muted">Nama</td><td class="fw-bold">{{ candidate.mother_name }}</td></tr>
+                            <tr><td class="text-muted">Pekerjaan</td><td>{{ candidate.mother_job }}</td></tr>
+                            <tr><td class="text-muted">Penghasilan</td><td>{{ candidate.mother_income_range or '-' }}</td></tr>
+                        </table>
+                        
+                        <div class="alert alert-warning">
+                            <i class="fab fa-whatsapp me-2"></i> WA Ortu: <strong>{{ candidate.parent_phone }}</strong>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="rqdf">
+                        <table class="table table-borderless">
+                            <tr><td width="40%" class="text-muted">Pilihan Jadwal</td><td class="fw-bold">{{ candidate.tahfidz_schedule.value }}</td></tr>
+                            <tr><td class="text-muted">Ukuran Seragam</td><td class="fw-bold">{{ candidate.uniform_size.value }}</td></tr>
+                            <tr><td class="text-muted">Infaq Pembangunan</td><td class="fw-bold text-success">Rp {{ "{:,.0f}".format(candidate.initial_pledge_amount) }}</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

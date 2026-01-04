@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-warning text-dark">
+                <h6 class="m-0 fw-bold"><i class="fas fa-tags me-2"></i>Buat Master Biaya</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label>Nama Biaya</label>
+                        <input type="text" name="name" class="form-control" placeholder="Cth: SPP 2026, Gedung" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Nominal Standar (Rp)</label>
+                        <input type="number" name="amount" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Tahun Ajaran</label>
+                        <select name="academic_year_id" class="form-select">
+                            <option value="">-- Berlaku Umum (Semua Tahun) --</option>
+                            {% for y in years %}
+                            <option value="{{ y.id }}">{{ y.name }} - {{ y.semester }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-warning w-100 fw-bold">Simpan Master</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Daftar Master Biaya</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Nama Biaya</th>
+                            <th>Nominal</th>
+                            <th>Berlaku Untuk</th>
+                            <th style="width: 15%;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for f in fees %}
+                        <tr>
+                            <td class="fw-bold">{{ f.name }}</td>
+                            <td>Rp {{ "{:,.0f}".format(f.amount) }}</td>
+                            <td>
+                                {% if f.academic_year %}
+                                    {{ f.academic_year.name }}
+                                {% else %}
+                                    <span class="badge bg-success">Umum / Semua Tahun</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('admin.edit_fee_type', fee_id=f.id) }}"
+                                class="btn btn-sm btn-warning shadow-sm" title="Edit Biaya">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-center">Belum ada master biaya.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

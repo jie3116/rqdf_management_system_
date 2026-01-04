@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                Input Nilai Siswa
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Pilih Siswa</label>
+                        <select name="student_id" class="form-select" required>
+                            <option value="">-- Pilih Siswa --</option>
+                            {% for student in students %}
+                                <option value="{{ student.id }}">{{ student.full_name }} - {{ student.nis }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Mata Pelajaran</label>
+                        <select name="subject_id" class="form-select" required>
+                            {% for subject in subjects %}
+                                <option value="{{ subject.id }}">{{ subject.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Jenis Nilai</label>
+                            <select name="type" class="form-select">
+                                <option value="TUGAS">Tugas</option>
+                                <option value="UH">Ulangan Harian</option>
+                                <option value="UTS">UTS</option>
+                                <option value="UAS">UAS</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nilai (0-100)</label>
+                            <input type="number" step="0.01" name="score" class="form-control" required placeholder="85.5">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-success"><i class="fas fa-save me-1"></i> Simpan Nilai</button>
+                    <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Kembali</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

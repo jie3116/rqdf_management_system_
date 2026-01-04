@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">Data Santri</h1>
+    
+    {% if current_user.role.value == 'admin' %}
+        <a href="{{ url_for('admin.add_student') }}" class="btn btn-sm btn-primary shadow-sm">
+            <i class="fas fa-user-plus fa-sm text-white-50 me-1"></i> Input Santri Manual
+        </a>
+    {% endif %}
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3 bg-primary text-white">
+        <h6 class="m-0 fw-bold"><i class="fas fa-users me-2"></i>Daftar Santri Aktif</h6>
+    </div>
+    <div class="card-body">
+        
+        <div class="mb-3 d-flex justify-content-end">
+            <input type="text" id="searchBox" class="form-control form-control-sm w-25" placeholder="Cari nama siswa...">
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover" id="dataTable" width="100%" cellspacing="0">
+                <thead class="table-light">
+                    <tr>
+                        <th>NIS</th>
+                        <th>Nama Lengkap</th>
+                        <th>Kelas</th>
+                        <th>Wali Murid</th>
+                        <th style="width: 15%;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in students %}
+                    <tr>
+                        <td class="fw-bold text-primary">{{ student.nis }}</td>
+                        <td>
+                            <div class="fw-bold">{{ student.full_name }}</div>
+                            <small class="text-muted">
+                                <i class="{{ 'fas fa-mars text-primary' if student.gender.name == 'L' else 'fas fa-venus text-pink' }}"></i>
+                                {{ student.gender.value }}
+                            </small>
+                        </td>
+                        <td>
+                            {% if student.current_class %}
+                                <span class="badge bg-info text-dark">{{ student.current_class.name }}</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">Belum Masuk Kelas</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="small">
+                                <strong>{{ student.parent.full_name if student.parent else '-' }}</strong>
+                                <br>
+                                <i class="fas fa-phone fa-xs text-muted me-1"></i> 
+                                <span class="text-success">{{ student.parent.phone if student.parent else '-' }}</span>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <a href="{{ url_for('staff.edit_student', student_id=student.id) }}" 
+                                   class="btn btn-sm btn-outline-primary" title="Edit Data">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+
+                                {% if current_user.role.value == 'admin' %}
+                                <a href="{{ url_for('admin.delete_student', id=student.id) }}" 
+                                   class="btn btn-sm btn-outline-danger"
+                                   onclick="return confirm('PERINGATAN: Menghapus siswa ini juga akan menghapus data tagihan & user loginnya. Lanjutkan?');"
+                                   title="Hapus Siswa">
+                                    <i class="fas fa-trash"></i>
+                                </a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center py-5 text-muted">
+                            <i class="fas fa-user-slash fa-3x mb-3 text-gray-300"></i><br>
+                            Belum ada data siswa.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('searchBox').addEventListener('keyup', function() {
+    let searchValue = this.value.toLowerCase();
+    let rows = document.querySelectorAll('#dataTable tbody tr');
+    
+    rows.forEach(row => {
+        let text = row.innerText.toLowerCase();
+        row.style.display = text.includes(searchValue) ? '' : 'none';
+    });
+});
+</script>
+
+{% endblock %}

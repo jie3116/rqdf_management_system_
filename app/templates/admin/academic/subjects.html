@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-secondary text-white">
+                <h6 class="m-0 fw-bold"><i class="fas fa-book me-2"></i>Mapel Baru</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label>Kode Mapel (Cth: MTK-10)</label>
+                        <input type="text" name="code" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Nama Mata Pelajaran</label>
+                        <input type="text" name="name" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>KKM (Standar Nilai)</label>
+                        <input type="number" name="kkm" class="form-control" value="75" required>
+                    </div>
+                    <button type="submit" class="btn btn-secondary w-100">Simpan Mapel</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Daftar Mata Pelajaran</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Kode</th>
+                            <th>Nama Mapel</th>
+                            <th>KKM</th>
+                            <th style="width: 15%;">Aksi</th> </tr
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in subjects %}
+                        <tr>
+                            <td><code>{{ s.code }}</code></td>
+                            <td>{{ s.name }}</td>
+                            <td>{{ s.kkm }}</td>
+                            <td><a href="{{ url_for('admin.edit_subject', subject_id=s.id) }}" class="btn btn-sm btn-warning shadow-sm" title="Edit Mapel"><i class="fas fa-edit"></i></a></td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-center">Belum ada mata pelajaran.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

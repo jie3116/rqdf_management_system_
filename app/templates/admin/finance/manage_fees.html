@@ -1,99 +1,262 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-4">
-        <div class="card shadow mb-4">
-            <div class="card-header py-3 bg-primary text-white">
-                <h6 class="m-0 fw-bold"><i class="fas fa-plus-circle me-2"></i>Tambah Jenis Biaya</h6>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<div class="container-fluid">
+
+    <h1 class="h3 mb-4 text-gray-800">Manajemen Keuangan</h1>
+
+    <div class="row mb-4">
+        <div class="col-md-5">
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <div class="card border-left-primary shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Potensi Pemasukan (Tagihan)</div>
+                                    <div class="h3 mb-0 font-weight-bold text-gray-800">Rp {{ "{:,.0f}".format(grand_total_bill) }}</div>
+                                </div>
+                                <div class="col-auto"><i class="fas fa-file-invoice-dollar fa-2x text-gray-300"></i></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 mb-3">
+                    <div class="card border-left-success shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Total Uang Masuk (Realisasi)</div>
+                                    <div class="h3 mb-0 font-weight-bold text-gray-800">Rp {{ "{:,.0f}".format(grand_total_paid) }}</div>
+                                </div>
+                                <div class="col-auto"><i class="fas fa-wallet fa-2x text-gray-300"></i></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="card border-left-danger shadow h-100 py-2">
+                        <div class="card-body">
+                            <div class="row no-gutters align-items-center">
+                                <div class="col mr-2">
+                                    <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Tunggakan (Belum Lunas)</div>
+                                    <div class="h3 mb-0 font-weight-bold text-gray-800">Rp {{ "{:,.0f}".format(grand_total_bill - grand_total_paid) }}</div>
+                                </div>
+                                <div class="col-auto"><i class="fas fa-exclamation-circle fa-2x text-gray-300"></i></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="card-body">
-                <form method="POST">
-                    {{ form.hidden_tag() }}
+        </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Tahun Ajaran</label>
-                        {{ form.academic_year_id(class="form-select") }}
+        <div class="col-md-7">
+            <div class="card shadow mb-4 h-100">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Grafik Persentase Keuangan</h6>
+                </div>
+                <div class="card-body">
+                    <div class="chart-pie pt-4 pb-2">
+                        <canvas id="myPieChart"></canvas>
                     </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Nama Biaya</label>
-                        {{ form.name(class="form-control", placeholder="Cth: SPP Agustus 2024") }}
+                    <div class="mt-4 text-center small">
+                        <span class="mr-2"><i class="fas fa-circle text-success"></i> Sudah Masuk</span>
+                        <span class="mr-2"><i class="fas fa-circle text-danger"></i> Belum Lunas</span>
                     </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Nominal (Rp)</label>
-                        {{ form.amount(class="form-control", placeholder="150000") }}
-                    </div>
-
-                    <div class="d-grid">
-                        {{ form.submit(class="btn btn-primary") }}
-                    </div>
-                </form>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="col-md-8">
-        <div class="card shadow">
-            <div class="card-header py-3">
-                <h6 class="m-0 fw-bold text-primary">Daftar Biaya Sekolah</h6>
+    <div class="row">
+
+        <div class="col-md-4 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3 bg-primary text-white">
+                    <h6 class="m-0 fw-bold"><i class="fas fa-plus-circle me-2"></i>Buat Tagihan Baru</h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        {{ form.hidden_tag() }}
+
+                        <div class="mb-3">
+                            <label class="fw-bold small">Tahun Ajaran</label>
+                            {{ form.academic_year_id(class="form-select", id="selectTahun") }}
+                        </div>
+
+                        <div class="mb-3 p-3 bg-light border rounded">
+                            <label class="fw-bold small text-primary mb-2">Buat Nama Otomatis</label>
+                            <select class="form-select mb-2" id="templateJenis">
+                                <option value="">-- Pilih Jenis --</option>
+                                <option value="Infaq Bulanan">Infaq Bulanan</option>
+                                <option value="Uang Makan">Uang Makan</option>
+                                <option value="Uang Gedung">Uang Gedung</option>
+                                <option value="Seragam">Seragam</option>
+                                <option value="Buku Paket">Buku Paket</option>
+                                <option value="Kegiatan">Kegiatan / Event</option>
+                                <option value="Ujian">Ujian / Raport</option>
+                                <option value="CUSTOM">Custom</option>
+                            </select>
+                            <select class="form-select mb-2" id="templateBulan" style="display:none;">
+                                <option value="">-- Pilih Bulan --</option>
+                                <option value="Juli">Juli</option>
+                                <option value="Agustus">Agustus</option>
+                                <option value="September">September</option>
+                                <option value="Oktober">Oktober</option>
+                                <option value="November">November</option>
+                                <option value="Desember">Desember</option>
+                                <option value="Januari">Januari</option>
+                                <option value="Februari">Februari</option>
+                                <option value="Maret">Maret</option>
+                                <option value="April">April</option>
+                                <option value="Mei">Mei</option>
+                                <option value="Juni">Juni</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="fw-bold small">Nama Biaya Final</label>
+                            {{ form.name(class="form-control fw-bold", id="finalNameInput", placeholder="Otomatis terisi...") }}
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="fw-bold small">Nominal Standar (Rp)</label>
+                            {{ form.amount(class="form-control", placeholder="0") }}
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 fw-bold">Simpan</button>
+                    </form>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-bordered table-hover align-middle">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Nama Biaya</th>
-                                <th>Nominal</th>
-                                <th>Tahun Ajaran</th>
-                                <th style="width: 150px;">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for fee in fees %}
-                            <tr>
-                                <td class="fw-bold">{{ fee.name }}</td>
-                                <td class="text-success">Rp {{ "{:,.0f}".format(fee.amount) }}</td>
+        </div>
 
-                                <td>
-                                    {% if fee.academic_year %}
-                                        <span class="badge bg-info text-dark">
-                                            {{ fee.academic_year.name }}
-                                        </span>
-                                        <br>
-                                        <small class="text-muted">{{ fee.academic_year.semester }}</small>
-                                    {% else %}
-                                        <span class="text-danger small">Tahun tidak ditemukan</span>
-                                    {% endif %}
-                                </td>
-
-                                <td>
-                                    <div class="d-flex gap-2">
-                                        <button class="btn btn-sm btn-danger disabled" title="Hapus Biaya">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-
-                                        <form action="{{ url_for('admin.generate_invoices', fee_id=fee.id) }}" method="POST" onsubmit="return confirm('Yakin ingin menerbitkan tagihan ini ke SEMUA siswa?');">
-                                            <button type="submit" class="btn btn-sm btn-success" title="Terbitkan Tagihan ke Siswa">
-                                                <i class="fas fa-paper-plane me-1"></i> Terbitkan
-                                            </button>
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 fw-bold text-primary">Daftar Tagihan Aktif</h6>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Nama Biaya</th>
+                                    <th>Tarif</th>
+                                    <th>Progres (Masuk / Target)</th>
+                                    <th style="width:130px">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for fee in fees %}
+                                <tr>
+                                    <td>
+                                        <a href="{{ url_for('admin.fee_type_detail', fee_id=fee.id) }}" class="fw-bold text-decoration-none">{{ fee.name }}</a>
+                                        <div class="small text-muted">
+                                            {% if fee.academic_year %}{{ fee.academic_year.name }}{% else %}Umum{% endif %}
+                                        </div>
+                                    </td>
+                                    <td>Rp {{ "{:,.0f}".format(fee.amount) }}</td>
+                                    <td>
+                                        <div class="small mb-1 d-flex justify-content-between">
+                                            <span>{{ fee.stat_count }} Siswa</span>
+                                            <span class="fw-bold text-success">{{ "{:,.0f}".format(fee.stat_paid) }}</span>
+                                        </div>
+                                        <div class="progress" style="height: 5px;">
+                                            {% set percent = 0 %}
+                                            {% if fee.stat_bill > 0 %}
+                                                {% set percent = (fee.stat_paid / fee.stat_bill) * 100 %}
+                                            {% endif %}
+                                            <div class="progress-bar bg-success" role="progressbar" style="width: {{ percent }}%"></div>
+                                        </div>
+                                        <small class="text-muted text-end d-block">Target: Rp {{ "{:,.0f}".format(fee.stat_bill) }}</small>
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('admin.fee_type_detail', fee_id=fee.id) }}" class="btn btn-sm btn-info text-white" title="Lihat Detail"><i class="fas fa-eye"></i></a>
+                                        <form action="{{ url_for('admin.generate_invoices', fee_id=fee.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Terbitkan tagihan ini?');">
+                                            <button class="btn btn-sm btn-success" title="Terbitkan"><i class="fas fa-paper-plane"></i></button>
                                         </form>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="4" class="text-center text-muted py-4">
-                                    <i class="fas fa-info-circle me-2"></i>Belum ada data biaya. Silakan tambah di samping.
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                                        <button class="btn btn-sm btn-danger disabled"><i class="fas fa-trash"></i></button>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-center text-muted py-4">Belum ada data biaya.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+    // 1. Script Grafik Donat
+    var ctx = document.getElementById("myPieChart");
+    var myPieChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+        labels: ["Sudah Masuk", "Belum Lunas"],
+        datasets: [{
+        data: [{{ grand_total_paid }}, {{ grand_total_bill - grand_total_paid }}],
+        backgroundColor: ['#1cc88a', '#e74a3b'],
+        hoverBackgroundColor: ['#17a673', '#e02d1b'],
+        hoverBorderColor: "rgba(234, 236, 244, 1)",
+        }],
+    },
+    options: {
+        maintainAspectRatio: false,
+        tooltips: {
+        backgroundColor: "rgb(255,255,255)",
+        bodyFontColor: "#858796",
+        borderColor: '#dddfeb',
+        borderWidth: 1,
+        xPadding: 15,
+        yPadding: 15,
+        displayColors: false,
+        caretPadding: 10,
+        },
+        legend: {
+        display: false
+        },
+        cutoutPercentage: 70,
+    },
+    });
+
+    // 2. Script Generator Nama (Anti Typo)
+    document.addEventListener("DOMContentLoaded", function() {
+        const jenisSelect = document.getElementById("templateJenis");
+        const bulanSelect = document.getElementById("templateBulan");
+        const finalInput = document.getElementById("finalNameInput");
+        const tahunSelect = document.getElementById("selectTahun");
+
+        function updateName() {
+            const jenis = jenisSelect.value;
+            const bulan = bulanSelect.value;
+            const tahunText = tahunSelect.options[tahunSelect.selectedIndex].text;
+            const tahunAngka = tahunText.substring(0, 4);
+
+            if (jenis === "CUSTOM" || jenis === "") {
+                if (jenis === "") finalInput.value = "";
+                return;
+            }
+
+            let result = jenis;
+            if (["SPP", "Infaq Bulanan", "Uang Makan"].includes(jenis)) {
+                bulanSelect.style.display = "block";
+                if (bulan) { result += " " + bulan + " " + tahunAngka; }
+            } else {
+                bulanSelect.style.display = "none";
+                bulanSelect.value = "";
+            }
+            finalInput.value = result;
+        }
+
+        jenisSelect.addEventListener("change", updateName);
+        bulanSelect.addEventListener("change", updateName);
+        tahunSelect.addEventListener("change", updateName);
+    });
+</script>
 {% endblock %}

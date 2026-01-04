@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-header py-3 bg-info text-white">
+                <h6 class="m-0 fw-bold"><i class="fas fa-edit me-2"></i>Edit Data Kelas</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label>Nama Kelas</label>
+                        <input type="text" name="name" class="form-control" value="{{ class_room.name }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label>Tingkat (Grade)</label>
+                        <select name="grade_level" class="form-select">
+                            {% for level in ['1','2','3','10','11','12'] %}
+                                <option value="{{ level }}" {% if class_room.grade_level == level %}selected{% endif %}>
+                                    {{ level }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label>Wali Kelas</label>
+                        <select name="homeroom_teacher_id" class="form-select">
+                            <option value="">-- Kosongkan --</option>
+                            {% for t in teachers %}
+                                <option value="{{ t.id }}" {% if class_room.homeroom_teacher_id == t.id %}selected{% endif %}>
+                                    {{ t.full_name }} ({{ t.specialty }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('admin.manage_classes') }}" class="btn btn-secondary">Batal</a>
+                        <button type="submit" class="btn btn-info text-white fw-bold">Simpan Perubahan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
