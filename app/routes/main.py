@@ -1,12 +1,36 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, current_app
-from flask_login import login_required, current_user
-import datetime
+from datetime import datetime
+
+from flask import (
+    Blueprint,
+    render_template,
+    redirect,
+    url_for,
+    flash,
+    current_app,
+)
+
+from flask_login import (
+    login_required,
+    current_user,
+)
+
 from app.extensions import db
 from app.forms import PPDBForm
 from app.models import (
-    UserRole, StudentCandidate, ProgramType, EducationLevel,
-    ScholarshipCategory, UniformSize, TahfidzSchedule,
-    RegistrationStatus, Gender
+    UserRole,
+    StudentCandidate,
+    Student,
+    ProgramType,
+    EducationLevel,
+    ScholarshipCategory,
+    UniformSize,
+    TahfidzSchedule,
+    RegistrationStatus,
+    Gender,
+    TahfidzSummary,
+    TahfidzRecord,
+    Announcement,
+    Schedule,
 )
 
 main_bp = Blueprint('main', __name__)
@@ -17,38 +41,63 @@ def index():
     # Halaman awal langsung arahkan ke Login
     return redirect(url_for('auth.login'))
 
-
+@main_bp.route('/')
 @main_bp.route('/dashboard')
 @login_required
 def dashboard():
-    """
-    Fungsi ini bertugas sebagai ROUTER PUSAT.
-    Dia tidak menampilkan halaman, tapi melempar (redirect) user
-    ke controller spesifik sesuai jabatannya.
-    """
-
-    # 1. ADMIN -> Lempar ke routes/admin.py
+    # 1. Redirect untuk Admin, Guru, Staff, Wali (Logic Lama)
     if current_user.role == UserRole.ADMIN:
         return redirect(url_for('admin.dashboard'))
-
-    # 2. TATA USAHA -> Lempar ke routes/staff.py (Solusi error tadi)
+    elif current_user.role == UserRole.GURU:
+        return redirect(url_for('academic.teacher_dashboard'))  # Pastikan route ini ada di app/routes/academic.py atau main.py
     elif current_user.role == UserRole.TU:
         return redirect(url_for('staff.dashboard'))
-
-    # 3. WALI MURID -> Lempar ke routes/parent.py
     elif current_user.role == UserRole.WALI_MURID:
-        return redirect(url_for('parent.dashboard'))
+        return redirect(url_for('parent_dashboard'))  # Perlu dibuat nanti jika belum ada
 
-    # 4. SISWA -> Render langsung (karena simpel) atau buat routes/student.py nanti
+    # 2. Logic Khusus Dashboard SISWA
     elif current_user.role == UserRole.SISWA:
         student = current_user.student_profile
-        return render_template('student/dashboard.html', student=student)
 
-    # 5. GURU -> Render placeholder
-    elif current_user.role == UserRole.GURU:
-        return render_template('teacher/dashboard.html')
+        # --- DATA TAHFIDZ ---
+        summary = TahfidzSummary.query.filter_by(student_id=student.id).first()
+        recent_tahfidz = TahfidzRecord.query.filter_by(student_id=student.id) \
+            .order_by(TahfidzRecord.date.desc()) \
+            .limit(5).all()
 
-    return "Role tidak dikenali atau Anda tidak memiliki akses.", 403
+        # --- PENGUMUMAN ---
+        announcements = Announcement.query.filter_by(is_active=True) \
+            .order_by(Announcement.created_at.desc()).limit(3).all()
+
+        # --- [BARU] JADWAL HARI INI ---
+        # 1. Dapatkan nama hari dalam Bahasa Indonesia
+        days_map = {0: 'Senin', 1: 'Selasa', 2: 'Rabu', 3: 'Kamis', 4: 'Jumat', 5: 'Sabtu', 6: 'Minggu'}
+        today_name = days_map[datetime.now().weekday()]
+
+        # 2. Query Jadwal sesuai Kelas & Hari
+        todays_schedules = []
+        if student.current_class:
+            todays_schedules = Schedule.query.filter_by(
+                class_id=student.current_class.id,
+                day=today_name
+            ).order_by(Schedule.start_time).all()
+
+        return render_template('student/dashboard.html',
+                               student=student,
+                               summary=summary,
+                               recent_tahfidz=recent_tahfidz,
+                               announcements=announcements,
+                               todays_schedules=todays_schedules,  # Kirim ke HTML
+                               today_name=today_name)
+
+    return render_template('index.html')
+
+
+# Route placeholder jika belum ada di tempat lain
+@main_bp.route('/teacher/dashboard')
+@login_required
+def teacher_dashboard():
+    return render_template('teacher/dashboard.html')
 
 
 # ==========================================

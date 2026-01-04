@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="h3 mb-4 text-gray-800">Manajemen Pengguna & Password</h1>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-primary text-white">
+            <h6 class="m-0 font-weight-bold">Daftar Semua Akun (Kecuali Admin)</h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover" id="dataTable" width="100%" cellspacing="0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Role</th>
+                            <th>Username / Login ID</th>
+                            <th>Nama Pemilik Akun</th>
+                            <th>Status Password</th>
+                            <th class="text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in users %}
+                        <tr>
+                            <td>
+                                <span class="badge 
+                                    {% if u.role.value == 'student' %}bg-success
+                                    {% elif u.role.value == 'teacher' %}bg-info
+                                    {% elif u.role.value == 'tata_usaha' %}bg-warning text-dark
+                                    {% else %}bg-secondary{% endif %}">
+                                    {{ u.role.value|upper }}
+                                </span>
+                            </td>
+                            <td class="fw-bold">{{ u.username }}</td>
+                            <td>
+                                {% if u.student_profile %}
+                                    {{ u.student_profile.full_name }}
+                                {% elif u.teacher_profile %}
+                                    {{ u.teacher_profile.full_name }}
+                                {% elif u.staff_profile %}
+                                    {{ u.staff_profile.full_name }}
+                                {% elif u.parent_profile %}
+                                    {{ u.parent_profile.full_name }}
+                                {% else %}
+                                    <span class="text-muted fst-italic">- Nama tidak ditemukan -</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if u.must_change_password %}
+                                    <span class="badge bg-danger">Wajib Ganti</span>
+                                {% else %}
+                                    <span class="badge bg-success">Aman</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-danger shadow-sm" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#resetModal"
+                                        onclick="setResetData('{{ u.id }}', '{{ u.username }}')">
+                                    <i class="fas fa-key me-1"></i> Reset Password
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="resetModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Reset Password User</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('admin.generic_reset_password') }}" method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="user_id" id="modalUserId">
+                    
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Anda akan mengubah password untuk user: <b id="modalUsername"></b>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Password Baru</label>
+                        <input type="text" name="new_password" class="form-control form-control-lg text-center" 
+                               placeholder="Masukan password baru..." required>
+                        <small class="text-muted">Disarankan menggunakan NIS/NIP agar mudah diingat user.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-danger">Simpan Password Baru</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function setResetData(id, username) {
+        document.getElementById('modalUserId').value = id;
+        document.getElementById('modalUsername').innerText = username;
+    }
+</script>
+{% endblock %}

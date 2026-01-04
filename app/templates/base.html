@@ -7,6 +7,8 @@
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
 
     <style>
         body { background-color: #f8f9fa; }
@@ -25,8 +27,8 @@
         }
 
         .sidebar-logo-container {
-            padding: 15px 10px 5px 10px; /* Memberi jarak agar tidak terlalu mepet tepi */
-            text-align: center; /* Posisi di tengah */
+            padding: 15px 10px 5px 10px;
+            text-align: center;
         }
 
         .sidebar-logo {
@@ -44,74 +46,93 @@
 
     {% if current_user.is_authenticated %}
         <div class="sidebar d-flex flex-column flex-shrink-0 p-3" style="width: 250px;">
-            <a href="#" class="d-flex align-items-center text-white text-decoration-none mb-3"><img src="{{ url_for('static', filename='img/logo-rqdf-white.png') }}"
-             alt="Logo RQDF"
-             style="max-height: 60px; width: auto;"
-             class="me-3"> <div class="d-flex flex-column justify-content-center" style="line-height: 1.1;">
-            <span class="fw-bold fs-5 tracking-tight">RQDF</span>
-            <span class="text-white-50 small fw-bold" style="font-size: 0.75rem;">MANAGEMENT</span>
-            <span class="text-white-50 small" style="font-size: 0.75rem;">SYSTEM</span>
-        </div>
-            </a>
-        <hr class="mt-0 mb-3" style="border-top: 1px solid rgba(255,255,255,0.2);">
-
-        <ul class="nav nav-pills flex-column mb-auto">
-
-            <li class="nav-item">
-                {% if current_user.role.value == 'admin' %}
-                    <a href="{{ url_for('admin.dashboard') }}" class="nav-link"><i class="fas fa-tachometer-alt me-2"></i> Dashboard</a>
-                {% elif current_user.role.value == 'tata_usaha' %}
-                    <a href="{{ url_for('staff.dashboard') }}" class="nav-link"><i class="fas fa-tachometer-alt me-2"></i> Dashboard TU</a>
-                {% elif current_user.role.value == 'wali_murid' %}
-                    <a href="{{ url_for('parent.dashboard') }}" class="nav-link"><i class="fas fa-home me-2"></i> Dashboard Wali</a>
-                {% endif %}
-            </li>
-
-            {% if current_user.role.value == 'admin' %}
-                <div class="nav-header">Master Data</div>
-                <li><a href="{{ url_for('admin.manage_academic_years') }}"><i class="fas fa-calendar-alt me-2"></i> Tahun Ajaran</a></li>
-                <li><a href="{{ url_for('admin.manage_classes') }}"><i class="fas fa-school me-2"></i> Data Kelas</a></li>
-                <li><a href="{{ url_for('admin.manage_subjects') }}"><i class="fas fa-book me-2"></i> Mata Pelajaran</a></li>
-
-                <div class="nav-header">Data Santri</div>
-                <li><a href="{{ url_for('admin.list_students') }}" class="nav-link"><i class="fas fa-user-graduate me-2"></i>Data Santri</a></li>
-                <li><a href="{{ url_for('admin.add_student') }}" class="nav-link"><i class="fas fa-user-plus me-2"></i>Input Santri</a></li>
-
-                <div class="nav-header">SDM</div>
-                <li><a href="{{ url_for('admin.manage_teachers') }}"><i class="fas fa-chalkboard-teacher me-2"></i> Data Guru</a></li>
-                <li><a href="{{ url_for('admin.manage_staff') }}"><i class="fas fa-user-tie me-2"></i> Data Staff</a></li>
-
-                <div class="nav-header">Keuangan</div>
-                <li><a href="{{ url_for('admin.manage_fee_types') }}"><i class="fas fa-money-check-alt me-2"></i> Master Biaya</a></li>
-                <li><a href="{{ url_for('admin.manage_app_config') }}"><i class="fas fa-cogs me-2"></i> Konfigurasi</a></li>
-            {% endif %}
-
-            {% if current_user.role.value == 'tata_usaha' %}
-                <div class="nav-header">Operasional</div>
-                <li><a href="{{ url_for('staff.cashier_search') }}" class="text-warning fw-bold"><i class="fas fa-cash-register me-2"></i> Kasir</a></li>
-                <li><a href="{{ url_for('staff.ppdb_list') }}"><i class="fas fa-user-plus me-2"></i> Verifikasi PPDB</a></li>
-                <li><a href="{{ url_for('staff.list_students') }}"><i class="fas fa-users me-2"></i> Data Santri</a></li>
-                <li><a href="{{ url_for('admin.manage_fee_types') }}"><i class="fas fa-file-invoice-dollar me-2"></i> Terbitkan Tagihan</a></li>
-            {% endif %}
-
-        </ul>
-        <hr>
-
-        <div class="dropdown">
-            <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle" id="dropdownUser1" data-bs-toggle="dropdown" aria-expanded="false">
-                <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px;">
-                    <i class="fas fa-user"></i>
+            <a href="#" class="d-flex align-items-center text-white text-decoration-none mb-3">
+                <img src="{{ url_for('static', filename='img/logo-rqdf-white.png') }}"
+                     alt="Logo RQDF"
+                     style="max-height: 60px; width: auto;"
+                     class="me-3">
+                <div class="d-flex flex-column justify-content-center" style="line-height: 1.1;">
+                    <span class="fw-bold fs-5 tracking-tight">RQDF</span>
+                    <span class="text-white-50 small fw-bold" style="font-size: 0.75rem;">MANAGEMENT</span>
+                    <span class="text-white-50 small" style="font-size: 0.75rem;">SYSTEM</span>
                 </div>
-                <strong>{{ current_user.username }}</strong>
             </a>
-            <ul class="dropdown-menu dropdown-menu-dark text-small shadow" aria-labelledby="dropdownUser1">
-                <li><a class="dropdown-item" href="#">Profile</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">Sign out</a></li>
+            <hr class="mt-0 mb-3" style="border-top: 1px solid rgba(255,255,255,0.2);">
+
+            <ul class="nav nav-pills flex-column mb-auto">
+
+                <li class="nav-item">
+                    {% if current_user.role.value == 'admin' %}
+                        <a href="{{ url_for('admin.dashboard') }}" class="nav-link"><i class="fas fa-tachometer-alt me-2"></i> Dashboard</a>
+                    {% elif current_user.role.value == 'teacher' %}
+                        <a href="{{ url_for('academic.teacher_dashboard') }}" class="nav-link"><i class="fas fa-chalkboard-teacher me-2"></i> Dashboard Guru</a>
+                    {% elif current_user.role.value == 'student' %}
+                        <a href="{{ url_for('main.dashboard') }}" class="nav-link"><i class="fas fa-user-graduate me-2"></i> Dashboard Siswa</a>
+                    {% elif current_user.role.value == 'tata_usaha' %}
+                        <a href="{{ url_for('staff.dashboard') }}" class="nav-link"><i class="fas fa-tachometer-alt me-2"></i> Dashboard TU</a>
+                    {% elif current_user.role.value == 'wali_murid' %}
+                        <a href="{{ url_for('parent.dashboard') }}" class="nav-link"><i class="fas fa-home me-2"></i> Dashboard Wali</a>
+                    {% endif %}
+                </li>
+
+                {% if current_user.role.value == 'admin' %}
+                    <div class="nav-header">Master Data</div>
+                    <li><a href="{{ url_for('admin.manage_academic_years') }}"><i class="fas fa-calendar-alt me-2"></i> Tahun Ajaran</a></li>
+                    <li><a href="{{ url_for('admin.manage_classes') }}"><i class="fas fa-school me-2"></i> Data Kelas</a></li>
+                    <li><a href="{{ url_for('admin.manage_subjects') }}"><i class="fas fa-book me-2"></i> Mata Pelajaran</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.manage_schedules') }}"><i class="fas fa-fw fa-clock me-2"></i>Jadwal Pelajaran</a></li>
+
+                    <div class="nav-header">Data Santri</div>
+                    <li><a href="{{ url_for('admin.list_students') }}" class="nav-link"><i class="fas fa-user-graduate me-2"></i>Data Santri</a></li>
+                    <li><a href="{{ url_for('admin.add_student') }}" class="nav-link"><i class="fas fa-user-plus me-2"></i>Input Santri</a></li>
+
+                    <div class="nav-header">SDM</div>
+                    <li><a href="{{ url_for('admin.manage_teachers') }}"><i class="fas fa-chalkboard-teacher me-2"></i> Data Guru</a></li>
+                    <li><a href="{{ url_for('admin.manage_staff') }}"><i class="fas fa-user-tie me-2"></i> Data Staff</a></li>
+
+                    <div class="nav-header">Keuangan</div>
+                    <li><a href="{{ url_for('admin.manage_fee_types') }}"><i class="fas fa-money-check-alt me-2"></i> Master Biaya</a></li>
+
+                    <div class="nav-header">Keamanan</div>
+                    <li><a href="{{ url_for('admin.manage_users') }}"><i class="fas fa-users-cog me-2"></i> Manajemen User</a></li>
+
+                    <div class="nav-header">Sistem</div>
+                    <li><a href="{{ url_for('admin.manage_app_config') }}"><i class="fas fa-cogs me-2"></i> Konfigurasi</a></li>
+
+                {% endif %}
+
+                {% if current_user.role.value == 'teacher' %}
+                    <div class="nav-header">Akademik</div>
+                    <li><a href="{{ url_for('academic.input_tahfidz') }}"><i class="fas fa-quran me-2"></i> Input Tahfidz</a></li>
+                    {% endif %}
+
+                {% if current_user.role.value == 'tata_usaha' %}
+                    <div class="nav-header">Operasional</div>
+                    <li><a href="{{ url_for('staff.cashier_search') }}" class="text-warning fw-bold"><i class="fas fa-cash-register me-2"></i> Kasir</a></li>
+                    <li><a href="{{ url_for('staff.ppdb_list') }}"><i class="fas fa-user-plus me-2"></i> Verifikasi PPDB</a></li>
+                    <li><a href="{{ url_for('staff.list_students') }}"><i class="fas fa-users me-2"></i> Data Santri</a></li>
+                    <li><a href="{{ url_for('admin.manage_fee_types') }}"><i class="fas fa-file-invoice-dollar me-2"></i> Terbitkan Tagihan</a></li>
+                {% endif %}
+
             </ul>
+            <hr>
+
+            <div class="dropdown">
+                <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle" id="dropdownUser1" data-bs-toggle="dropdown" aria-expanded="false">
+                    <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px;">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <strong>{{ current_user.username }}</strong>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-dark text-small shadow" aria-labelledby="dropdownUser1">
+                    <li><a class="dropdown-item" href="#">Profile</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">Sign out</a></li>
+                </ul>
+            </div>
         </div>
-    </div>
     {% endif %}
+
     <div class="flex-grow-1 bg-light">
 
         {% if current_user.is_authenticated %}
@@ -142,6 +163,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script> <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
 </body>
 </html>

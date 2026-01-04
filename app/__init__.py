@@ -35,8 +35,7 @@ def create_app(config_class=Config):
     # 5. Registrasi Blueprint
     from app.routes.auth import auth_bp
     from app.routes.main import main_bp
-    # Pastikan file academic.py sudah ada, jika belum, comment baris ini
-    # from app.routes.academic import academic_bp
+    from app.routes.academic import academic_bp
     from app.routes.admin import admin_bp
     from app.routes.staff import staff_bp
 
@@ -45,8 +44,7 @@ def create_app(config_class=Config):
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(main_bp)
-
-    # app.register_blueprint(academic_bp, url_prefix='/academic')
+    app.register_blueprint(academic_bp, url_prefix='/academic')
     app.register_blueprint(admin_bp, url_prefix='/admin')
     app.register_blueprint(staff_bp, url_prefix='/staff')
 

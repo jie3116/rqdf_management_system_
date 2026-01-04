@@ -1,164 +1,194 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row mb-4">
-    <div class="col-md-12">
-        <div class="card shadow-sm border-0 bg-white">
-            <div class="card-body d-flex align-items-center p-4">
-                <div class="me-4 text-center">
-                    {% if student.gender.name == 'L' %}
-                        <img src="https://cdn-icons-png.flaticon.com/512/2922/2922510.png" alt="Avatar" class="rounded-circle img-thumbnail" width="90">
-                    {% else %}
-                        <img src="https://cdn-icons-png.flaticon.com/512/2922/2922561.png" alt="Avatar" class="rounded-circle img-thumbnail" width="90">
-                    {% endif %}
+<div class="container-fluid">
+
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Dashboard Santri</h1>
+        <span class="badge bg-primary fs-6">{{ student.full_name }} ({{ student.nis }})</span>
+    </div>
+
+    <div class="row">
+
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                Hafalan Terakhir (Ziyadah)</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {% if summary and summary.last_surah %}
+                                    {{ summary.last_surah }} : Ayat {{ summary.last_ayat }}
+                                {% else %}
+                                    Belum ada data
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-quran fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <h2 class="fw-bold text-primary mb-1">{{ student.full_name }}</h2>
-                    <div class="d-flex align-items-center text-muted">
-                        <span class="badge bg-light text-dark border me-2"><i class="fas fa-id-card me-1"></i> {{ student.nis }}</span>
-                        <span class="badge bg-light text-dark border"><i class="fas fa-chalkboard me-1"></i> {{ student.current_class.name if student.current_class else 'Belum Ada Kelas' }}</span>
+            </div>
+        </div>
+
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Total Kali Setoran</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ recent_tahfidz|length if recent_tahfidz else 0 }}x
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-history fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Kelas Saat Ini</div>
+                            <div class="row no-gutters align-items-center">
+                                <div class="col-auto">
+                                    <div class="h5 mb-0 mr-3 font-weight-bold text-gray-800">{{ student.current_class.name }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-school fa-2x text-gray-300"></i>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<div class="row">
-    <div class="col-md-8">
+    <div class="row">
 
-        <div class="row mb-4">
-            <div class="col-md-4">
-                <div class="card border-0 shadow-sm bg-success text-white h-100">
-                    <div class="card-body text-center">
-                        <div class="opacity-50 mb-2"><i class="fas fa-quran fa-2x"></i></div>
-                        <h6 class="text-white-50">Hafalan Tahfidz</h6>
-                        <h3 class="fw-bold mb-0">0 Juz</h3>
-                        <small>Target: 30 Juz</small>
-                    </div>
+        <div class="col-lg-8 mb-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">Riwayat Setoran Terbaru</h6>
+                    <small class="text-muted">5 Transaksi Terakhir</small>
                 </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card border-0 shadow-sm bg-info text-white h-100">
-                    <div class="card-body text-center">
-                        <div class="opacity-50 mb-2"><i class="fas fa-user-check fa-2x"></i></div>
-                        <h6 class="text-white-50">Kehadiran</h6>
-                        <h3 class="fw-bold mb-0">100%</h3>
-                        <small>Semester Ini</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card border-0 shadow-sm bg-warning text-dark h-100">
-                    <div class="card-body text-center">
-                        <div class="opacity-50 mb-2"><i class="fas fa-star fa-2x"></i></div>
-                        <h6 class="text-muted">Rata-rata Nilai</h6>
-                        <h3 class="fw-bold mb-0">-</h3>
-                        <small>Belum ada nilai</small>
-                    </div>
-                </div>
-            </div>
-        </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover" width="100%" cellspacing="0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Tanggal</th>
+                                    <th>Jenis</th>
+                                    <th>Surat & Ayat</th>
+                                    <th>Predikat</th>
+                                    <th>Guru</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if recent_tahfidz %}
+                                    {% for record in recent_tahfidz %}
+                                    <tr>
+                                        <td>{{ record.date.strftime('%d/%m/%Y') }}</td>
 
-        <div class="card shadow border-0 mb-4">
-            <div class="card-header bg-white py-3 border-bottom">
-                <h6 class="m-0 fw-bold text-primary"><i class="fas fa-calendar-alt me-2"></i>Jadwal Pelajaran Hari Ini</h6>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Jam</th>
-                                <th>Mata Pelajaran</th>
-                                <th>Guru</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>07:30 - 09:00</td>
-                                <td class="fw-bold">Matematika</td>
-                                <td>Budi Santoso</td>
-                                <td><span class="badge bg-success">Hadir</span></td>
-                            </tr>
-                            <tr>
-                                <td>09:00 - 10:30</td>
-                                <td class="fw-bold">Tahfidz Quran</td>
-                                <td>Ustadz Cecep</td>
-                                <td><span class="badge bg-secondary">Belum Mulai</span></td>
-                            </tr>
+                                        <td>
+                                            {% if record.type.name == 'ZIYADAH' %}
+                                                <span class="badge bg-success">ZIYADAH</span>
+                                            {% else %}
+                                                <span class="badge bg-warning text-dark">MURAJAAH</span>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {% if '⮕' in record.surah %}
+                                                <span class="text-primary fw-bold" style="font-size: 0.9rem;">
+                                                    {{ record.surah }}
+                                                </span>
+                                            {% else %}
+                                                <strong>{{ record.surah }}</strong><br>
+                                                <small class="text-muted">Ayat {{ record.ayat_start }} - {{ record.ayat_end }}</small>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {% if record.quality == 'Mumtaz' %}
+                                                <span class="text-success fw-bold">Mumtaz</span>
+                                            {% elif record.quality == 'Jayyid Jiddan' %}
+                                                <span class="text-primary fw-bold">Jayyid Jiddan</span>
+                                            {% elif record.quality == 'Naqis' %}
+                                                <span class="text-danger fw-bold">Naqis</span>
+                                            {% else %}
+                                                {{ record.quality }}
+                                            {% endif %}
+                                        </td>
+
+                                        <td>{{ record.teacher.full_name }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-4">
+                                            <i class="fas fa-info-circle me-1"></i> Belum ada data setoran.
+                                        </td>
+                                    </tr>
+                                {% endif %}
                             </tbody>
-                    </table>
+                        </table>
+                    </div>
                 </div>
             </div>
-            <div class="card-footer bg-white text-center">
-                <a href="#" class="btn btn-sm btn-outline-primary disabled">Lihat Jadwal Lengkap</a>
-            </div>
         </div>
 
-        <div class="card shadow border-0">
-            <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
-                <h6 class="m-0 fw-bold text-success"><i class="fas fa-book-open me-2"></i>Progress Tahfidz</h6>
-                <button class="btn btn-sm btn-success btn-sm">Lihat Setoran</button>
-            </div>
-            <div class="card-body text-center py-5">
-                <i class="fas fa-chart-bar fa-3x text-muted opacity-25 mb-3"></i>
-                <p class="text-muted">Grafik perkembangan hafalan akan muncul di sini.</p>
-            </div>
-        </div>
-
-    </div>
-
-    <div class="col-md-4">
-
-        <div class="card shadow border-0 mb-4">
-            <div class="card-header bg-danger text-white py-3">
-                <h6 class="m-0 fw-bold"><i class="fas fa-file-invoice-dollar me-2"></i>Tagihan Aktif</h6>
-            </div>
-            <div class="card-body p-0">
-                <ul class="list-group list-group-flush">
-                    {% if student.invoices %}
-                        {% for invoice in student.invoices %}
-                            <li class="list-group-item p-3">
-                                <div class="d-flex justify-content-between align-items-start mb-2">
-                                    <div class="fw-bold text-dark">{{ invoice.fee_type.name }}</div>
-
-                                    {% if invoice.status.name == 'PAID' %}
-                                        <span class="badge bg-success" style="font-size: 0.7em;">LUNAS</span>
-                                    {% elif invoice.status.name == 'PARTIAL' %}
-                                        <span class="badge bg-warning text-dark" style="font-size: 0.7em;">DICICIL</span>
-                                    {% else %}
-                                        <span class="badge bg-danger" style="font-size: 0.7em;">UNPAID</span>
-                                    {% endif %}
-                                </div>
-
-                                <h5 class="fw-bold text-end mb-1">Rp {{ "{:,.0f}".format(invoice.total_amount) }}</h5>
-                                <div class="d-flex justify-content-between small text-muted">
-                                    <span>Jatuh Tempo:</span>
-                                    <span>{{ invoice.due_date.strftime('%d %b %Y') }}</span>
-                                </div>
-                            </li>
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Pengumuman Sekolah</h6>
+                </div>
+                <div class="card-body">
+                    {% if announcements %}
+                        {% for info in announcements %}
+                        <div class="alert alert-info" role="alert">
+                            <strong>{{ info.title }}</strong><br>
+                            <small>{{ info.content|truncate(100) }}</small>
+                        </div>
                         {% endfor %}
                     {% else %}
-                        <li class="list-group-item p-4 text-center text-muted">
-                            <i class="fas fa-check-circle mb-2 text-success"></i><br>
-                            Tidak ada tagihan aktif.
-                        </li>
+                        <p class="text-muted text-center">Tidak ada pengumuman baru.</p>
                     {% endif %}
-                </ul>
-            </div>
-        </div>
 
-        <div class="card shadow border-0">
-            <div class="card-header bg-light py-3">
-                <h6 class="m-0 fw-bold text-secondary"><i class="fas fa-history me-2"></i>History Bayar</h6>
-            </div>
-            <div class="card-body p-3">
-                <p class="text-center text-muted small my-3">Belum ada data transaksi.</p>
-                <button class="btn btn-outline-secondary btn-sm w-100 disabled">Lihat Semua</button>
+                    <hr>
+                    <h6 class="font-weight-bold">Jadwal Hari Ini ({{ today_name }})</h6>
+
+                    {% if todays_schedules %}
+                        <ul class="list-group list-group-flush">
+                            {% for sch in todays_schedules %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                <div>
+                                    <small class="fw-bold text-primary">{{ sch.start_time.strftime('%H:%M') }}</small>
+                                    <div class="fw-bold text-dark">{{ sch.subject.name }}</div>
+                                </div>
+                                <span class="badge bg-light text-dark border">
+                                    {{ sch.teacher.full_name.split(' ')[0] }} </span>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <div class="alert alert-light text-center small text-muted mt-2 border">
+                            <i class="fas fa-bed me-1"></i> Tidak ada jadwal pelajaran.
+                        </div>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
+
 </div>
 {% endblock %}

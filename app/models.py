@@ -151,6 +151,20 @@ class NotificationQueue(BaseModel):
     status = db.Column(db.String(20), default='PENDING')  # PENDING, SENT, FAILED
 
 
+class Announcement(BaseModel):
+    """Pengumuman untuk tampil di dashboard siswa/guru"""
+    __tablename__ = 'announcements'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+
+    # Opsional: Siapa yang memposting (Admin/Staff)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    # Relasi ke User (Penulis)
+    author = db.relationship('User', backref='announcements')
+
 # ==========================================
 # 4. USERS & PROFILES
 # ==========================================
@@ -352,6 +366,7 @@ class TahfidzRecord(BaseModel):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'))
+    teacher = db.relationship('Teacher', backref='tahfidz_history')
     date = db.Column(db.DateTime, default=datetime.utcnow)
     type = db.Column(db.Enum(TahfidzType))
     juz = db.Column(db.Integer)

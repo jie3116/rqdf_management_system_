@@ -664,3 +664,132 @@ def reset_password(user_id):
         flash(f'Gagal mereset password: {str(e)}', 'danger')
 
     return redirect(request.referrer or url_for('main.dashboard'))
+
+
+# =========================================================
+# 9. MANAJEMEN JADWAL PELAJARAN
+# =========================================================
+
+@admin_bp.route('/akademik/jadwal', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def manage_schedules():
+    # Ambil parameter filter kelas dari URL (misal: ?class_id=1)
+    selected_class_id = request.args.get('class_id', type=int)
+
+    # Dropdown Data
+    classes = ClassRoom.query.filter_by(is_deleted=False).all()
+    subjects = Subject.query.filter_by(is_deleted=False).all()
+    teachers = Teacher.query.filter_by(is_deleted=False).all()
+
+    # Jika user mengirim Form Tambah Jadwal
+    if request.method == 'POST':
+        class_id = request.form.get('class_id')
+        subject_id = request.form.get('subject_id')
+        teacher_id = request.form.get('teacher_id')
+        day = request.form.get('day')
+        start_time_str = request.form.get('start_time')
+        end_time_str = request.form.get('end_time')
+
+        try:
+            # Konversi String jam "07:00" menjadi object Time python
+            start_time = datetime.strptime(start_time_str, '%H:%M').time()
+            end_time = datetime.strptime(end_time_str, '%H:%M').time()
+
+            new_schedule = Schedule(
+                class_id=class_id,
+                subject_id=subject_id,
+                teacher_id=teacher_id,
+                day=day,
+                start_time=start_time,
+                end_time=end_time
+            )
+            db.session.add(new_schedule)
+            db.session.commit()
+            flash('Jadwal berhasil ditambahkan.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Gagal menambah jadwal: {e}', 'danger')
+
+        # Redirect kembali ke kelas yang sedang dipilih
+        return redirect(url_for('admin.manage_schedules', class_id=class_id))
+
+    # Query Jadwal untuk ditampilkan di tabel
+    schedules = []
+    selected_class = None
+
+    if selected_class_id:
+        selected_class = ClassRoom.query.get(selected_class_id)
+        # Urutkan berdasarkan Hari (Senin-Jumat) dan Jam Mulai
+        # Note: Sorting hari string (Senin, Selasa) di SQL mungkin tidak urut,
+        # idealnya pakai Case/Enum, tapi untuk sekarang kita ambil raw dulu.
+        schedules = Schedule.query.filter_by(class_id=selected_class_id) \
+            .order_by(Schedule.day, Schedule.start_time).all()
+
+        # Custom sort di python agar harinya urut Senin->Minggu
+        days_order = {'Senin': 1, 'Selasa': 2, 'Rabu': 3, 'Kamis': 4, 'Jumat': 5, 'Sabtu': 6, 'Minggu': 7}
+        schedules.sort(key=lambda x: (days_order.get(x.day, 8), x.start_time))
+
+    return render_template('admin/academic/schedules.html',
+                           classes=classes,
+                           subjects=subjects,
+                           teachers=teachers,
+                           schedules=schedules,
+                           selected_class=selected_class)
+
+
+@admin_bp.route('/akademik/jadwal/hapus/<int:id>')
+@login_required
+@role_required(UserRole.ADMIN)
+def delete_schedule(id):
+    schedule = Schedule.query.get_or_404(id)
+    class_id = schedule.class_id  # Simpan ID kelas untuk redirect
+
+    db.session.delete(schedule)  # Hard delete karena jadwal sering berubah total
+    db.session.commit()
+
+    flash('Jadwal dihapus.', 'warning')
+    return redirect(url_for('admin.manage_schedules', class_id=class_id))
+
+
+# =========================================================
+# 10. MANAJEMEN USER PUSAT (RESET PASSWORD ALL ROLES)
+# =========================================================
+
+@admin_bp.route('/users/manage', methods=['GET'])
+@login_required
+@role_required(UserRole.ADMIN)
+def manage_users():
+    """Halaman untuk melihat semua user dan reset password"""
+    # Ambil semua user KECUALI Admin (untuk keamanan)
+    users = User.query.filter(User.role != UserRole.ADMIN).order_by(User.role, User.username).all()
+    return render_template('admin/users/manage.html', users=users)
+
+
+@admin_bp.route('/users/reset-password-generic', methods=['POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def generic_reset_password():
+    """Route serbaguna untuk reset password via Modal"""
+    user_id = request.form.get('user_id')
+    new_password = request.form.get('new_password')
+
+    user = User.query.get_or_404(user_id)
+
+    # Validasi sederhana
+    if not new_password or len(new_password) < 4:
+        flash('Password minimal 4 karakter.', 'danger')
+        return redirect(url_for('admin.manage_users'))
+
+    try:
+        user.set_password(new_password)
+        # Opsional: Paksa user ganti password lagi saat login nanti
+        user.must_change_password = False
+        db.session.commit()
+
+        flash(f'Password untuk {user.username} ({user.role.value}) berhasil diubah.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Gagal mereset password: {str(e)}', 'danger')
+
+    return redirect(url_for('admin.manage_users'))
