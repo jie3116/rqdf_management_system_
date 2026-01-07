@@ -1,43 +1,239 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row mb-3">
-    <div class="col-md-8">
-        <h2>Selamat Datang, {{ current_user.teacher_profile.full_name }}</h2>
-        <p class="text-muted">NIP: {{ current_user.teacher_profile.nip }}</p>
+<div class="container-fluid">
+
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <div>
+            <h1 class="h3 mb-0 text-gray-800">Dashboard Guru</h1>
+            <p class="mb-0 text-muted">Selamat Datang, <strong>{{ teacher.full_name }}</strong> (NIP: {{ teacher.nip or '-' }})</p>
+        </div>
+        <div class="d-none d-sm-inline-block">
+            <span class="badge bg-primary fs-6 shadow-sm"><i class="fas fa-clock me-1"></i> Tahun Ajaran Aktif</span>
+        </div>
     </div>
+
+    <div class="row">
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Jadwal Mengajar Hari Ini</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ todays_schedules|length }} Kelas
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-calendar-day fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                Wali Kelas</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ homeroom_class.name if homeroom_class else 'Tidak Menjabat' }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-chalkboard-teacher fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                Total Kelas Ajar</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ teaching_assignments|length }} Mapel
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-book-open fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+
+        <div class="col-lg-8">
+
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-white d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 fw-bold text-primary"><i class="fas fa-calendar-check me-2"></i>Agenda Hari Ini</h6>
+                </div>
+                <div class="card-body">
+                    {% if todays_schedules %}
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 20%">Waktu</th>
+                                        <th style="width: 20%">Kelas</th>
+                                        <th>Mata Pelajaran</th>
+                                        <th class="text-center" style="width: 15%">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for sch in todays_schedules %}
+                                    <tr>
+                                        <td>
+                                            <span class="badge bg-light text-dark border">
+                                                {{ sch.start_time.strftime('%H:%M') }} - {{ sch.end_time.strftime('%H:%M') }}
+                                            </span>
+                                        </td>
+                                        <td class="fw-bold">{{ sch.class_room.name }}</td>
+                                        <td>{{ sch.subject.name }}</td>
+
+                                        <td class="text-center">
+                                            <a href="{{ url_for('teacher.input_grades', class_id=sch.class_id, subject_id=sch.subject_id) }}"
+                                               class="btn btn-sm btn-primary" title="Input Nilai">
+                                                <i class="fas fa-edit"></i>
+                                            </a>
+
+                                            <a href="{{ url_for('teacher.input_attendance', class_id=sch.class_id) }}"
+                                               class="btn btn-sm btn-success ms-1" title="Input Absensi">
+                                                <i class="fas fa-user-check"></i>
+                                            </a>
+                                        </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-4 text-muted border rounded bg-light">
+                            <i class="fas fa-mug-hot fa-3x mb-3 text-gray-300"></i><br>
+                            Tidak ada jadwal mengajar hari ini. Silakan istirahat atau update administrasi.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 fw-bold text-dark"><i class="fas fa-pen-fancy me-2"></i>Input Nilai Akademik</h6>
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted mb-3">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Pilih kelas di bawah ini untuk mengisi nilai Tugas, UH, UTS, atau UAS.
+                        Anda hanya dapat melihat kelas yang Anda ajar.
+                    </p>
+
+                    {% if teaching_assignments %}
+                        <div class="row">
+                            {% for class_id, class_name, subject_id, subject_name in teaching_assignments %}
+                            <div class="col-md-6 mb-3">
+                                <a href="{{ url_for('teacher.input_grades', class_id=class_id, subject_id=subject_id) }}" class="text-decoration-none">
+                                    <div class="card border-left-primary h-100 py-2 shadow-sm hover-scale transition">
+                                        <div class="card-body">
+                                            <div class="row no-gutters align-items-center">
+                                                <div class="col mr-2">
+                                                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                                        {{ class_name }}</div>
+                                                    <div class="h6 mb-0 font-weight-bold text-gray-800">{{ subject_name }}</div>
+                                                </div>
+                                                <div class="col-auto">
+                                                    <i class="fas fa-chevron-right text-gray-400"></i>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </a>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Anda belum terdaftar di jadwal pelajaran manapun. Hubungi Admin Akademik.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+
+        <div class="col-lg-4">
+
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-success text-white">
+                    <h6 class="m-0 fw-bold"><i class="fas fa-quran me-2"></i>Setoran Tahfidz</h6>
+                </div>
+                <div class="card-body">
+                    <div class="text-center mb-3">
+                        <img class="img-fluid px-3 px-sm-4 mt-3 mb-4" style="height: 100px;"
+                             src="{{ url_for('static', filename='img/undraw_reading_time_re_phf7.svg') }}" alt="Tahfidz">
+                    </div>
+                    <p class="small text-muted text-center mb-3">Catat setoran hafalan (Ziyadah/Murajaah) siswa kapan saja.</p>
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('teacher.input_tahfidz') }}" class="btn btn-success fw-bold">
+                            <i class="fas fa-plus-circle me-2"></i> Input Setoran Baru
+                        </a>
+                        <button class="btn btn-outline-success btn-sm" disabled>
+                            <i class="fas fa-history me-1"></i> Riwayat Setoran (Coming Soon)
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+
+            {% if homeroom_class %}
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-warning text-dark">
+                    <h6 class="m-0 fw-bold"><i class="fas fa-user-graduate me-2"></i>Wali Kelas: {{ homeroom_class.name }}</h6>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush small">
+                        <a href="{{ url_for('teacher.homeroom_students') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-users me-2 text-gray-500"></i> Data Siswa Perwalian</span>
+                            <span class="badge bg-secondary rounded-pill">{{ homeroom_class.students|length }}</span>
+                        </a>
+                        <a href="{{ url_for('teacher.homeroom_students') }}" class="list-group-item list-group-item-action">
+                            <i class="fas fa-print me-2 text-primary"></i> Cetak Raport (PDF)
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action">
+                            <i class="fas fa-bullhorn me-2 text-info"></i> Buat Pengumuman Kelas
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action text-danger">
+                            <i class="fas fa-heart-broken me-2"></i> Input Pelanggaran (BK)
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+
 </div>
 
-<div class="row">
-    <div class="col-md-4">
-        <div class="card shadow-sm h-100">
-            <div class="card-body text-center">
-                <i class="fas fa-edit fa-3x text-primary mb-3"></i>
-                <h5>Input Nilai</h5>
-                <p>Masukkan nilai tugas, UTS, dan UAS siswa.</p>
-                <a href="{{ url_for('academic.input_grade') }}" class="btn btn-outline-primary">Buka</a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card shadow-sm h-100">
-            <div class="card-body text-center">
-                <i class="fas fa-quran fa-3x text-success mb-3"></i>
-                <h5>Setoran Tahfidz</h5>
-                <p>Catat ziyadah dan murajaah siswa.</p>
-                <a href="{{ url_for('academic.input_tahfidz') }}" class="btn btn-outline-success">Catat Hafalan</a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card shadow-sm h-100">
-            <div class="card-body text-center">
-                <i class="fas fa-clipboard-check fa-3x text-warning mb-3"></i>
-                <h5>Absensi Kelas</h5>
-                <p>Kelola kehadiran harian kelas.</p>
-                <a href="#" class="btn btn-outline-warning">Absen Sekarang</a>
-            </div>
-        </div>
-    </div>
-</div>
+<style>
+    .hover-scale {
+        transition: transform 0.2s;
+    }
+    .hover-scale:hover {
+        transform: scale(1.02);
+        cursor: pointer;
+    }
+</style>
 {% endblock %}

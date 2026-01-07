@@ -5,7 +5,6 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
-
 # ==========================================
 # 0. BASE MODEL (SCALABILITY FOUNDATION)
 # ==========================================
@@ -71,16 +70,18 @@ class GradeType(enum.Enum):
     UAS = "UAS"
     SIKAP = "Sikap"
 
+
 class ProgramType(enum.Enum):
-    RQDF_SORE = "RQDF Reguler (Sore)"            # Formulir A
-    SEKOLAH_FULLDAY = "Sekolah Bina Qur'an"      # Formulir B & C
+    RQDF_SORE = "RQDF Reguler (Sore)"
+    SEKOLAH_FULLDAY = "Sekolah Bina Qur'an"
 
 
 class EducationLevel(enum.Enum):
-    NON_FORMAL = "Non Formal" # Untuk RQDF Sore
+    NON_FORMAL = "Non Formal"
     SD = "SD"
     SMP = "SMP"
     SMA = "SMA"
+
 
 class ScholarshipCategory(enum.Enum):
     NON_BEASISWA = "Non Beasiswa / Reguler"
@@ -88,18 +89,21 @@ class ScholarshipCategory(enum.Enum):
     TAHFIDZ_10_30_JUZ = "Beasiswa 10-30 Juz"
     YATIM_DHUAFA = "Beasiswa Yatim Dhuafa"
 
+
 class UniformSize(enum.Enum):
     S = "S"
     M = "M"
     L = "L"
     XL = "XL"
     XXL = "XXL"
-    TIDAK_MEMILIH = "Tidak Memilih" # Untuk yang tidak beli seragam
+    TIDAK_MEMILIH = "Tidak Memilih"
+
 
 class TahfidzSchedule(enum.Enum):
     SHIFT_1 = "14.00 s.d 15.30"
     SHIFT_2 = "16.00 s.d 17.30"
-    TIDAK_ADA = "-" # Untuk Sekolah Formal
+    TIDAK_ADA = "-"
+
 
 class RegistrationStatus(enum.Enum):
     PENDING = "Menunggu Verifikasi"
@@ -119,10 +123,9 @@ student_extracurriculars = db.Table('student_extracurriculars',
 
 
 # ==========================================
-# 3. SYSTEM & CONFIG (NEW)
+# 3. SYSTEM, CONFIG & KNOWLEDGE BASE
 # ==========================================
 class AppConfig(BaseModel):
-    """Menyimpan setting dinamis (misal: Tahun Ajaran Aktif, Denda Keterlambatan)"""
     __tablename__ = 'app_configs'
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(50), unique=True, nullable=False)
@@ -131,44 +134,58 @@ class AppConfig(BaseModel):
 
 
 class AuditLog(db.Model):
-    """Mencatat siapa melakukan apa (Security)"""
     __tablename__ = 'audit_logs'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    action = db.Column(db.String(50))  # LOGIN, UPDATE_NILAI, DELETE_SISWA
+    action = db.Column(db.String(50))
     details = db.Column(db.Text)
     ip_address = db.Column(db.String(50))
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class NotificationQueue(BaseModel):
-    """Antrian pesan WA/Email (Scalability)"""
     __tablename__ = 'notification_queues'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    target_contact = db.Column(db.String(50))  # No WA / Email
+    target_contact = db.Column(db.String(50))
     message = db.Column(db.Text)
-    status = db.Column(db.String(20), default='PENDING')  # PENDING, SENT, FAILED
+    status = db.Column(db.String(20), default='PENDING')
 
 
 class Announcement(BaseModel):
-    """Pengumuman untuk tampil di dashboard siswa/guru"""
     __tablename__ = 'announcements'
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(150), nullable=False)
     content = db.Column(db.Text, nullable=False)
     is_active = db.Column(db.Boolean, default=True)
 
-    # Opsional: Siapa yang memposting (Admin/Staff)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    # [UPDATE] Menambahkan target spesifik (opsional)
+    target_class_id = db.Column(db.Integer, db.ForeignKey('class_rooms.id'), nullable=True)
 
-    # Relasi ke User (Penulis)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     author = db.relationship('User', backref='announcements')
+
+
+class SchoolDocument(BaseModel):
+    """
+    [BARU] Menyimpan dokumen sekolah untuk Knowledge Base AI (RAG).
+    Contoh: 'Panduan Akademik', 'Peraturan Asrama', 'Silabus'.
+    """
+    __tablename__ = 'school_documents'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    category = db.Column(db.String(50))  # Kurikulum, Peraturan, SK
+    file_path = db.Column(db.String(255))  # Path di server
+    description = db.Column(db.Text)
+
+    # Status Indexing Vector DB (Untuk fitur AI nanti)
+    is_indexed = db.Column(db.Boolean, default=False)
+    vector_id = db.Column(db.String(100), nullable=True)
+
 
 # ==========================================
 # 4. USERS & PROFILES
 # ==========================================
-
 class User(UserMixin, BaseModel):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -177,8 +194,6 @@ class User(UserMixin, BaseModel):
     password_hash = db.Column(db.String(256))
     role = db.Column(db.Enum(UserRole), default=UserRole.SISWA, nullable=False)
     last_login = db.Column(db.DateTime)
-
-    # Jika True = User akan dialihkan ke halaman ganti password saat login
     must_change_password = db.Column(db.Boolean, default=True)
 
     # Relationships
@@ -199,7 +214,7 @@ class Parent(BaseModel):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     full_name = db.Column(db.String(100), nullable=False)
-    phone = db.Column(db.String(20), nullable=False, index=True)  # Index untuk pencarian cepat
+    phone = db.Column(db.String(20), nullable=False, index=True)
     address = db.Column(db.Text)
     job = db.Column(db.String(100))
     children = db.relationship('Student', backref='parent', lazy=True)
@@ -208,7 +223,7 @@ class Parent(BaseModel):
 class Teacher(BaseModel):
     __tablename__ = 'teachers'
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
     nip = db.Column(db.String(20), unique=True)
     full_name = db.Column(db.String(100))
     phone = db.Column(db.String(20))
@@ -245,7 +260,10 @@ class Student(BaseModel):
     class_history = db.relationship('StudentClassHistory', backref='student', lazy=True)
     attendances = db.relationship('Attendance', backref='student', lazy=True)
     grades = db.relationship('Grade', backref='student', lazy=True)
-    violations = db.relationship('Violation', backref='student', lazy=True)  # BK
+    report_cards = db.relationship('ReportCard', backref='student', lazy=True)  # [BARU]
+    student_attitudes = db.relationship('StudentAttitude', backref='student', lazy=True)  # [BARU]
+
+    violations = db.relationship('Violation', backref='student', lazy=True)
     invoices = db.relationship('Invoice', backref='student', lazy=True)
     tahfidz_records = db.relationship('TahfidzRecord', backref='student', lazy=True)
     tahfidz_summary = db.relationship('TahfidzSummary', backref='student', uselist=False)
@@ -270,6 +288,11 @@ class ClassRoom(BaseModel):
     grade_level = db.Column(db.Integer)
     homeroom_teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'))
 
+    # [UPDATE] Menambahkan Tahun Ajaran agar History Kelas Rapi
+    # Nullable True dulu agar data lama tidak error
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'), nullable=True)
+    academic_year = db.relationship('AcademicYear')
+
     students = db.relationship('Student', backref='current_class', lazy=True)
     schedules = db.relationship('Schedule', backref='class_room', lazy=True)
 
@@ -283,17 +306,15 @@ class Subject(BaseModel):
 
 
 class StudentClassHistory(BaseModel):
-    """Mencatat riwayat kenaikan kelas student"""
     __tablename__ = 'student_class_history'
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
     class_id = db.Column(db.Integer, db.ForeignKey('class_rooms.id'))
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
-    status = db.Column(db.String(20))  # Active, Promoted, Graduated
+    status = db.Column(db.String(20))
 
 
 class LearningMaterial(BaseModel):
-    """E-Learning: Upload Materi"""
     __tablename__ = 'learning_materials'
     id = db.Column(db.Integer, primary_key=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'))
@@ -304,7 +325,7 @@ class LearningMaterial(BaseModel):
 
 
 # ==========================================
-# 6. ACTIVITIES & RECORDS
+# 6. ACTIVITIES, GRADES & RECORDS
 # ==========================================
 class Schedule(BaseModel):
     __tablename__ = 'schedules'
@@ -316,38 +337,106 @@ class Schedule(BaseModel):
     start_time = db.Column(db.Time)
     end_time = db.Column(db.Time)
 
+    subject = db.relationship('Subject', backref='schedules')
+    teacher = db.relationship('Teacher', backref='teaching_schedules')
+
 
 class Attendance(BaseModel):
     __tablename__ = 'attendances'
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
-    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))  # Penting utk rekap per semester
-    date = db.Column(db.Date, default=datetime.utcnow)
-    status = db.Column(db.Enum(AttendanceStatus))
+
+    # Foreign Keys
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    class_id = db.Column(db.Integer, db.ForeignKey('class_rooms.id'), nullable=False)  # [BARU]
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False)  # [BARU]
+
+    # Kita keep academic_year_id agar query per tahun lebih cepat (Opsional, tapi bagus)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'), nullable=True)
+
+    date = db.Column(db.Date, default=datetime.utcnow, nullable=False)
+    status = db.Column(db.Enum(AttendanceStatus), default=AttendanceStatus.HADIR)
     notes = db.Column(db.String(100))
+
+    class_room = db.relationship('ClassRoom', backref='attendance_records')
+    teacher = db.relationship('Teacher', backref='inputted_attendances')
 
 
 class Grade(BaseModel):
+    """
+    Menyimpan nilai harian (Raw Data) yang diinput Guru.
+    """
     __tablename__ = 'grades'
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
     subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'))
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'))
-    type = db.Column(db.Enum(GradeType))
+
+    type = db.Column(db.Enum(GradeType))  # Tugas, UTS, UAS
     score = db.Column(db.Float)
     notes = db.Column(db.String(100))
 
 
+class GradeWeight(BaseModel):
+    """
+    [BARU] Menyimpan bobot penilaian.
+    Contoh: UTS=30%, UAS=40%, Tugas=30%.
+    """
+    __tablename__ = 'grade_weights'
+    id = db.Column(db.Integer, primary_key=True)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'))
+
+    grade_type = db.Column(db.Enum(GradeType))
+    weight_percentage = db.Column(db.Float)  # Misal: 30.0
+
+
+class ReportCard(BaseModel):
+    """
+    [BARU] Menyimpan Nilai Akhir Raport (Snapshot).
+    Ini yang akan dicetak di PDF agar tidak perlu hitung ulang terus menerus.
+    """
+    __tablename__ = 'report_cards'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
+    class_id = db.Column(db.Integer, db.ForeignKey('class_rooms.id'))
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'))
+
+    knowledge_score = db.Column(db.Float)  # Nilai Angka
+    knowledge_predikat = db.Column(db.String(2))  # A, B, C
+    skill_score = db.Column(db.Float)
+    skill_predikat = db.Column(db.String(2))
+    description = db.Column(db.Text)  # Catatan Guru Mapel
+
+
+class StudentAttitude(BaseModel):
+    """
+    [BARU] Menyimpan Nilai Sikap & Absensi Semester (Inputan Wali Kelas).
+    """
+    __tablename__ = 'student_attitudes'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
+
+    spiritual_predikat = db.Column(db.String(20))  # Baik/Sangat Baik
+    spiritual_desc = db.Column(db.Text)
+    social_predikat = db.Column(db.String(20))
+    social_desc = db.Column(db.Text)
+
+    sick_count = db.Column(db.Integer, default=0)
+    permit_count = db.Column(db.Integer, default=0)
+    alpha_count = db.Column(db.Integer, default=0)
+
+
 class Violation(BaseModel):
-    """Bimbingan Konseling (BK)"""
     __tablename__ = 'violations'
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
     date = db.Column(db.Date, default=datetime.utcnow)
     description = db.Column(db.Text)
-    points = db.Column(db.Integer)  # Poin pelanggaran
-    sanction = db.Column(db.String(100))  # Sanksi yang diberikan
+    points = db.Column(db.Integer)
+    sanction = db.Column(db.String(100))
 
 
 class Extracurricular(BaseModel):
@@ -392,36 +481,25 @@ class TahfidzSummary(BaseModel):
 class FeeType(BaseModel):
     __tablename__ = 'fee_types'
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50))  # SPP Juli, Uang Gedung
+    name = db.Column(db.String(50))
     amount = db.Column(db.Float)
-    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))  # Biaya bisa beda tiap tahun
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
     academic_year = db.relationship('AcademicYear', backref='fees')
 
 
 class Invoice(BaseModel):
     __tablename__ = 'invoices'
     id = db.Column(db.Integer, primary_key=True)
-
-    # Format: INV/202408/1/25
     invoice_number = db.Column(db.String(50), unique=True)
-
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
     fee_type_id = db.Column(db.Integer, db.ForeignKey('fee_types.id'))
-
     total_amount = db.Column(db.Float)
     paid_amount = db.Column(db.Float, default=0)
     status = db.Column(db.Enum(PaymentStatus), default=PaymentStatus.UNPAID)
     due_date = db.Column(db.Date)
-
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Relasi
-    # Relasi 'student' dan 'fee_type' sudah otomatis terbuat lewat backref dari model lain,
-    # atau bisa didefinisikan eksplisit jika perlu, tapi biasanya SQLAlchemy cukup pintar.
-    # Namun untuk keamanan, kita definisikan ulang relasi untuk akses objek langsung:
     fee_type = db.relationship('FeeType', backref='invoices')
-    # Student relasi sudah ada di backref di model Student (invoices = db.relationship...)
-
     transactions = db.relationship('Transaction', backref='invoice', lazy=True)
 
 
@@ -430,65 +508,45 @@ class Transaction(BaseModel):
     id = db.Column(db.Integer, primary_key=True)
     invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'))
     amount = db.Column(db.Float)
-    method = db.Column(db.String(30))  # Tunai, Transfer
+    method = db.Column(db.String(30))
     date = db.Column(db.DateTime, default=datetime.utcnow)
-
-    # Staff/Admin yang menginput (optional)
     pic_id = db.Column(db.Integer, db.ForeignKey('users.id'))
 
 
 # ==========================================
-# 8. MODEL CANDIDATE (SUPERSET)
+# 9. PPDB CANDIDATE
 # ==========================================
-
 class StudentCandidate(BaseModel):
     __tablename__ = 'student_candidates'
     id = db.Column(db.Integer, primary_key=True)
-
-    # --- 1. INFO PENDAFTARAN UTAMA ---
     registration_no = db.Column(db.String(20), unique=True)
     program_type = db.Column(db.Enum(ProgramType), default=ProgramType.SEKOLAH_FULLDAY)
-    education_level = db.Column(db.Enum(EducationLevel))  # SMP / SMA / Non Formal
+    education_level = db.Column(db.Enum(EducationLevel))
     scholarship_category = db.Column(db.Enum(ScholarshipCategory), default=ScholarshipCategory.NON_BEASISWA)
     status = db.Column(db.Enum(RegistrationStatus), default=RegistrationStatus.PENDING)
 
-    # --- 2. DATA PRIBADI (Gabungan Form A, B, C) ---
     full_name = db.Column(db.String(100), nullable=False)
-    nickname = db.Column(db.String(50))  # Form B & C minta nama panggilan
-    nik = db.Column(db.String(20))  # Form B minta NIK
-    kk_number = db.Column(db.String(20))  # Form B minta No KK
+    nickname = db.Column(db.String(50))
+    nik = db.Column(db.String(20))
+    kk_number = db.Column(db.String(20))
     gender = db.Column(db.Enum(Gender))
     place_of_birth = db.Column(db.String(50))
     date_of_birth = db.Column(db.Date)
-    age = db.Column(db.Integer)  # Form A minta Umur
+    age = db.Column(db.Integer)
     address = db.Column(db.Text)
 
-    # --- 3. DATA SEKOLAH ASAL ---
-    previous_school = db.Column(db.String(100))  # Form A, B, C butuh ini
-    previous_school_class = db.Column(db.String(20))  # Form A: "Sekolah/Kelas"
+    previous_school = db.Column(db.String(100))
+    previous_school_class = db.Column(db.String(20))
 
-    # --- 4. DATA ORANG TUA & EKONOMI ---
     father_name = db.Column(db.String(100))
     father_job = db.Column(db.String(100))
     mother_name = db.Column(db.String(100))
     mother_job = db.Column(db.String(100))
-    parent_phone = db.Column(db.String(20))  # WA Orang Tua
-
-    # Penghasilan (Penting untuk Beasiswa Yatim Dhuafa)
-    father_income_range = db.Column(db.String(50))  # < 1jt, 1-2.5jt, dll
+    parent_phone = db.Column(db.String(20))
+    father_income_range = db.Column(db.String(50))
     mother_income_range = db.Column(db.String(50))
 
-    # --- 5. PILIHAN FASILITAS & BIAYA (CUSTOM FIELDS) ---
-    # Khusus RQDF Sore
     tahfidz_schedule = db.Column(db.Enum(TahfidzSchedule), default=TahfidzSchedule.TIDAK_ADA)
-
-    # Seragam (RQDF Sore minta ukuran spesifik)
     uniform_size = db.Column(db.Enum(UniformSize), default=UniformSize.TIDAK_MEMILIH)
-
-    # Komitmen Wakaf/Infaq (Pilihan nominal di Form A)
     initial_pledge_amount = db.Column(db.Float, default=0)
-
-    # Opsi Pembiayaan (Normal / 50% untuk Beasiswa)
-    finance_option = db.Column(db.String(50))  # "Normal", "Beasiswa 50%"
-
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    finance_option = db.Column(db.String(50))

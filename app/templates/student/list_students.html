@@ -59,22 +59,22 @@
                             </div>
                         </td>
                         <td>
-                            <div class="d-flex gap-1">
-                                <a href="{{ url_for('staff.edit_student', student_id=student.id) }}" 
-                                   class="btn btn-sm btn-outline-primary" title="Edit Data">
-                                    <i class="fas fa-edit"></i>
-                                </a>
+    {% if current_user.role.value == 'admin' %}
+        <a href="{{ url_for('admin.edit_student', student_id=student.id) }}" class="btn btn-warning btn-sm">
+            <i class="fas fa-edit"></i>
+        </a>
+    {% else %}
+        <a href="{{ url_for('staff.edit_student', student_id=student.id) }}" class="btn btn-warning btn-sm">
+            <i class="fas fa-edit"></i>
+        </a>
+    {% endif %}
 
-                                {% if current_user.role.value == 'admin' %}
-                                <a href="{{ url_for('admin.delete_student', id=student.id) }}" 
-                                   class="btn btn-sm btn-outline-danger"
-                                   onclick="return confirm('PERINGATAN: Menghapus siswa ini juga akan menghapus data tagihan & user loginnya. Lanjutkan?');"
-                                   title="Hapus Siswa">
-                                    <i class="fas fa-trash"></i>
-                                </a>
-                                {% endif %}
-                            </div>
-                        </td>
+    {% if current_user.role.value == 'admin' %}
+        <a href="{{ url_for('admin.delete_student', id=student.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('Hapus?')">
+            <i class="fas fa-trash"></i>
+        </a>
+    {% endif %}
+</td>
                     </tr>
                     {% else %}
                     <tr>

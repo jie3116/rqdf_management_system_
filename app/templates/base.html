@@ -65,7 +65,7 @@
                     {% if current_user.role.value == 'admin' %}
                         <a href="{{ url_for('admin.dashboard') }}" class="nav-link"><i class="fas fa-tachometer-alt me-2"></i> Dashboard</a>
                     {% elif current_user.role.value == 'teacher' %}
-                        <a href="{{ url_for('academic.teacher_dashboard') }}" class="nav-link"><i class="fas fa-chalkboard-teacher me-2"></i> Dashboard Guru</a>
+                        <a href="{{ url_for('teacher.dashboard') }}" class="nav-link"><i class="fas fa-chalkboard-teacher me-2"></i> Dashboard Guru</a>
                     {% elif current_user.role.value == 'student' %}
                         <a href="{{ url_for('main.dashboard') }}" class="nav-link"><i class="fas fa-user-graduate me-2"></i> Dashboard Siswa</a>
                     {% elif current_user.role.value == 'tata_usaha' %}
@@ -103,7 +103,7 @@
 
                 {% if current_user.role.value == 'teacher' %}
                     <div class="nav-header">Akademik</div>
-                    <li><a href="{{ url_for('academic.input_tahfidz') }}"><i class="fas fa-quran me-2"></i> Input Tahfidz</a></li>
+                    <li><a href="{{ url_for('teacher.input_tahfidz') }}"><i class="fas fa-quran me-2"></i> Input Tahfidz</a></li>
                     {% endif %}
 
                 {% if current_user.role.value == 'tata_usaha' %}

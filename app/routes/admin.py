@@ -522,7 +522,9 @@ def edit_student(student_id):
         flash('Data siswa diupdate.', 'success')
         return redirect(url_for('admin.list_students'))
 
-    return render_template('admin/edit_student.html', student=student, classes=classes)
+    return render_template('staff/edit_student.html',
+                           student=student,
+                           classes=classes,)
 
 
 @admin_bp.route('/daftar-student')
@@ -692,10 +694,52 @@ def manage_schedules():
         end_time_str = request.form.get('end_time')
 
         try:
-            # Konversi String jam "07:00" menjadi object Time python
+            # 1. Konversi String jam "07:00" menjadi object Time python
             start_time = datetime.strptime(start_time_str, '%H:%M').time()
             end_time = datetime.strptime(end_time_str, '%H:%M').time()
 
+            # 2. Validasi Logika Waktu (Mulai harus sebelum Selesai)
+            if start_time >= end_time:
+                flash('Jam mulai harus lebih awal dari jam selesai!', 'warning')
+                return redirect(url_for('admin.manage_schedules', class_id=class_id))
+
+            # ==========================================
+            # 3. CEK BENTROK JADWAL (CLASH DETECTION)
+            # ==========================================
+
+            # A. Cek Bentrok KELAS (Kelas ini sudah dipakai belum di jam segitu?)
+            clash_class = Schedule.query.filter(
+                Schedule.class_id == class_id,
+                Schedule.day == day,
+                Schedule.start_time < end_time,  # Logic overlap: StartA < EndB
+                Schedule.end_time > start_time  # Logic overlap: EndA > StartB
+            ).first()
+
+            if clash_class:
+                # Ambil nama mapel agar pesan error jelas (menggunakan relationship 'subject')
+                mapel_name = clash_class.subject.name if clash_class.subject else "Mapel Lain"
+                flash(
+                    f'Gagal! Bentrok dengan mapel "{mapel_name}" di kelas ini ({clash_class.start_time.strftime("%H:%M")} - {clash_class.end_time.strftime("%H:%M")}).',
+                    'danger')
+                return redirect(url_for('admin.manage_schedules', class_id=class_id))
+
+            # B. Cek Bentrok GURU (Guru ini sedang mengajar di kelas lain tidak?)
+            clash_teacher = Schedule.query.filter(
+                Schedule.teacher_id == teacher_id,
+                Schedule.day == day,
+                Schedule.start_time < end_time,
+                Schedule.end_time > start_time
+            ).first()
+
+            if clash_teacher:
+                # Ambil nama kelas tempat guru tsb sedang mengajar
+                other_class = clash_teacher.class_room.name if clash_teacher.class_room else "Kelas Lain"
+                flash(f'Gagal! Guru tersebut sedang mengajar di "{other_class}" pada jam yang sama.', 'danger')
+                return redirect(url_for('admin.manage_schedules', class_id=class_id))
+
+            # ==========================================
+            # 4. SIMPAN JIKA LOLOS VALIDASI
+            # ==========================================
             new_schedule = Schedule(
                 class_id=class_id,
                 subject_id=subject_id,
@@ -707,9 +751,10 @@ def manage_schedules():
             db.session.add(new_schedule)
             db.session.commit()
             flash('Jadwal berhasil ditambahkan.', 'success')
+
         except Exception as e:
             db.session.rollback()
-            flash(f'Gagal menambah jadwal: {e}', 'danger')
+            flash(f'Gagal menambah jadwal (System Error): {e}', 'danger')
 
         # Redirect kembali ke kelas yang sedang dipilih
         return redirect(url_for('admin.manage_schedules', class_id=class_id))
@@ -721,8 +766,6 @@ def manage_schedules():
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
         # Urutkan berdasarkan Hari (Senin-Jumat) dan Jam Mulai
-        # Note: Sorting hari string (Senin, Selasa) di SQL mungkin tidak urut,
-        # idealnya pakai Case/Enum, tapi untuk sekarang kita ambil raw dulu.
         schedules = Schedule.query.filter_by(class_id=selected_class_id) \
             .order_by(Schedule.day, Schedule.start_time).all()
 
@@ -738,17 +781,87 @@ def manage_schedules():
                            selected_class=selected_class)
 
 
-@admin_bp.route('/akademik/jadwal/hapus/<int:id>')
+@admin_bp.route('/akademik/jadwal/edit/<int:id>', methods=['POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def edit_schedule(id):
+    schedule = Schedule.query.get_or_404(id)
+    class_id = request.form.get('class_id') or schedule.class_id  # Fallback
+
+    # Ambil data dari form
+    subject_id = request.form.get('subject_id')
+    teacher_id = request.form.get('teacher_id')
+    day = request.form.get('day')
+    start_time_str = request.form.get('start_time')
+    end_time_str = request.form.get('end_time')
+
+    try:
+        start_time = datetime.strptime(start_time_str, '%H:%M').time()
+        end_time = datetime.strptime(end_time_str, '%H:%M').time()
+
+        if start_time >= end_time:
+            flash('Jam mulai harus lebih awal dari jam selesai!', 'warning')
+            return redirect(url_for('admin.manage_schedules', class_id=class_id))
+
+        # Cek Bentrok KELAS
+        clash_class = Schedule.query.filter(
+            Schedule.id != id,  # PENTING: Jangan cek jadwal diri sendiri
+            Schedule.class_id == class_id,
+            Schedule.day == day,
+            Schedule.start_time < end_time,
+            Schedule.end_time > start_time
+        ).first()
+
+        if clash_class:
+            flash(f'Gagal Update! Bentrok dengan mapel lain di kelas ini.', 'danger')
+            return redirect(url_for('admin.manage_schedules', class_id=class_id))
+
+        # Cek Bentrok GURU
+        clash_teacher = Schedule.query.filter(
+            Schedule.id != id,  # PENTING: Jangan cek jadwal diri sendiri
+            Schedule.teacher_id == teacher_id,
+            Schedule.day == day,
+            Schedule.start_time < end_time,
+            Schedule.end_time > start_time
+        ).first()
+
+        if clash_teacher:
+            flash(f'Gagal Update! Guru sedang mengajar di kelas lain.', 'danger')
+            return redirect(url_for('admin.manage_schedules', class_id=class_id))
+
+        # UPDATE DATA
+        schedule.subject_id = subject_id
+        schedule.teacher_id = teacher_id
+        schedule.day = day
+        schedule.start_time = start_time
+        schedule.end_time = end_time
+
+        db.session.commit()
+        flash('Jadwal berhasil diperbarui.', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Gagal update: {e}', 'danger')
+
+    return redirect(url_for('admin.manage_schedules', class_id=class_id))
+
+
+@admin_bp.route('/akademik/jadwal/hapus/<int:id>', methods=['GET', 'POST'])
 @login_required
 @role_required(UserRole.ADMIN)
 def delete_schedule(id):
     schedule = Schedule.query.get_or_404(id)
-    class_id = schedule.class_id  # Simpan ID kelas untuk redirect
+    class_id = schedule.class_id
 
-    db.session.delete(schedule)  # Hard delete karena jadwal sering berubah total
+    # Optional: Jika ingin strict hanya boleh POST
+    if request.method == 'GET':
+        # Bisa redirect balik atau tampilkan error
+        pass
+
+    db.session.delete(schedule)
     db.session.commit()
 
-    flash('Jadwal dihapus.', 'warning')
+    flash('Jadwal dihapus.', 'success')  # Ubah jadi success warna hijau
     return redirect(url_for('admin.manage_schedules', class_id=class_id))
 
 

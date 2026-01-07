@@ -8,6 +8,7 @@
             </div>
             <div class="card-body">
                 <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <div class="mb-3">
                         <label>Nama Tahun (Cth: 2025/2026)</label>
                         <input type="text" name="name" class="form-control" placeholder="YYYY/YYYY" required>

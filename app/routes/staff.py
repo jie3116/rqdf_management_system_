@@ -164,6 +164,7 @@ def list_students():
 
 @staff_bp.route('/siswa/edit/<int:student_id>', methods=['GET', 'POST'])
 @login_required
+@role_required(UserRole.TU)
 def edit_student(student_id):
     """TU bertugas menempatkan siswa ke kelas dan input NISN"""
     student = Student.query.get_or_404(student_id)
@@ -187,7 +188,9 @@ def edit_student(student_id):
         flash('Data siswa berhasil diupdate.', 'success')
         return redirect(url_for('staff.list_students'))
 
-    return render_template('staff/edit_student.html', student=student, classes=classes)
+    return render_template('staff/edit_student.html',
+                           student=student,
+                           classes=classes,)
 
 
 

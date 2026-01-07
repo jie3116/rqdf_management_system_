@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="h3 mb-4 text-gray-800">Input Setoran Tahfidz</h1>
+
+    <div class="card mb-4 border-left-primary">
+        <div class="card-body py-2">
+            <form method="GET" action="{{ url_for('teacher.input_tahfidz') }}" class="row align-items-center">
+                <div class="col-auto">
+                    <label class="fw-bold mb-0">Pilih Halaqoh/Kelas:</label>
+                </div>
+                <div class="col-md-6">
+                    <select name="class_id" class="form-select" onchange="this.form.submit()">
+                        <option value="">-- Pilih Halaqoh --</option>
+                        {% for cls in my_classes %}
+                        <option value="{{ cls.id }}" {% if selected_class and selected_class.id == cls.id %}selected{% endif %}>
+                            {{ cls.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if selected_class %}
+    <div class="row">
+        <div class="col-lg-7">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-success text-white">
+                    <h6 class="m-0 fw-bold"><i class="fas fa-quran me-2"></i>Formulir Setoran ({{ selected_class.name }})</h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                        <div class="mb-3">
+                            <label class="fw-bold small">Nama Santri</label>
+                            <select name="student_id" class="form-select select2" required>
+                                <option value="">-- Pilih Santri --</option>
+                                {% for student in students %}
+                                <option value="{{ student.id }}">{{ student.full_name }} ({{ student.nis }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="type" id="ziyadah" value="ZIYADAH" checked>
+                                <label class="btn btn-outline-success" for="ziyadah">Ziyadah (Baru)</label>
+
+                                <input type="radio" class="btn-check" name="type" id="murajaah" value="MURAJAAH">
+                                <label class="btn btn-outline-warning" for="murajaah">Murajaah (Ulang)</label>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-8 mb-3">
+                                <label class="small text-muted fw-bold">Nama Surat</label>
+                                <select id="quran-surah" name="start_surah_name" class="form-select select2" required>
+                                    <option value="">Cari Surat...</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="small text-muted fw-bold">Ayat Awal</label>
+                                <input type="number" name="ayat_start" id="ayat_start" class="form-control" value="1" min="1" required>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-8 mb-3">
+                                <label class="small text-muted">Sampai Surat (Opsional jika beda surat)</label>
+                                <select id="quran-surah-end" name="end_surah_name" class="form-select select2">
+                                    <option value="">-- Sama dengan awal --</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="small text-muted fw-bold">Ayat Akhir</label>
+                                <input type="number" name="ayat_end" id="ayat_end" class="form-control" required>
+                                <small class="text-danger" id="max-ayat-info" style="font-size: 10px;"></small>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="fw-bold small">Predikat</label>
+                                <select name="quality" class="form-select">
+                                    <option value="Mumtaz">Mumtaz (Lancar)</option>
+                                    <option value="Jayyid Jiddan">Jayyid Jiddan (Sangat Baik)</option>
+                                    <option value="Jayyid">Jayyid (Baik)</option>
+                                    <option value="Maqbul">Maqbul (Cukup)</option>
+                                    <option value="Naqis">Naqis (Kurang/Ulang)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="small text-muted">Catatan</label>
+                                <input type="text" name="notes" class="form-control" placeholder="Tajwid, Makhraj...">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-success w-100 fw-bold shadow">
+                            <i class="fas fa-save me-2"></i> Simpan
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                Pilih <strong>Halaqoh</strong> di atas terlebih dahulu, maka daftar santri yang muncul hanya yang ada di halaqoh tersebut.
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+        <img src="{{ url_for('static', filename='img/undraw_reading_time_re_phf7.svg') }}" style="width: 200px; opacity: 0.5">
+        <h5 class="mt-3 text-gray-500">Silakan Pilih Halaqoh/Kelas Terlebih Dahulu</h5>
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+    // Data Surat Ringkas (Nama & Total Ayat)
+    const quranData = [
+        {no:1, name:"Al-Fatihah", ayat:7}, {no:2, name:"Al-Baqarah", ayat:286}, {no:3, name:"Ali 'Imran", ayat:200},
+        {no:4, name:"An-Nisa'", ayat:176}, {no:5, name:"Al-Ma'idah", ayat:120}, {no:6, name:"Al-An'am", ayat:165},
+        {no:7, name:"Al-A'raf", ayat:206}, {no:8, name:"Al-Anfal", ayat:75}, {no:9, name:"At-Taubah", ayat:129},
+        {no:10, name:"Yunus", ayat:109}, {no:11, name:"Hud", ayat:123}, {no:12, name:"Yusuf", ayat:111},
+        {no:13, name:"Ar-Ra'd", ayat:43}, {no:14, name:"Ibrahim", ayat:52}, {no:15, name:"Al-Hijr", ayat:99},
+        {no:16, name:"An-Nahl", ayat:128}, {no:17, name:"Al-Isra'", ayat:111}, {no:18, name:"Al-Kahf", ayat:110},
+        {no:19, name:"Maryam", ayat:98}, {no:20, name:"Ta-Ha", ayat:135}, {no:21, name:"Al-Anbiya'", ayat:112},
+        {no:22, name:"Al-Hajj", ayat:78}, {no:23, name:"Al-Mu'minun", ayat:118}, {no:24, name:"An-Nur", ayat:64},
+        {no:25, name:"Al-Furqan", ayat:77}, {no:26, name:"Ash-Shu'ara'", ayat:227}, {no:27, name:"An-Naml", ayat:93},
+        {no:28, name:"Al-Qasas", ayat:88}, {no:29, name:"Al-Ankabut", ayat:69}, {no:30, name:"Ar-Rum", ayat:60},
+        {no:31, name:"Luqman", ayat:34}, {no:32, name:"As-Sajdah", ayat:30}, {no:33, name:"Al-Ahzab", ayat:73},
+        {no:34, name:"Saba'", ayat:54}, {no:35, name:"Fatir", ayat:45}, {no:36, name:"Ya-Sin", ayat:83},
+        {no:37, name:"As-Saffat", ayat:182}, {no:38, name:"Sad", ayat:88}, {no:39, name:"Az-Zumar", ayat:75},
+        {no:40, name:"Ghafir", ayat:85}, {no:41, name:"Fussilat", ayat:54}, {no:42, name:"Ash-Shura", ayat:53},
+        {no:43, name:"Az-Zukhruf", ayat:89}, {no:44, name:"Ad-Dukhan", ayat:59}, {no:45, name:"Al-Jathiyah", ayat:37},
+        {no:46, name:"Al-Ahqaf", ayat:35}, {no:47, name:"Muhammad", ayat:38}, {no:48, name:"Al-Fath", ayat:29},
+        {no:49, name:"Al-Hujurat", ayat:18}, {no:50, name:"Qaf", ayat:45}, {no:51, name:"Adh-Dhariyat", ayat:60},
+        {no:52, name:"At-Tur", ayat:49}, {no:53, name:"An-Najm", ayat:62}, {no:54, name:"Al-Qamar", ayat:55},
+        {no:55, name:"Ar-Rahman", ayat:78}, {no:56, name:"Al-Waqi'ah", ayat:96}, {no:57, name:"Al-Hadid", ayat:29},
+        {no:58, name:"Al-Mujadilah", ayat:22}, {no:59, name:"Al-Hashr", ayat:24}, {no:60, name:"Al-Mumtahanah", ayat:13},
+        {no:61, name:"As-Saff", ayat:14}, {no:62, name:"Al-Jumu'ah", ayat:11}, {no:63, name:"Al-Munafiqun", ayat:11},
+        {no:64, name:"At-Taghabun", ayat:18}, {no:65, name:"At-Talaq", ayat:12}, {no:66, name:"At-Tahrim", ayat:12},
+        {no:67, name:"Al-Mulk", ayat:30}, {no:68, name:"Al-Qalam", ayat:52}, {no:69, name:"Al-Haqqah", ayat:52},
+        {no:70, name:"Al-Ma'arij", ayat:44}, {no:71, name:"Nuh", ayat:28}, {no:72, name:"Al-Jinn", ayat:28},
+        {no:73, name:"Al-Muzzammil", ayat:20}, {no:74, name:"Al-Muddaththir", ayat:56}, {no:75, name:"Al-Qiyamah", ayat:40},
+        {no:76, name:"Al-Insan", ayat:31}, {no:77, name:"Al-Mursalat", ayat:50}, {no:78, name:"An-Naba'", ayat:40},
+        {no:79, name:"An-Nazi'at", ayat:46}, {no:80, name:"'Abasa", ayat:42}, {no:81, name:"At-Takwir", ayat:29},
+        {no:82, name:"Al-Infitar", ayat:19}, {no:83, name:"Al-Mutaffifin", ayat:36}, {no:84, name:"Al-Inshiqaq", ayat:25},
+        {no:85, name:"Al-Buruj", ayat:22}, {no:86, name:"At-Tariq", ayat:17}, {no:87, name:"Al-A'la", ayat:19},
+        {no:88, name:"Al-Ghashiyah", ayat:26}, {no:89, name:"Al-Fajr", ayat:30}, {no:90, name:"Al-Balad", ayat:20},
+        {no:91, name:"Ash-Shams", ayat:15}, {no:92, name:"Al-Lail", ayat:21}, {no:93, name:"Ad-Duha", ayat:11},
+        {no:94, name:"Ash-Sharh", ayat:8}, {no:95, name:"At-Tin", ayat:8}, {no:96, name:"Al-'Alaq", ayat:19},
+        {no:97, name:"Al-Qadr", ayat:5}, {no:98, name:"Al-Bayyinah", ayat:8}, {no:99, name:"Az-Zalzalah", ayat:8},
+        {no:100, name:"Al-'Adiyat", ayat:11}, {no:101, name:"Al-Qari'ah", ayat:11}, {no:102, name:"At-Takathur", ayat:8},
+        {no:103, name:"Al-'Asr", ayat:3}, {no:104, name:"Al-Humazah", ayat:9}, {no:105, name:"Al-Fil", ayat:5},
+        {no:106, name:"Quraish", ayat:4}, {no:107, name:"Al-Ma'un", ayat:7}, {no:108, name:"Al-Kawthar", ayat:3},
+        {no:109, name:"Al-Kafirun", ayat:6}, {no:110, name:"An-Nasr", ayat:3}, {no:111, name:"Al-Masad", ayat:5},
+        {no:112, name:"Al-Ikhlas", ayat:4}, {no:113, name:"Al-Falaq", ayat:5}, {no:114, name:"An-Nas", ayat:6}
+    ];
+
+    document.addEventListener("DOMContentLoaded", function() {
+        const selectStart = document.getElementById("quran-surah");
+        const selectEnd = document.getElementById("quran-surah-end");
+        const ayatEndInput = document.getElementById("ayat_end");
+        const maxAyatInfo = document.getElementById("max-ayat-info");
+
+        // Populate Dropdown
+        quranData.forEach(surah => {
+            let option = new Option(`${surah.no}. ${surah.name}`, surah.name);
+            option.setAttribute("data-ayat", surah.ayat); // Simpan max ayat di attribute
+            selectStart.add(option);
+
+            let option2 = new Option(`${surah.no}. ${surah.name}`, surah.name);
+            selectEnd.add(option2);
+        });
+
+        // Initialize Select2 (Agar bisa search nama surat)
+        $(selectStart).select2({ theme: 'bootstrap-5' });
+        $(selectEnd).select2({ theme: 'bootstrap-5' });
+
+        // Logic Max Ayat
+        $(selectStart).on('change', function() {
+            let selectedOption = this.options[this.selectedIndex];
+            let maxAyat = selectedOption.getAttribute("data-ayat");
+
+            if(maxAyat) {
+                ayatEndInput.setAttribute("max", maxAyat);
+                maxAyatInfo.innerText = `Max: ${maxAyat} ayat`;
+            } else {
+                maxAyatInfo.innerText = "";
+            }
+        });
+    });
+</script>
+{% endblock %}

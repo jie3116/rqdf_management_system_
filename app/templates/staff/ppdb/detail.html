@@ -31,7 +31,8 @@
 
                 {% if candidate.status.name == 'PENDING' %}
                 <div class="d-grid gap-2 mt-4">
-                    <form action="{{ url_for('admin.accept_candidate', candidate_id=candidate.id) }}" method="POST" onsubmit="return confirm('Yakin terima santri ini? Akun User dan Tagihan akan dibuat otomatis.');">
+                    <form action="{{ url_for('staff.accept_candidate', candidate_id=candidate.id) }}" method="POST" onsubmit="return confirm('Yakin terima santri ini? Akun User dan Tagihan akan dibuat otomatis.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <button type="submit" class="btn btn-success w-100">
                             <i class="fas fa-check-circle me-2"></i>Verifikasi & Terima
                         </button>

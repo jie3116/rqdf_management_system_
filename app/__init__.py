@@ -1,6 +1,6 @@
 from flask import Flask
 from config import Config
-from app.extensions import db, migrate, login_manager
+from app.extensions import db, migrate, login_manager, csrf
 
 
 def create_app(config_class=Config):
@@ -11,6 +11,7 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
+    csrf.init_app(app)
 
     # 2. Context Processor (Inject datetime agar tidak error di base.html)
     @app.context_processor
@@ -35,19 +36,19 @@ def create_app(config_class=Config):
     # 5. Registrasi Blueprint
     from app.routes.auth import auth_bp
     from app.routes.main import main_bp
-    from app.routes.academic import academic_bp
     from app.routes.admin import admin_bp
     from app.routes.staff import staff_bp
+    from app.routes.student import student_bp
+    from app.routes.parent import parent_bp
+    from app.routes.teacher import teacher_bp
 
-    # Jika Anda punya parent_bp, jangan lupa import di sini juga
-    # from app.routes.parent import parent_bp
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(main_bp)
-    app.register_blueprint(academic_bp, url_prefix='/academic')
     app.register_blueprint(admin_bp, url_prefix='/admin')
     app.register_blueprint(staff_bp, url_prefix='/staff')
-
-    # app.register_blueprint(parent_bp, url_prefix='/parent')
+    app.register_blueprint(student_bp, url_prefix='/student')
+    app.register_blueprint(parent_bp, url_prefix='/parent')
+    app.register_blueprint(teacher_bp, url_prefix='/teacher')
 
     return app
