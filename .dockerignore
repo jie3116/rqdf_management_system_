@@ -1,0 +1,28 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment lokal
+.venv/
+venv/
+
+# Git
+.git/
+.gitignore
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Env file (jika tidak ingin bake-in)
+.env
+
+# Test & docs (opsional)
+tests/
+docs/
+
+# Log lokal
+*.log
