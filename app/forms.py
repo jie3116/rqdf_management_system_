@@ -80,11 +80,11 @@ class FeeTypeForm(FlaskForm):
 
 class PPDBForm(FlaskForm):
     # === LANGKAH 1: PILIH PROGRAM ===
-    program_type = SelectField('Program Pilihan', choices=[
-        ('SEKOLAH_FULLDAY', 'Sekolah Bina Qur\'an (SD/SMP/SMA)'),
-        ('RQDF_SORE', 'Kelas Reguler RQDF (Tahfidz Sore)')
+    program_type = SelectField('Pilihan Program', choices=[
+        ('SEKOLAH_BINA_QUR\'AN', 'Sekolah Bina Qur\'an'),
+        ('RQDF_SORE', 'Kelas Reguler RQDF (Tahfidz Sore)'),
+        ('TAKHOSUS TAHFIDZ', 'Takhosus Tahfidz')
     ], validators=[DataRequired()])
-
 
     scholarship_category = SelectField('Jalur Pendaftaran', choices=[
         ('NON_BEASISWA', 'Non Beasiswa (Reguler)'),
@@ -93,55 +93,66 @@ class PPDBForm(FlaskForm):
         ('YATIM_DHUAFA', 'Beasiswa Yatim Dhuafa')
     ], default='NON_BEASISWA')
 
+    # [UPDATE] Tambahkan pilihan SD
     education_level = SelectField('Jenjang Pendidikan', choices=[
         ('SD', 'SD'),
         ('SMP', 'SMP'),
         ('SMA', 'SMA'),
-        ('NON_FORMAL', 'Non Formal (Hanya Tahfidz)')
     ], default='SMP')
 
     # === LANGKAH 2: DATA DIRI ===
     full_name = StringField('Nama Lengkap', validators=[DataRequired()])
-    nickname = StringField('Nama Panggilan')
-    nik = StringField('NIK', validators=[Optional(), Length(max=16, message="NIK maksimal 16 digit")])
-    kk_number = StringField('No. KK', validators=[Optional(), Length(max=16, message="No KK maksimal 16 digit")])
+
+    # [UBAH] Jadi Optional agar user SD tidak error saat submit kosong
+    nickname = StringField('Nama Panggilan', validators=[Optional()])
+    nik = StringField('NIK', validators=[Optional(), Length(max=16)])
+    kk_number = StringField('No. KK', validators=[Optional(), Length(max=16)])
 
     gender = RadioField('Jenis Kelamin', choices=[('L', 'Laki-laki'), ('P', 'Perempuan')], validators=[DataRequired()])
     place_of_birth = StringField('Tempat Lahir', validators=[DataRequired()])
-    date_of_birth = DateField('Tanggal Lahir', format='%Y-%m-%d', validators=[DataRequired()])
+    date_of_birth = DateField('Tanggal Bulan Tahun Lahir', format='%Y-%m-%d', validators=[DataRequired()])
+
+    # [UBAH] Jadi Optional
     age = IntegerField('Usia (Tahun)', validators=[Optional()])
 
     address = TextAreaField('Alamat Lengkap', validators=[DataRequired()])
 
     # === LANGKAH 3: SEKOLAH ASAL ===
+    # Label disesuaikan permintaan
     previous_school = StringField('Sekolah Asal', validators=[DataRequired()])
-    previous_school_class = StringField('Kelas Terakhir (Cth: 6 SD)', validators=[Optional()])
+
+    # [UBAH] Jadi Optional
+    previous_school_class = StringField('Kelas Terakhir', validators=[Optional()])
 
     # === LANGKAH 4: DATA ORANG TUA ===
     father_name = StringField('Nama Ayah', validators=[DataRequired()])
-    father_job = StringField('Pekerjaan Ayah', validators=[DataRequired()])
-    # Penghasilan (Dropdown sesuai Form Beasiswa)
+
+    # [UBAH] Jadi Optional (Hidden untuk SD)
+    father_job = StringField('Pekerjaan Ayah', validators=[Optional()])
     father_income_range = SelectField('Penghasilan Ayah', choices=[
         ('-', 'Pilih Penghasilan'),
         ('NO_INCOME', 'Tidak ada penghasilan'),
-        ('UNDER_1M', 'Di bawah Rp 1.000.000'),
-        ('1M_2.5M', 'Rp 1.000.000 - Rp 2.500.000'),
-        ('ABOVE_2.5M', 'Di atas Rp 2.500.000')
+        ('UNDER_5M', 'Di bawah Rp 5.000.000'),
+        ('5M_10M', 'Rp 5.000.000 - Rp 10.000.000'),
+        ('ABOVE_10M', 'Di atas Rp 10.000.000')
     ], validators=[Optional()])
 
     mother_name = StringField('Nama Ibu', validators=[DataRequired()])
-    mother_job = StringField('Pekerjaan Ibu', validators=[DataRequired()])
+
+    # [UBAH] Jadi Optional (Hidden untuk SD)
+    mother_job = StringField('Pekerjaan Ibu', validators=[Optional()])
     mother_income_range = SelectField('Penghasilan Ibu', choices=[
         ('-', 'Pilih Penghasilan'),
         ('NO_INCOME', 'Tidak ada penghasilan'),
-        ('UNDER_1M', 'Di bawah Rp 1.000.000'),
-        ('1M_2.5M', 'Rp 1.000.000 - Rp 2.500.000'),
-        ('ABOVE_2.5M', 'Di atas Rp 2.500.000')
+        ('UNDER_5M', 'Di bawah Rp 5.000.000'),
+        ('5M_10M', 'Rp 5.000.000 - Rp 10.000.000'),
+        ('ABOVE_10M', 'Di atas Rp 10.000.000')
     ], validators=[Optional()])
 
-    parent_phone = StringField('No. WhatsApp Orang Tua', validators=[DataRequired()])
+    # Label disesuaikan permintaan
+    parent_phone = StringField('Nomor Telepon Orang Tua (WhatsApp)', validators=[DataRequired()])
 
-    # === LANGKAH 5: KHUSUS RQDF SORE (FORM A) ===
+    # === LANGKAH 5: KHUSUS RQDF SORE ===
     tahfidz_schedule = SelectField('Pilihan Jadwal Tahfidz', choices=[
         ('TIDAK_ADA', '-'),
         ('SHIFT_1', '14.00 s.d 15.30'),
@@ -157,7 +168,6 @@ class PPDBForm(FlaskForm):
         ('XXL', 'Ukuran XXL (Rp 380.000)')
     ], validators=[Optional()])
 
-    # Pilihan Wakaf Pembangunan (Khusus RQDF)
     initial_pledge_amount = SelectField('Infaq Pembangunan Pesantren', choices=[
         ('0', 'Pilih Nominal'),
         ('500000', 'Rp 500.000'),
@@ -165,9 +175,10 @@ class PPDBForm(FlaskForm):
         ('1500000', 'Rp 1.500.000')
     ], coerce=int, validators=[Optional()])
 
+    # Label disesuaikan permintaan
     finance_agreement = BooleanField(
-        'Saya telah membaca dan menyetujui rincian biaya pendidikan di atas.',
-        validators=[DataRequired(message="Anda harus menyetujui rincian biaya untuk melanjutkan.")]
+        'Saya telah membaca dan menyetujui rincian biaya pendidikan di atas',
+        validators=[DataRequired(message="Anda harus mencentang YA untuk melanjutkan.")]
     )
 
     submit = SubmitField('Kirim Pendaftaran')

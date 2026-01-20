@@ -9,11 +9,6 @@
                     <h1 class="fw-bold text-primary">Pendaftaran Santri Baru</h1>
                     <p class="text-muted lead">Tahun Ajaran 2026/2027</p>
                 </div>
-                <hr>
-                <div class="alert alert-info border-0 shadow-sm">
-                    <i class="fas fa-info-circle me-2"></i>
-                    Silakan isi data di bawah ini dengan benar sesuai Ijazah/KK.
-                </div>
             </div>
         </div>
 
@@ -22,59 +17,81 @@
 
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-header bg-white py-3">
-                    <h5 class="m-0 fw-bold text-primary"><i class="fas fa-list-alt me-2"></i>1. Pilihan Program</h5>
+                    <h5 class="m-0 fw-bold text-primary">1. Pilihan Program</h5>
                 </div>
                 <div class="card-body p-4">
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Program yang dituju <span class="text-danger">*</span></label>
+                        <label class="form-label fw-bold">{{ form.program_type.label.text }} <span class="text-danger">*</span></label>
                         {{ form.program_type(class="form-select form-select-lg bg-light border-primary", id="programSelector") }}
-                        <small class="text-muted">Pilih "RQDF Reguler" untuk Tahfidz Sore, atau "Sekolah Bina Qur'an" untuk Sekolah Formal.</small>
                     </div>
 
-                    <div id="group_sekolah_formal">
+                    <div id="group_formal_options">
                         <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label fw-bold">Jenjang Pendidikan</label>
-                                {{ form.education_level(class="form-select") }}
+                            <div class="col-md-6 mb-3" id="div_jenjang">
+                                <label class="form-label fw-bold">{{ form.education_level.label.text }}</label>
+                                {{ form.education_level(class="form-select", id="educationSelector") }}
                             </div>
-                            <div class="col-md-6 mb-3">
+                            <div class="col-md-6 mb-3" id="div_jalur_beasiswa">
                                 <label class="form-label fw-bold">Jalur Pendaftaran</label>
                                 {{ form.scholarship_category(class="form-select", id="scholarshipSelector") }}
                             </div>
                         </div>
                     </div>
+
+                    <div id="sd_special_options" class="p-3 bg-info bg-opacity-10 rounded border border-info mb-3" style="display: none;">
+                        <h6 class="fw-bold text-info mb-2"><i class="fas fa-child me-2"></i>Opsi SD Bina Qur'an</h6>
+
+                        <div class="mb-2">
+                            <label class="form-label fw-bold small">Tipe Sekolah:</label><br>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input sd-radio" type="radio" name="sd_type" id="sd_pondok" value="PONDOK">
+                                <label class="form-check-label" for="sd_pondok">Pondok (Boarding)</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input sd-radio" type="radio" name="sd_type" id="sd_non_pondok" value="NON_PONDOK" checked>
+                                <label class="form-check-label" for="sd_non_pondok">Non Pondok (Fullday)</label>
+                            </div>
+                        </div>
+
+                        <div id="sd_makan_option" style="display: block;">
+                            <label class="form-label fw-bold small">Fasilitas Makan Siang:</label><br>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input sd-radio" type="radio" name="sd_makan" id="makan_ya" value="WITH_MEAL" checked>
+                                <label class="form-check-label" for="makan_ya">Dengan Makan</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input sd-radio" type="radio" name="sd_makan" id="makan_tidak" value="NO_MEAL">
+                                <label class="form-check-label" for="makan_tidak">Tidak Dengan Makan</label>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-header bg-white py-3">
-                    <h5 class="m-0 fw-bold text-primary"><i class="fas fa-user me-2"></i>2. Data Calon Santri</h5>
+                    <h5 class="m-0 fw-bold text-primary">2. Data Calon Santri</h5>
                 </div>
                 <div class="card-body p-4">
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Nama Lengkap <span class="text-danger">*</span></label>
-                            {{ form.full_name(class="form-control", placeholder="Sesuai Ijazah") }}
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Nama Panggilan</label>
-                            {{ form.nickname(class="form-control") }}
-                        </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">{{ form.full_name.label.text }} <span class="text-danger">*</span></label>
+                        {{ form.full_name(class="form-control") }}
                     </div>
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">NIK (16 Digit)</label>
-                            {{ form.nik(class="form-control", placeholder="Cth: 3201xxxxxxxxxxxx", maxlength="16") }}
+                            <label class="form-label fw-bold">{{ form.place_of_birth.label.text }} <span class="text-danger">*</span></label>
+                            {{ form.place_of_birth(class="form-control") }}
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">No. Kartu Keluarga</label>
-                            {{ form.kk_number(class="form-control", maxlength="16") }}
+                            <label class="form-label fw-bold">{{ form.date_of_birth.label.text }} <span class="text-danger">*</span></label>
+                            {{ form.date_of_birth(class="form-control", type="date") }}
                         </div>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label d-block">Jenis Kelamin <span class="text-danger">*</span></label>
+                        <label class="form-label d-block fw-bold">Jenis Kelamin <span class="text-danger">*</span></label>
                         {% for subfield in form.gender %}
                             <div class="form-check form-check-inline">
                                 {{ subfield(class="form-check-input") }}
@@ -84,28 +101,34 @@
                     </div>
 
                     <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Tempat Lahir</label>
-                            {{ form.place_of_birth(class="form-control") }}
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">NIK (16 Digit)</label>
+                            {{ form.nik(class="form-control", maxlength="16") }}
                         </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Tanggal Lahir</label>
-                            {{ form.date_of_birth(class="form-control", type="date") }}
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">No. Kartu Keluarga</label>
+                            {{ form.kk_number(class="form-control", maxlength="16") }}
                         </div>
-                        <div class="col-md-4 mb-3">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nama Panggilan</label>
+                            {{ form.nickname(class="form-control") }}
+                        </div>
+                        <div class="col-md-6 mb-3">
                             <label class="form-label">Usia</label>
                             {{ form.age(class="form-control") }}
                         </div>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label">Alamat Lengkap (Domisili)</label>
+                        <label class="form-label fw-bold">{{ form.address.label.text }} <span class="text-danger">*</span></label>
                         {{ form.address(class="form-control", rows="2") }}
                     </div>
 
                     <div class="row">
                         <div class="col-md-8 mb-3">
-                            <label class="form-label">Sekolah Asal</label>
+                            <label class="form-label fw-bold">{{ form.previous_school.label.text }} <span class="text-danger">*</span></label>
                             {{ form.previous_school(class="form-control") }}
                         </div>
                         <div class="col-md-4 mb-3">
@@ -118,50 +141,44 @@
 
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-header bg-white py-3">
-                    <h5 class="m-0 fw-bold text-primary"><i class="fas fa-users me-2"></i>3. Data Orang Tua</h5>
+                    <h5 class="m-0 fw-bold text-primary">3. Data Orang Tua</h5>
                 </div>
                 <div class="card-body p-4">
-                    <div class="row border-bottom pb-3 mb-3">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Nama Ayah</label>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">{{ form.father_name.label.text }} <span class="text-danger">*</span></label>
                             {{ form.father_name(class="form-control") }}
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Pekerjaan</label>
-                            {{ form.father_job(class="form-control") }}
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Penghasilan Ayah</label>
-                            {{ form.father_income_range(class="form-select") }}
-                        </div>
-                    </div>
 
-                    <div class="row mb-3">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Nama Ibu</label>
+                            <div class="mt-2">
+                                <label class="form-label small">Pekerjaan</label>
+                                {{ form.father_job(class="form-control form-control-sm") }}
+                                <label class="form-label small mt-1">Penghasilan</label>
+                                {{ form.father_income_range(class="form-select form-select-sm") }}
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">{{ form.mother_name.label.text }} <span class="text-danger">*</span></label>
                             {{ form.mother_name(class="form-control") }}
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Pekerjaan</label>
-                            {{ form.mother_job(class="form-control") }}
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Penghasilan Ibu</label>
-                            {{ form.mother_income_range(class="form-select") }}
+
+                            <div class="mt-2">
+                                <label class="form-label small">Pekerjaan</label>
+                                {{ form.mother_job(class="form-control form-control-sm") }}
+                                <label class="form-label small mt-1">Penghasilan</label>
+                                {{ form.mother_income_range(class="form-select form-select-sm") }}
+                            </div>
                         </div>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-bold">No. WhatsApp Orang Tua (Aktif) <span class="text-danger">*</span></label>
+                        <label class="form-label fw-bold">{{ form.parent_phone.label.text }} <span class="text-danger">*</span></label>
                         {{ form.parent_phone(class="form-control bg-light", placeholder="08xxxxxxxxxx") }}
-                        <small class="text-muted">Nomor ini akan digunakan untuk konfirmasi penerimaan.</small>
                     </div>
                 </div>
             </div>
 
             <div class="card shadow-sm border-0 mb-4 bg-light" id="section_rqdf" style="display:none;">
                 <div class="card-header bg-success text-white py-3">
-                    <h5 class="m-0 fw-bold"><i class="fas fa-quran me-2"></i>Detail Kelas Reguler (Sore)</h5>
+                    <h5 class="m-0 fw-bold">Detail Kelas Reguler (Sore)</h5>
                 </div>
                 <div class="card-body p-4">
                     <div class="row">
@@ -170,13 +187,12 @@
                             {{ form.tahfidz_schedule(class="form-select") }}
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold">Ukuran Seragam (2 Stel)</label>
+                            <label class="form-label fw-bold">Ukuran Seragam</label>
                             {{ form.uniform_size(class="form-select", id="uniformSelector") }}
-                            <small class="text-muted">Harga seragam berbeda tergantung ukuran.</small>
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Rencana Infaq Pembangunan</label>
+                        <label class="form-label fw-bold">Infaq Pembangunan</label>
                         {{ form.initial_pledge_amount(class="form-select", id="infaqSelector") }}
                     </div>
                 </div>
@@ -184,26 +200,20 @@
 
             <div class="card shadow-sm border-0 mb-4" id="section_biaya_sekolah">
                 <div class="card-header bg-warning text-dark py-3">
-                    <h5 class="m-0 fw-bold"><i class="fas fa-file-invoice-dollar me-2"></i>4. Rincian Pembiayaan</h5>
+                    <h5 class="m-0 fw-bold">Rincian Pembiayaan</h5>
                 </div>
                 <div class="card-body p-4">
-                    <div class="alert alert-warning small">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        Mohon perhatikan rincian biaya di bawah ini sesuai jalur yang Anda pilih.
-                    </div>
-
-                    <h5 class="fw-bold mb-3" id="judul_biaya">Estimasi Biaya Awal Masuk</h5>
+                    <h5 class="fw-bold mb-3" id="judul_biaya">Estimasi Biaya</h5>
 
                     <div class="table-responsive">
                         <table class="table table-bordered table-striped table-sm">
                             <thead class="table-light">
                                 <tr>
                                     <th>Komponen Biaya</th>
-                                    <th class="text-end">Nominal (Estimasi)</th>
+                                    <th class="text-end">Nominal</th>
                                 </tr>
                             </thead>
-                            <tbody id="tabel_biaya_body">
-                                </tbody>
+                            <tbody id="tabel_biaya_body"></tbody>
                             <tfoot class="table-dark">
                                 <tr>
                                     <th>Total Estimasi</th>
@@ -216,11 +226,8 @@
                     <div class="form-check mt-3">
                         {{ form.finance_agreement(class="form-check-input") }}
                         <label class="form-check-label fw-bold" for="finance_agreement">
-                            Saya orang tua/wali menyatakan MENYETUJUI rincian pembiayaan di atas.
+                            {{ form.finance_agreement.label.text }}
                         </label>
-                        {% for error in form.finance_agreement.errors %}
-                            <div class="text-danger small">{{ error }}</div>
-                        {% endfor %}
                     </div>
                 </div>
             </div>
@@ -235,16 +242,25 @@
 <script>
     document.addEventListener("DOMContentLoaded", function() {
         const programSelect = document.getElementById("programSelector");
+        const educationSelect = document.getElementById("educationSelector");
         const scholarshipSelect = document.getElementById("scholarshipSelector");
-
-        // Input khusus RQDF Sore
         const uniformSelect = document.getElementById("uniformSelector");
         const infaqSelect = document.getElementById("infaqSelector");
 
+        // Sections & Divs
         const sectionRqdf = document.getElementById("section_rqdf");
-        const sectionBiaya = document.getElementById("section_biaya_sekolah");
-        const groupSekolah = document.getElementById("group_sekolah_formal");
+        const groupFormalOptions = document.getElementById("group_formal_options");
+        const divJenjang = document.getElementById("div_jenjang");
+        const divJalurBeasiswa = document.getElementById("div_jalur_beasiswa");
 
+        // SD Logic
+        const sdSpecialOptions = document.getElementById("sd_special_options");
+        const sdMakanOption = document.getElementById("sd_makan_option");
+        const sdRadios = document.querySelectorAll(".sd-radio");
+        const radioPondok = document.getElementById("sd_pondok");
+        const radioMakanYa = document.getElementById("makan_ya");
+
+        // Output
         const tabelBody = document.getElementById("tabel_biaya_body");
         const totalBiayaEl = document.getElementById("total_biaya");
         const judulBiaya = document.getElementById("judul_biaya");
@@ -253,12 +269,39 @@
             return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka);
         }
 
-        // --- DATA BIAYA SEKOLAH FORMAL ---
+        // --- DATA BIAYA ---
+        const BIAYA_SD_NON_PONDOK_DGN_MAKAN = [
+            {item: "Biaya Pendaftaran", harga: 400000},
+            {item: "SPP Bulan Pertama", harga: 500000},
+            {item: "Wakaf Bangunan", harga: 500000},
+            {item: "Biaya Buku", harga: 250000},
+            {item: "Raport Pesantren", harga: 50000}
+
+        ];
+        const BIAYA_SD_NON_PONDOK_TDK_DGN_MAKAN = [
+            {item: "Biaya Pendaftaran", harga: 400000},
+            {item: "SPP Bulan Pertama", harga: 300000},
+            {item: "Wakaf Bangunan", harga: 500000},
+            {item: "Biaya Buku", harga: 250000},
+            {item: "Raport Pesantren", harga: 50000}
+        ];
+        const BIAYA_SD_PONDOK = [
+            {item: "Biaya Pendaftaran", harga: 400000},
+            {item: "SPP Bulan Pertama", harga: 1000000},
+            {item: "Wakaf Bangunan", harga: 500000},
+            {item: "Biaya Lemari", harga: 500000},
+            {item: "Biaya Kasur", harga: 500000},
+            {item: "Biaya Peralatan Makan", harga: 100000},
+            {item: "Biaya Raport Pesantren", harga: 50000},
+            {item: "Biaya Buku", harga: 250000}
+        ];
+
         const BIAYA_SEKOLAH_NORMAL = [
             {item: "Pendaftaran", harga: 200000},
             {item: "Seragam Batik", harga: 100000},
             {item: "Infaq Bulanan (Juli)", harga: 650000},
             {item: "Wakaf Bangunan", harga: 1000000},
+            {item: "Fasilitas Lemari", harga: 500000},
             {item: "Fasilitas Kasur", harga: 500000},
             {item: "Orientasi Siswa", harga: 150000},
             {item: "Wakaf Perpustakaan", harga: 100000},
@@ -269,9 +312,9 @@
         ];
 
         const BIAYA_SEKOLAH_BEASISWA = [
-            {item: "Pendaftaran (Diskon)", harga: 100000},
-            {item: "Infaq Bulanan (Diskon)", harga: 325000},
-            {item: "Wakaf Bangunan (Diskon)", harga: 500000},
+            {item: "Pendaftaran", harga: 100000},
+            {item: "Infaq Bulanan", harga: 325000},
+            {item: "Wakaf Bangunan", harga: 500000},
             {item: "Fasilitas Lemari", harga: 250000},
             {item: "Fasilitas Kasur", harga: 250000},
             {item: "Orientasi Siswa", harga: 75000},
@@ -283,36 +326,23 @@
             {item: "Adm Sekolah Formal", harga: 500000}
         ];
 
-        // --- LOGIKA HITUNG BIAYA RQDF SORE ---
         function hitungBiayaRQDF() {
             let biayaList = [
                 {item: "Infaq Pendaftaran", harga: 300000},
                 {item: "Uang Dana Semesteran", harga: 50000},
                 {item: "Infaq Bulanan", harga: 150000},
                 {item: "Atribut (Syal) & Buku", harga: 100000},
-                {item: "Raport", harga: 50000}
+                {item: "Raport", harga: 65000}
             ];
-
-            // 1. Tambah Infaq Pembangunan (Dari Dropdown)
             let infaqVal = parseInt(infaqSelect.value) || 0;
-            if(infaqVal > 0) {
-                biayaList.push({item: "Infaq Pembangunan Pesantren", harga: infaqVal});
-            } else {
-                biayaList.push({item: "Infaq Pembangunan (Belum Dipilih)", harga: 0});
-            }
+            if(infaqVal > 0) biayaList.push({item: "Infaq Pembangunan", harga: infaqVal});
 
-            // 2. Tambah Seragam (Tergantung Ukuran)
             let size = uniformSelect.value;
             let hargaSeragam = 0;
             if (size === 'S' || size === 'M') hargaSeragam = 345000;
             else if (size === 'L' || size === 'XL') hargaSeragam = 355000;
             else if (size === 'XXL') hargaSeragam = 380000;
-
-            if(hargaSeragam > 0) {
-                biayaList.push({item: `Seragam RQDF (Ukuran ${size})`, harga: hargaSeragam});
-            } else {
-                 biayaList.push({item: "Seragam (Belum Dipilih)", harga: 0});
-            }
+            if(hargaSeragam > 0) biayaList.push({item: `Seragam (${size})`, harga: hargaSeragam});
 
             return biayaList;
         }
@@ -329,43 +359,76 @@
             totalBiayaEl.innerHTML = formatRupiah(total);
         }
 
+        // --- UPDATE FORM LOGIC ---
         function updateForm() {
-            // A. LOGIKA TAMPILAN
-            if (programSelect.value === 'RQDF_SORE') {
-                // Tampilan RQDF
-                sectionRqdf.style.display = "block";
-                groupSekolah.style.display = "none";
-                judulBiaya.innerText = "Rincian Biaya Kelas Reguler (Sore)";
+            const program = programSelect.value;
 
-                // Hitung Dinamis
-                let dataRQDF = hitungBiayaRQDF();
-                renderTabel(dataRQDF);
+            // 1. Reset Display
+            sectionRqdf.style.display = "none";
+            groupFormalOptions.style.display = "block";
+            sdSpecialOptions.style.display = "none";
+            divJenjang.style.display = "block";
+            divJalurBeasiswa.style.display = "block";
+
+            // 2. Logic Per Program
+
+            if (program === 'RQDF_SORE') {
+                sectionRqdf.style.display = "block";
+                groupFormalOptions.style.display = "none";
+                judulBiaya.innerText = "Rincian Biaya RQDF (Sore)";
+                renderTabel(hitungBiayaRQDF());
+
+            } else if (program === 'TAKHOSUS TAHFIDZ') {
+                divJenjang.style.display = "none";
+                divJalurBeasiswa.style.display = "none";
+                judulBiaya.innerText = "Rincian Biaya Takhosus Tahfidz";
+                renderTabel(BIAYA_SEKOLAH_NORMAL);
 
             } else {
-                // Tampilan Sekolah Formal
-                sectionRqdf.style.display = "none";
-                groupSekolah.style.display = "block";
+                // Program SBQ (Sekolah Bina Qur'an)
+                const jenjang = educationSelect.value;
 
-                const jalur = scholarshipSelect.value;
-                if (jalur === 'NON_BEASISWA') {
-                    judulBiaya.innerText = "Rincian Biaya Jalur REGULER (Non Beasiswa)";
-                    renderTabel(BIAYA_SEKOLAH_NORMAL);
+                if (jenjang === 'SD') {
+                    // SD Logic: Hide Jalur Beasiswa, Show Special Option
+                    divJalurBeasiswa.style.display = "none";
+                    sdSpecialOptions.style.display = "block";
+
+                    if (radioPondok.checked) {
+                        sdMakanOption.style.display = "none";
+                        judulBiaya.innerText = "Biaya SD Bina Qur'an (Pondok)";
+                        renderTabel(BIAYA_SD_PONDOK);
+                    } else {
+                        sdMakanOption.style.display = "block";
+                        if (radioMakanYa.checked) {
+                            judulBiaya.innerText = "Biaya SD Bina Qur'an (Non Pondok - Makan)";
+                            renderTabel(BIAYA_SD_NON_PONDOK_DGN_MAKAN);
+                        } else {
+                            judulBiaya.innerText = "Biaya SD Bina Qur'an (Non Pondok - Tanpa Makan)";
+                            renderTabel(BIAYA_SD_NON_PONDOK_TDK_DGN_MAKAN);
+                        }
+                    }
+
                 } else {
-                    judulBiaya.innerText = "Rincian Biaya Jalur BEASISWA (Yatim/Tahfidz)";
-                    renderTabel(BIAYA_SEKOLAH_BEASISWA);
+                    // SMP / SMA Logic
+                    const jalur = scholarshipSelect.value;
+                    if (jalur === 'NON_BEASISWA') {
+                        judulBiaya.innerText = "Rincian Biaya Pondok (Reguler)";
+                        renderTabel(BIAYA_SEKOLAH_NORMAL);
+                    } else {
+                        judulBiaya.innerText = "Rincian Biaya Pondok (Beasiswa)";
+                        renderTabel(BIAYA_SEKOLAH_BEASISWA);
+                    }
                 }
             }
         }
 
-        // Listener
         programSelect.addEventListener("change", updateForm);
+        educationSelect.addEventListener("change", updateForm);
         scholarshipSelect.addEventListener("change", updateForm);
-
-        // Listener Khusus RQDF: Update tabel realtime saat ganti ukuran/infaq
         uniformSelect.addEventListener("change", updateForm);
         infaqSelect.addEventListener("change", updateForm);
+        sdRadios.forEach(r => r.addEventListener("change", updateForm));
 
-        // Init pertama kali
         updateForm();
     });
 </script>
