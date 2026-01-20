@@ -177,7 +177,7 @@ class PPDBForm(FlaskForm):
 
     # Label disesuaikan permintaan
     finance_agreement = BooleanField(
-        'YA, Siap Melaksanakan Biaya Administrasi',
+        'Saya telah membaca dan menyetujui rincian biaya pendidikan di atas',
         validators=[DataRequired(message="Anda harus mencentang YA untuk melanjutkan.")]
     )
 
