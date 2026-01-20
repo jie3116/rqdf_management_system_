@@ -258,17 +258,15 @@ class Student(BaseModel):
 
     # Relations
     class_history = db.relationship('StudentClassHistory', backref='student', lazy=True)
-    attendances = db.relationship('Attendance', backref='student', lazy=True)
+    attendances = db.relationship('Attendance', backref='student', lazy='dynamic')
     grades = db.relationship('Grade', backref='student', lazy=True)
-    report_cards = db.relationship('ReportCard', backref='student', lazy=True)  # [BARU]
-    student_attitudes = db.relationship('StudentAttitude', backref='student', lazy=True)  # [BARU]
-
-    violations = db.relationship('Violation', backref='student', lazy=True)
-    invoices = db.relationship('Invoice', backref='student', lazy=True)
-    tahfidz_records = db.relationship('TahfidzRecord', backref='student', lazy=True)
+    report_cards = db.relationship('ReportCard', backref='student', lazy=True)
+    student_attitudes = db.relationship('StudentAttitude', backref='student', lazy=True)
+    violations = db.relationship('Violation', backref='student', lazy='dynamic')
+    invoices = db.relationship('Invoice', backref='student', lazy='dynamic')
+    tahfidz_records = db.relationship('TahfidzRecord', backref='student',  lazy='dynamic')
     tahfidz_summary = db.relationship('TahfidzSummary', backref='student', uselist=False)
     extracurriculars = db.relationship('Extracurricular', secondary=student_extracurriculars, back_populates='students')
-
 
 # ==========================================
 # 5. ACADEMIC CORE
@@ -288,8 +286,7 @@ class ClassRoom(BaseModel):
     grade_level = db.Column(db.Integer)
     homeroom_teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'))
 
-    # [UPDATE] Menambahkan Tahun Ajaran agar History Kelas Rapi
-    # Nullable True dulu agar data lama tidak error
+    # Menambahkan Tahun Ajaran agar History Kelas Rapi
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'), nullable=True)
     academic_year = db.relationship('AcademicYear')
 
