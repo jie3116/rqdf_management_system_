@@ -82,7 +82,7 @@ class PPDBForm(FlaskForm):
     # === LANGKAH 1: PILIH PROGRAM ===
     program_type = SelectField('Pilihan Program', choices=[
         ('SEKOLAH_BINA_QUR\'AN', 'Sekolah Bina Qur\'an'),
-        ('RQDF_SORE', 'Kelas Reguler RQDF (Tahfidz Sore)'),
+        ('RQDF_SORE', 'Kelas Reguler RQDF'),
         ('TAKHOSUS TAHFIDZ', 'Takhosus Tahfidz')
     ], validators=[DataRequired()])
 
