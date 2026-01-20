@@ -326,6 +326,19 @@
             {item: "Adm Sekolah Formal", harga: 500000}
         ];
 
+                const BIAYA_TAKHOSUS = [
+            {item: "Pendaftaran", harga: 200000},
+            {item: "Infaq Bulanan (Juli)", harga: 650000},
+            {item: "Wakaf Bangunan", harga: 1000000},
+            {item: "Fasilitas Lemari", harga: 500000},
+            {item: "Fasilitas Kasur", harga: 500000},
+            {item: "Wakaf Perpustakaan", harga: 100000},
+            {item: "Infaq Qurban", harga: 100000},
+            {item: "Raport Pesantren", harga: 65000},
+            {item: "Infaq Kegiatan", harga: 100000}
+        ];
+
+
         function hitungBiayaRQDF() {
             let biayaList = [
                 {item: "Infaq Pendaftaran", harga: 300000},
@@ -382,7 +395,7 @@
                 divJenjang.style.display = "none";
                 divJalurBeasiswa.style.display = "none";
                 judulBiaya.innerText = "Rincian Biaya Takhosus Tahfidz";
-                renderTabel(BIAYA_SEKOLAH_NORMAL);
+                renderTabel(BIAYA_TAKHOSUS);
 
             } else {
                 // Program SBQ (Sekolah Bina Qur'an)
