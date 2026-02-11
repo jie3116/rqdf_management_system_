@@ -65,7 +65,7 @@ def upgrade():
     op.create_table('student_candidates',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('registration_no', sa.String(length=20), nullable=True),
-    sa.Column('program_type', sa.Enum('RQDF_SORE', 'SEKOLAH_FULLDAY', 'MAJLIS_TALIM', name='programtype'), nullable=True),
+    sa.Column('program_type', sa.Enum('RQDF_SORE', 'SEKOLAH_FULLDAY', 'TAKHOSUS_TAHFIDZ', 'MAJLIS_TALIM', name='programtype'), nullable=True),
     sa.Column('education_level', sa.Enum('NON_FORMAL', 'SD', 'SMP', 'SMA', name='educationlevel'), nullable=True),
     sa.Column('scholarship_category', sa.Enum('NON_BEASISWA', 'TAHFIDZ_5_JUZ', 'TAHFIDZ_10_30_JUZ', 'YATIM_DHUAFA', name='scholarshipcategory'), nullable=True),
     sa.Column('status', sa.Enum('PENDING', 'INTERVIEW', 'ACCEPTED', 'REJECTED', name='registrationstatus'), nullable=True),

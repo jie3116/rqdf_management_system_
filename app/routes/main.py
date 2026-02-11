@@ -80,13 +80,20 @@ def ppdb_register():
     if form.validate_on_submit():
         try:
             # Logika berdasarkan program type
-            program_type = ProgramType[form.program_type.data]
-            
-            # Untuk Majelis Ta'lim, gunakan phone pribadi
-            if program_type == ProgramType.MAJLIS_TALIM:
-                contact_phone = form.personal_phone.data or form.parent_phone.data
+            try:
+                program_type = ProgramType[form.program_type.data]
+            except KeyError:
+                flash('Pilihan program tidak valid.', 'danger')
+                return render_template("public/ppdb_form.html", form=form)
+
+            is_majlis = program_type == ProgramType.MAJLIS_TALIM
+            is_rqdf = program_type == ProgramType.RQDF_SORE
+
+            # Validasi kontak berdasarkan jenis program
+            if is_majlis:
+                contact_phone = form.personal_phone.data
                 if not contact_phone:
-                    flash('Nomor WhatsApp wajib diisi untuk Majelis Ta\'lim', 'danger')
+                    flash("Nomor WhatsApp wajib diisi untuk Majelis Ta'lim", 'danger')
                     return render_template("public/ppdb_form.html", form=form)
             else:
                 contact_phone = form.parent_phone.data
@@ -94,11 +101,17 @@ def ppdb_register():
                     flash('Nomor Telepon Orang Tua wajib diisi', 'danger')
                     return render_template("public/ppdb_form.html", form=form)
 
+            # Untuk Majelis, pakai default yang aman agar tidak tergantung field tersembunyi
+            education_level = EducationLevel.NON_FORMAL if is_majlis else EducationLevel[form.education_level.data]
+            scholarship_category = ScholarshipCategory.NON_BEASISWA if is_majlis else ScholarshipCategory[
+                form.scholarship_category.data
+            ]
+
             candidate = StudentCandidate(
                 status=RegistrationStatus.PENDING,
                 program_type=program_type,
-                education_level=EducationLevel[form.education_level.data],
-                scholarship_category=ScholarshipCategory[form.scholarship_category.data],
+                education_level=education_level,
+                scholarship_category=scholarship_category,
                 full_name=form.full_name.data,
                 nickname=form.nickname.data,
                 nik=form.nik.data,
@@ -123,12 +136,12 @@ def ppdb_register():
                 parent_phone=contact_phone,
                 
                 # BARU: Data khusus Majelis Ta'lim
-                personal_phone=form.personal_phone.data if program_type == ProgramType.MAJLIS_TALIM else None,
-                personal_job=form.personal_job.data if program_type == ProgramType.MAJLIS_TALIM else None,
-                
-                tahfidz_schedule=TahfidzSchedule[form.tahfidz_schedule.data],
-                uniform_size=UniformSize[form.uniform_size.data],
-                initial_pledge_amount=form.initial_pledge_amount.data
+                personal_phone=form.personal_phone.data if is_majlis else None,
+                personal_job=form.personal_job.data if is_majlis else None,
+
+                tahfidz_schedule=TahfidzSchedule[form.tahfidz_schedule.data] if is_rqdf else TahfidzSchedule.TIDAK_ADA,
+                uniform_size=UniformSize[form.uniform_size.data] if is_rqdf else UniformSize.TIDAK_MEMILIH,
+                initial_pledge_amount=form.initial_pledge_amount.data if is_rqdf else 0,
             )
 
             db.session.add(candidate)
@@ -145,7 +158,7 @@ def ppdb_register():
             flash(f"Pendaftaran berhasil. Nomor pendaftaran Anda: {candidate.registration_no}", "success")
             return render_template("public/ppdb_success.html", candidate=candidate)
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             current_app.logger.exception("PPDB registration failed")
             flash("Terjadi kesalahan sistem saat memproses pendaftaran.", "danger")

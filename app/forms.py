@@ -145,8 +145,11 @@ class PPDBForm(FlaskForm):
         ('ABOVE_10M', 'Di atas Rp 10.000.000')
     ], validators=[Optional()])
 
-    # Field universal: untuk siswa = nomor ortu, untuk majlis = nomor pribadi
-    parent_phone = StringField('Nomor Telepon (WhatsApp)', validators=[DataRequired()])
+    # Khusus Majelis Ta'lim
+    personal_phone = StringField('Nomor Telepon Pribadi (WhatsApp)', validators=[Optional()])
+
+    # Khusus program siswa
+    parent_phone = StringField('Nomor Telepon Orang Tua (WhatsApp)', validators=[Optional()])
 
     # === LANGKAH 5: KHUSUS RQDF SORE ===
     tahfidz_schedule = SelectField('Pilihan Jadwal Tahfidz', choices=[

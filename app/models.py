@@ -109,6 +109,7 @@ class EvaluationPeriod(enum.Enum):
 class ProgramType(enum.Enum):
     RQDF_SORE = "RQDF Reguler (Sore)"
     SEKOLAH_FULLDAY = "Sekolah Bina Qur'an"
+    TAKHOSUS_TAHFIDZ = "Takhosus Tahfidz"
     MAJLIS_TALIM = "Majelis Ta'lim"  # BARU
 
 

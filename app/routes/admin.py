@@ -11,9 +11,9 @@ from app.decorators import role_required
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
     # Base & Enums
-    UserRole, Gender, PaymentStatus, RegistrationStatus,
+    UserRole, Gender, PaymentStatus, RegistrationStatus, ProgramType,
     # Users
-    User, Student, Parent, Teacher, Staff,
+    User, Student, Parent, Teacher, Staff, MajlisParticipant,
     # Academic
     AcademicYear, ClassRoom, Subject, Schedule,
     # Finance
@@ -930,6 +930,36 @@ def accept_candidate(candidate_id):
         return redirect(url_for('admin.ppdb_list'))
 
     try:
+        # Jalur khusus peserta Majelis Ta'lim (tidak membuat akun siswa & tagihan)
+        if calon.program_type == ProgramType.MAJLIS_TALIM:
+            majlis_user = User.query.filter_by(username=calon.parent_phone).first()
+            if not majlis_user:
+                majlis_user = User(
+                    username=calon.parent_phone,
+                    email=f"majlis.{calon.id}@sekolah.id",
+                    password_hash=generate_password_hash("123456"),
+                    role=UserRole.MAJLIS_PARTICIPANT,
+                    must_change_password=True,
+                )
+                db.session.add(majlis_user)
+                db.session.flush()
+
+            if not majlis_user.majlis_profile:
+                db.session.add(
+                    MajlisParticipant(
+                        user_id=majlis_user.id,
+                        full_name=calon.full_name,
+                        phone=calon.parent_phone,
+                        address=calon.address,
+                        job=calon.personal_job,
+                    )
+                )
+
+            calon.status = RegistrationStatus.ACCEPTED
+            db.session.commit()
+            flash(f"Peserta Majelis {calon.full_name} berhasil diterima.", 'success')
+            return redirect(url_for('admin.ppdb_list'))
+
         # --- 1. PROSES AKUN ---
         nis_baru = generate_nis()
 
