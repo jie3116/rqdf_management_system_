@@ -33,6 +33,22 @@
                 </form>
             </div>
         </div>
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-light">
+                <h6 class="m-0 fw-bold"><i class="fas fa-file-upload me-2"></i>Upload CSV/XLSX Guru</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin.upload_teachers') }}" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="mb-3">
+                        <label class="form-label">File CSV/XLSX</label>
+                        <input type="file" name="file" class="form-control" accept=".csv,.xlsx" required>
+                        <div class="form-text">Kolom: nip, full_name, specialty, phone, password (opsional).</div>
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary w-100">Upload Guru</button>
+                </form>
+            </div>
+        </div>
     </div>
 
     <div class="col-md-8">

@@ -1,8 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+import csv
+from io import TextIOWrapper
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from werkzeug.security import generate_password_hash
 from sqlalchemy import func
+from openpyxl import load_workbook
 from app.extensions import db
 from app.decorators import role_required
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
@@ -22,8 +25,49 @@ from app.models import (
     # Config
     AppConfig
 )
+from app.utils.nis import generate_nis
 
 admin_bp = Blueprint('admin', __name__)
+
+
+def _iter_upload_rows(file):
+    def _normalize_cell(value):
+        if value is None:
+            return ''
+        if isinstance(value, datetime):
+            return value.date().isoformat()
+        if isinstance(value, date):
+            return value.isoformat()
+        if isinstance(value, float):
+            if value.is_integer():
+                return str(int(value))
+            return str(value).strip()
+        if isinstance(value, int):
+            return str(value)
+        return str(value).strip()
+
+    filename = (file.filename or "").lower()
+    if filename.endswith('.xlsx'):
+        workbook = load_workbook(file, data_only=True)
+        sheet = workbook.active
+        rows = list(sheet.iter_rows(values_only=True))
+        if not rows:
+            return []
+        headers = [str(cell).strip() if cell is not None else '' for cell in rows[0]]
+        parsed = []
+        for idx, row in enumerate(rows[1:], start=2):
+            row_data = {}
+            for col_idx, header in enumerate(headers):
+                value = row[col_idx] if col_idx < len(row) else None
+                row_data[header] = _normalize_cell(value)
+            parsed.append((idx, row_data))
+        return parsed
+
+    wrapper = TextIOWrapper(file.stream, encoding='utf-8-sig')
+    reader = csv.DictReader(wrapper)
+    return [(idx, {k: (v.strip() if isinstance(v, str) else '' if v is None else str(v).strip())
+                   for k, v in row.items()})
+            for idx, row in enumerate(reader, start=2)]
 
 
 # =========================================================
@@ -205,6 +249,72 @@ def manage_teachers():
 
     teachers = Teacher.query.filter_by(is_deleted=False).all()
     return render_template('admin/hr/teachers.html', teachers=teachers)
+
+
+@admin_bp.route('/sdm/guru/upload', methods=['POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def upload_teachers():
+    file = request.files.get('file')
+    if not file or file.filename == '':
+        flash('File belum dipilih.', 'warning')
+        return redirect(url_for('admin.manage_teachers'))
+
+    if not file.filename.lower().endswith(('.csv', '.xlsx')):
+        flash('Format file harus CSV atau XLSX.', 'warning')
+        return redirect(url_for('admin.manage_teachers'))
+
+    created = 0
+    skipped = 0
+    errors = []
+
+    for idx, row in _iter_upload_rows(file):
+        nip = (row.get('nip') or row.get('NIP') or '').strip()
+        full_name = (row.get('full_name') or row.get('nama') or row.get('nama_lengkap') or '').strip()
+        specialty = (row.get('specialty') or row.get('mapel') or '').strip()
+        phone = (row.get('phone') or row.get('no_hp') or row.get('whatsapp') or '').strip()
+        password = (row.get('password') or '').strip() or "guru123"
+
+        if not nip or not full_name:
+            skipped += 1
+            errors.append(f'Baris {idx}: NIP dan Nama wajib diisi.')
+            continue
+
+        if User.query.filter_by(username=nip).first():
+            skipped += 1
+            errors.append(f'Baris {idx}: NIP {nip} sudah terdaftar.')
+            continue
+
+        try:
+            with db.session.begin_nested():
+                user = User(
+                    username=nip,
+                    email=f"{nip}@sekolah.id",
+                    password_hash=generate_password_hash(password),
+                    role=UserRole.GURU,
+                    must_change_password=True
+                )
+                db.session.add(user)
+                db.session.flush()
+
+                teacher = Teacher(
+                    user_id=user.id,
+                    nip=nip,
+                    full_name=full_name,
+                    phone=phone,
+                    specialty=specialty
+                )
+                db.session.add(teacher)
+                created += 1
+        except Exception as exc:
+            skipped += 1
+            errors.append(f'Baris {idx}: {exc}')
+
+    db.session.commit()
+    flash(f'Upload guru selesai. Berhasil: {created}, Dilewati: {skipped}.', 'success')
+    if errors:
+        flash('Contoh error: ' + '; '.join(errors[:3]), 'warning')
+    return redirect(url_for('admin.manage_teachers'))
 
 
 @admin_bp.route('/sdm/guru/edit/<int:id>', methods=['GET', 'POST'])
@@ -536,6 +646,142 @@ def list_students():
     return render_template('student/list_students.html', students=students)
 
 
+@admin_bp.route('/student/upload', methods=['POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def upload_students():
+    file = request.files.get('file')
+    if not file or file.filename == '':
+        flash('File belum dipilih.', 'warning')
+        return redirect(url_for('admin.list_students'))
+
+    if not file.filename.lower().endswith(('.csv', '.xlsx')):
+        flash('Format file harus CSV atau XLSX.', 'warning')
+        return redirect(url_for('admin.list_students'))
+
+    created = 0
+    skipped = 0
+    errors = []
+
+    for idx, row in _iter_upload_rows(file):
+        nis = (row.get('nis') or row.get('NIS') or '').strip()
+        full_name = (row.get('full_name') or row.get('nama') or row.get('nama_lengkap') or '').strip()
+        gender_raw = (row.get('gender') or row.get('jk') or row.get('jenis_kelamin') or '').strip().upper()
+        class_name = (row.get('class') or row.get('kelas') or row.get('class_name') or '').strip()
+        place_of_birth = (row.get('place_of_birth') or row.get('tempat_lahir') or '').strip()
+        date_of_birth = (row.get('date_of_birth') or row.get('tanggal_lahir') or '').strip()
+        address = (row.get('address') or row.get('alamat') or '').strip()
+        email = (row.get('email') or '').strip()
+        parent_name = (row.get('parent_name') or row.get('nama_wali') or '').strip()
+        parent_phone = (row.get('parent_phone') or row.get('no_wa') or row.get('no_hp_wali') or '').strip()
+        parent_job = (row.get('parent_job') or row.get('pekerjaan_wali') or '').strip()
+
+        if not full_name:
+            skipped += 1
+            errors.append(f'Baris {idx}: Nama wajib diisi.')
+            continue
+
+        if not parent_phone:
+            skipped += 1
+            errors.append(f'Baris {idx}: Nomor HP wali wajib diisi.')
+            continue
+
+        if not nis:
+            nis = generate_nis()
+
+        if User.query.filter_by(username=nis).first():
+            skipped += 1
+            errors.append(f'Baris {idx}: NIS {nis} sudah terdaftar.')
+            continue
+
+        if gender_raw not in {'L', 'P'}:
+            skipped += 1
+            errors.append(f'Baris {idx}: Gender harus L atau P.')
+            continue
+
+        try:
+            dob = datetime.strptime(date_of_birth, '%Y-%m-%d').date()
+        except ValueError:
+            skipped += 1
+            errors.append(f'Baris {idx}: Tanggal lahir harus YYYY-MM-DD.')
+            continue
+
+        class_id = None
+        if class_name:
+            class_room = ClassRoom.query.filter_by(name=class_name).first()
+            if class_room:
+                class_id = class_room.id
+
+        try:
+            with db.session.begin_nested():
+                student_user = User(
+                    username=nis,
+                    email=email or f"{nis}@sekolah.id",
+                    role=UserRole.SISWA
+                )
+                student_user.set_password(nis)
+                db.session.add(student_user)
+                db.session.flush()
+
+                new_student = Student(
+                    user_id=student_user.id,
+                    nis=nis,
+                    full_name=full_name,
+                    gender=Gender[gender_raw],
+                    place_of_birth=place_of_birth,
+                    date_of_birth=dob,
+                    current_class_id=class_id,
+                    address=address
+                )
+                db.session.add(new_student)
+
+                parent_user = User.query.filter_by(username=parent_phone).first()
+                if not parent_user:
+                    parent_user = User(
+                        username=parent_phone,
+                        email=f"{parent_phone}@wali.sekolah.id",
+                        role=UserRole.WALI_MURID
+                    )
+                    parent_user.set_password(parent_phone)
+                    db.session.add(parent_user)
+                    db.session.flush()
+
+                    parent_profile = Parent(
+                        user_id=parent_user.id,
+                        full_name=parent_name or "Wali Murid",
+                        phone=parent_phone,
+                        job=parent_job,
+                        address=address
+                    )
+                    db.session.add(parent_profile)
+                    db.session.flush()
+                else:
+                    parent_profile = parent_user.parent_profile
+                    if not parent_profile:
+                        parent_profile = Parent(
+                            user_id=parent_user.id,
+                            full_name=parent_name or "Wali Murid",
+                            phone=parent_phone,
+                            job=parent_job,
+                            address=address
+                        )
+                        db.session.add(parent_profile)
+                        db.session.flush()
+
+                new_student.parent_id = parent_profile.id
+
+                created += 1
+        except Exception as exc:
+            skipped += 1
+            errors.append(f'Baris {idx}: {exc}')
+
+    db.session.commit()
+    flash(f'Upload siswa selesai. Berhasil: {created}, Dilewati: {skipped}.', 'success')
+    if errors:
+        flash('Contoh error: ' + '; '.join(errors[:3]), 'warning')
+    return redirect(url_for('admin.list_students'))
+
+
 @admin_bp.route('/student/hapus/<int:id>')
 @login_required
 @role_required(UserRole.ADMIN)
@@ -609,8 +855,56 @@ def edit_fee_type(fee_id):
 @login_required
 @role_required(UserRole.ADMIN)
 def generate_invoices(fee_id):
-    # ... (Gunakan kode generate_invoices yang lama) ...
-    pass
+    """
+    Admin berhak menerbitkan tagihan untuk seluruh siswa berdasarkan FeeType.
+    Menggunakan logika yang sama seperti modul TU dengan guard agar tidak error
+    jika relasi student_candidate belum tersedia.
+    """
+    fee = FeeType.query.get_or_404(fee_id)
+    students = Student.query.all()
+
+    count_success = 0
+    bulan_tahun = datetime.now().strftime("%Y%m")
+    due_date_default = datetime.now() + timedelta(days=10)
+    is_monthly_fee = "SPP" in fee.name.upper() or "BULAN" in fee.name.upper()
+
+    try:
+        for student in students:
+            candidate = getattr(student, "student_candidate", None)
+
+            if candidate:
+                if "RQDF" in fee.name.upper() and candidate.program_type.name != 'RQDF_SORE':
+                    continue
+                if "RQDF" not in fee.name.upper() and candidate.program_type.name == 'RQDF_SORE':
+                    continue
+
+            if Invoice.query.filter_by(student_id=student.id, fee_type_id=fee.id).first():
+                continue
+
+            nominal_final = fee.amount
+            if is_monthly_fee and student.custom_spp_fee is not None:
+                nominal_final = student.custom_spp_fee
+            elif candidate and candidate.scholarship_category.name != 'NON_BEASISWA':
+                nominal_final = fee.amount * 0.5
+
+            new_inv = Invoice(
+                invoice_number=f"INV/{bulan_tahun}/{fee.id}/{student.id}",
+                student_id=student.id,
+                fee_type_id=fee.id,
+                total_amount=int(nominal_final),
+                status=PaymentStatus.UNPAID,
+                due_date=due_date_default
+            )
+            db.session.add(new_inv)
+            count_success += 1
+
+        db.session.commit()
+        flash(f'Berhasil menerbitkan {count_success} tagihan baru.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error: {str(e)}', 'danger')
+
+    return redirect(url_for('admin.manage_fee_types'))
 
 
 # =========================================================
@@ -629,9 +923,145 @@ def ppdb_list():
 @login_required
 @role_required(UserRole.ADMIN)
 def accept_candidate(candidate_id):
-    # ... (Gunakan kode accept_candidate yang lama) ...
-    # Note: Pastikan import Gender, UserRole, dll sesuai
-    pass
+    calon = StudentCandidate.query.get_or_404(candidate_id)
+
+    if calon.status == RegistrationStatus.ACCEPTED:
+        flash('Siswa ini sudah diproses sebelumnya.', 'warning')
+        return redirect(url_for('admin.ppdb_list'))
+
+    try:
+        # --- 1. PROSES AKUN ---
+        nis_baru = generate_nis()
+
+        # User Wali
+        user_wali = User.query.filter_by(username=calon.parent_phone).first()
+        if not user_wali:
+            user_wali = User(username=calon.parent_phone, email=f"wali.{nis_baru}@sekolah.id",
+                             password_hash=generate_password_hash("123456"), role=UserRole.WALI_MURID,
+                             must_change_password=True)
+            db.session.add(user_wali)
+            db.session.flush()
+            parent_profile = Parent(user_id=user_wali.id, full_name=calon.father_name, phone=calon.parent_phone,
+                                    job=calon.father_job, address=calon.address)
+            db.session.add(parent_profile)
+            db.session.flush()
+        else:
+            parent_profile = user_wali.parent_profile
+
+        # User Siswa
+        user_siswa = User(username=nis_baru, email=f"{nis_baru}@sekolah.id",
+                          password_hash=generate_password_hash("123456"), role=UserRole.SISWA,
+                          must_change_password=True)
+        db.session.add(user_siswa)
+        db.session.flush()
+        siswa_baru = Student(user_id=user_siswa.id, parent_id=parent_profile.id, nis=nis_baru,
+                             full_name=calon.full_name, gender=calon.gender, place_of_birth=calon.place_of_birth,
+                             date_of_birth=calon.date_of_birth, address=calon.address)
+        db.session.add(siswa_baru)
+        db.session.flush()
+
+        # --- 2. SMART INVOICING (VERSI DINAMIS) ---
+        def get_nominal(nama_biaya, harga_default):
+            biaya_db = FeeType.query.filter_by(name=nama_biaya).first()
+            if biaya_db:
+                return biaya_db.amount
+            return harga_default
+
+        tagihan_list = []
+
+        if calon.program_type.name == 'SEKOLAH_FULLDAY':
+            if calon.scholarship_category.name == 'NON_BEASISWA':
+                tagihan_list = [
+                    {'nama': 'Biaya Pendaftaran', 'nominal': get_nominal('Biaya Pendaftaran', 200000)},
+                    {'nama': 'Seragam Batik', 'nominal': get_nominal('Seragam Batik', 100000)},
+                    {'nama': 'Infaq Bulanan (Juli)', 'nominal': get_nominal('Infaq Bulanan (Juli)', 650000)},
+                    {'nama': 'Wakaf Bangunan', 'nominal': get_nominal('Wakaf Bangunan', 1000000)},
+                    {'nama': 'Fasilitas Kasur', 'nominal': get_nominal('Fasilitas Kasur', 500000)},
+                    {'nama': 'Orientasi Siswa', 'nominal': get_nominal('Orientasi Siswa', 150000)},
+                    {'nama': 'Wakaf Perpustakaan', 'nominal': get_nominal('Wakaf Perpustakaan', 100000)},
+                    {'nama': 'Infaq Qurban', 'nominal': get_nominal('Infaq Qurban', 100000)},
+                    {'nama': 'Raport Pesantren', 'nominal': get_nominal('Raport Pesantren', 65000)},
+                    {'nama': 'Adm Sekolah Formal', 'nominal': get_nominal('Adm Sekolah Formal', 500000)},
+                    {'nama': 'Infaq Kegiatan', 'nominal': get_nominal('Infaq Kegiatan', 100000)}
+                ]
+            else:
+                tagihan_list = [
+                    {'nama': 'Biaya Pendaftaran (Beasiswa)',
+                     'nominal': get_nominal('Biaya Pendaftaran (Beasiswa)', 100000)},
+                    {'nama': 'Infaq Bulanan (Beasiswa)', 'nominal': get_nominal('Infaq Bulanan (Beasiswa)', 325000)},
+                    {'nama': 'Wakaf Bangunan (Beasiswa)', 'nominal': get_nominal('Wakaf Bangunan (Beasiswa)', 500000)},
+                    {'nama': 'Fasilitas Lemari (Beasiswa)',
+                     'nominal': get_nominal('Fasilitas Lemari (Beasiswa)', 250000)},
+                    {'nama': 'Fasilitas Kasur (Beasiswa)',
+                     'nominal': get_nominal('Fasilitas Kasur (Beasiswa)', 250000)},
+                    {'nama': 'Orientasi Siswa (Beasiswa)', 'nominal': get_nominal('Orientasi Siswa (Beasiswa)', 75000)},
+                    {'nama': 'Raport', 'nominal': get_nominal('Raport', 65000)},
+                    {'nama': 'Wakaf Perpustakaan (Beasiswa)',
+                     'nominal': get_nominal('Wakaf Perpustakaan (Beasiswa)', 50000)},
+                    {'nama': 'Infaq Kegiatan (Beasiswa)', 'nominal': get_nominal('Infaq Kegiatan (Beasiswa)', 50000)},
+                    {'nama': 'Infaq Qurban (Beasiswa)', 'nominal': get_nominal('Infaq Qurban (Beasiswa)', 50000)},
+                    {'nama': 'Seragam Batik', 'nominal': get_nominal('Seragam Batik', 100000)},
+                    {'nama': 'Adm Sekolah Formal', 'nominal': get_nominal('Adm Sekolah Formal', 500000)}
+                ]
+
+        elif calon.program_type.name == 'RQDF_SORE':
+            tagihan_list = [
+                {'nama': 'Infaq Pendaftaran (RQDF)', 'nominal': get_nominal('Infaq Pendaftaran (RQDF)', 300000)},
+                {'nama': 'Uang Dana Semesteran', 'nominal': get_nominal('Uang Dana Semesteran', 50000)},
+                {'nama': 'Infaq Bulanan RQDF', 'nominal': get_nominal('Infaq Bulanan RQDF', 150000)},
+                {'nama': 'Atribut (Syal) & Buku', 'nominal': get_nominal('Atribut (Syal) & Buku', 100000)},
+                {'nama': 'Raport RQDF', 'nominal': get_nominal('Raport RQDF', 50000)}
+            ]
+
+            if calon.initial_pledge_amount and calon.initial_pledge_amount > 0:
+                tagihan_list.append({'nama': 'Infaq Pembangunan Pesantren', 'nominal': calon.initial_pledge_amount})
+
+            harga_seragam = 0
+            uk = calon.uniform_size.name
+            if uk in ['S', 'M']:
+                harga_seragam = get_nominal('Seragam RQDF (S/M)', 345000)
+            elif uk in ['L', 'XL']:
+                harga_seragam = get_nominal('Seragam RQDF (L/XL)', 355000)
+            elif uk == 'XXL':
+                harga_seragam = get_nominal('Seragam RQDF (XXL)', 380000)
+
+            if harga_seragam > 0:
+                tagihan_list.append({'nama': f'Seragam RQDF (Ukuran {uk})', 'nominal': harga_seragam})
+
+        due_date = datetime.now() + timedelta(days=14)
+        inv_prefix = f"INV/{datetime.now().strftime('%Y%m')}/{siswa_baru.id}"
+
+        ctr = 1
+        for item in tagihan_list:
+            fee_type = FeeType.query.filter_by(name=item['nama']).first()
+            if not fee_type:
+                fee_type = FeeType(name=item['nama'], amount=item['nominal'])
+                db.session.add(fee_type)
+                db.session.flush()
+
+            new_inv = Invoice(
+                invoice_number=f"{inv_prefix}/{ctr}",
+                student_id=siswa_baru.id,
+                fee_type_id=fee_type.id,
+                total_amount=item['nominal'],
+                paid_amount=0,
+                status=PaymentStatus.UNPAID,
+                due_date=due_date
+            )
+            db.session.add(new_inv)
+            ctr += 1
+
+        calon.status = RegistrationStatus.ACCEPTED
+        db.session.commit()
+        flash(f'Sukses! Siswa {siswa_baru.full_name} diterima. {len(tagihan_list)} rincian tagihan diterbitkan.',
+              'success')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error: {e}', 'danger')
+        print(e)
+
+    return redirect(url_for('admin.ppdb_list'))
 
 # =========================================================
 # 8. MANAJEMEN USER

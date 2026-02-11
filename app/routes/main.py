@@ -79,9 +79,24 @@ def ppdb_register():
 
     if form.validate_on_submit():
         try:
+            # Logika berdasarkan program type
+            program_type = ProgramType[form.program_type.data]
+            
+            # Untuk Majelis Ta'lim, gunakan phone pribadi
+            if program_type == ProgramType.MAJLIS_TALIM:
+                contact_phone = form.personal_phone.data or form.parent_phone.data
+                if not contact_phone:
+                    flash('Nomor WhatsApp wajib diisi untuk Majelis Ta\'lim', 'danger')
+                    return render_template("public/ppdb_form.html", form=form)
+            else:
+                contact_phone = form.parent_phone.data
+                if not contact_phone:
+                    flash('Nomor Telepon Orang Tua wajib diisi', 'danger')
+                    return render_template("public/ppdb_form.html", form=form)
+
             candidate = StudentCandidate(
                 status=RegistrationStatus.PENDING,
-                program_type=ProgramType[form.program_type.data],
+                program_type=program_type,
                 education_level=EducationLevel[form.education_level.data],
                 scholarship_category=ScholarshipCategory[form.scholarship_category.data],
                 full_name=form.full_name.data,
@@ -95,13 +110,22 @@ def ppdb_register():
                 address=form.address.data,
                 previous_school=form.previous_school.data,
                 previous_school_class=form.previous_school_class.data,
+                
+                # Data Orang Tua (Optional untuk Majelis)
                 father_name=form.father_name.data,
                 father_job=form.father_job.data,
                 father_income_range=form.father_income_range.data,
                 mother_name=form.mother_name.data,
                 mother_job=form.mother_job.data,
                 mother_income_range=form.mother_income_range.data,
-                parent_phone=form.parent_phone.data,
+                
+                # Phone logic berdasarkan program
+                parent_phone=contact_phone,
+                
+                # BARU: Data khusus Majelis Ta'lim
+                personal_phone=form.personal_phone.data if program_type == ProgramType.MAJLIS_TALIM else None,
+                personal_job=form.personal_job.data if program_type == ProgramType.MAJLIS_TALIM else None,
+                
                 tahfidz_schedule=TahfidzSchedule[form.tahfidz_schedule.data],
                 uniform_size=UniformSize[form.uniform_size.data],
                 initial_pledge_amount=form.initial_pledge_amount.data
@@ -111,7 +135,10 @@ def ppdb_register():
             db.session.flush()
 
             year = datetime.now().year
-            candidate.registration_no = f"REG{year}{candidate.id:05d}"
+            if program_type == ProgramType.MAJLIS_TALIM:
+                candidate.registration_no = f"MAJ{year}{candidate.id:05d}"  # BARU: Prefix khusus Majelis
+            else:
+                candidate.registration_no = f"REG{year}{candidate.id:05d}"
 
             db.session.commit()
 

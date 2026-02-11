@@ -7,7 +7,7 @@ from sqlalchemy.orm import joinedload  # Wajib diimport untuk optimasi N+1
 from app import db
 
 from app.models import (
-    UserRole, Student, TahfidzRecord, TahfidzSummary, Announcement,
+    UserRole, Student, TahfidzRecord, TahfidzSummary, Announcement, TahfidzEvaluation,
     Schedule, Grade, Violation, AcademicYear
 )
 from app.decorators import role_required
@@ -34,6 +34,11 @@ def dashboard():
         .options(joinedload(TahfidzRecord.teacher)) \
         .order_by(TahfidzRecord.date.desc()) \
         .limit(5).all()
+
+    recent_tahfidz_evaluations = student.tahfidz_evaluations \
+        .options(joinedload(TahfidzEvaluation.teacher)) \
+        .order_by(TahfidzEvaluation.date.desc()) \
+        .limit(3).all()
 
     announcements = Announcement.query \
         .filter_by(is_active=True) \
@@ -101,6 +106,7 @@ def dashboard():
                            student=student,
                            summary=summary,
                            recent_tahfidz=recent_tahfidz,
+                           recent_tahfidz_evaluations=recent_tahfidz_evaluations,
                            announcements=announcements,
                            today_name=today_name,
                            todays_schedules=todays_schedules,

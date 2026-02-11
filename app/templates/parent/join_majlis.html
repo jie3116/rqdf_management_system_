@@ -1,0 +1,64 @@
+
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white text-center">
+                    <h4><i class="fas fa-mosque me-2"></i>Daftar Majelis Ta'lim</h4>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Selamat datang <strong>{{ current_user.parent_profile.full_name }}</strong>! 
+                        Anda dapat mendaftar Majelis Ta'lim dengan data yang sudah ada.
+                    </div>
+
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Nama Lengkap</label>
+                            <input type="text" class="form-control" value="{{ current_user.parent_profile.full_name }}" readonly>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Nomor WhatsApp</label>
+                            <input type="text" class="form-control" value="{{ current_user.parent_profile.phone }}" readonly>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Alamat</label>
+                            <textarea class="form-control" readonly>{{ current_user.parent_profile.address }}</textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Pekerjaan <span class="text-danger">*</span></label>
+                            <input type="text" name="job" class="form-control" 
+                                   value="{{ current_user.parent_profile.job or '' }}" 
+                                   placeholder="Contoh: Ibu Rumah Tangga" required>
+                        </div>
+
+                        <div class="alert alert-success">
+                            <i class="fas fa-gift me-2"></i>
+                            <strong>GRATIS!</strong> Tidak ada biaya pendaftaran maupun SPP untuk Majelis Ta'lim
+                        </div>
+
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="agree" required>
+                            <label class="form-check-label" for="agree">
+                                Saya bersedia mengikuti kegiatan Majelis Ta'lim sesuai jadwal yang ditentukan
+                            </label>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-check me-2"></i>Daftar Majelis Ta'lim
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

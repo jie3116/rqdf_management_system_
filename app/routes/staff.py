@@ -11,6 +11,7 @@ from app.models import (
     Invoice, Transaction, PaymentStatus, FeeType,
     StudentCandidate, RegistrationStatus
 )
+from app.utils.nis import generate_nis
 
 staff_bp = Blueprint('staff', __name__)
 
@@ -226,9 +227,7 @@ def accept_candidate(candidate_id):
 
     try:
         # --- 1. PROSES AKUN ---
-        tahun_masuk = datetime.now().year
-        urutan = Student.query.filter(Student.nis.like(f"{tahun_masuk}%")).count() + 1
-        nis_baru = f"{tahun_masuk}{str(urutan).zfill(4)}"
+        nis_baru = generate_nis()
 
         # User Wali
         user_wali = User.query.filter_by(username=calon.parent_phone).first()
