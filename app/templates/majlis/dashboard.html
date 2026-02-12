@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <div>
+            <h1 class="h3 mb-0 text-gray-800">Dashboard Peserta Majelis Ta'lim</h1>
+            <p class="mb-0 text-muted">Assalamu'alaikum, {{ profile.full_name }}.</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Hafalan Terakhir</div>
+                    <div class="h6 mb-0 font-weight-bold text-gray-800">
+                        {{ summary.last_surah if summary and summary.last_surah else '-' }} :
+                        {{ summary.last_ayat if summary and summary.last_ayat else '-' }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Juz Tercatat</div>
+                    <div class="h4 mb-0 font-weight-bold text-gray-800">{{ summary.total_juz if summary else 0 }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Halaqoh / Kelas Majelis</div>
+                    <div class="h6 mb-0 font-weight-bold text-gray-800">{{ majlis_class.name if majlis_class else '-' }}</div>
+                    <small class="text-muted">Wali Kelas: {{ majlis_class.homeroom_teacher.full_name if majlis_class and majlis_class.homeroom_teacher else '-' }}</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-primary">Riwayat Setoran Hafalan (Ziyadah & Murojaah)</h6></div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped">
+                    <thead class="bg-success text-white">
+                        <tr>
+                            <th>Tanggal</th>
+                            <th>Jenis</th>
+                            <th>Surat (Ayat)</th>
+                            <th>Nilai</th>
+                            <th>Predikat</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if recent_tahfidz %}
+                            {% for r in recent_tahfidz %}
+                            <tr>
+                                <td>{{ r.date.strftime('%d/%m/%y') if r.date else '-' }}</td>
+                                <td>{{ r.type.value if r.type else '-' }}</td>
+                                <td>{{ r.surah or '-' }}{% if r.ayat_start and r.ayat_end %} ({{ r.ayat_start }}-{{ r.ayat_end }}){% endif %}</td>
+                                <td class="fw-bold">{{ r.score if r.score is not none else '-' }}</td>
+                                <td>{{ r.quality or '-' }}</td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr><td colspan="5" class="text-center text-muted">Belum ada riwayat setoran hafalan.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-info">Riwayat Setoran Bacaan</h6></div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped">
+                    <thead class="bg-info text-white">
+                        <tr>
+                            <th>Tanggal</th>
+                            <th>Sumber</th>
+                            <th>Materi</th>
+                            <th>Nilai</th>
+                            <th>Catatan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if recent_recitation %}
+                            {% for r in recent_recitation %}
+                            <tr>
+                                <td>{{ r.date.strftime('%d/%m/%y') if r.date else '-' }}</td>
+                                <td>{{ r.recitation_source.value if r.recitation_source else '-' }}</td>
+                                <td>
+                                    {% if r.recitation_source and r.recitation_source.name == 'BOOK' %}
+                                        {{ r.book_name or '-' }}{% if r.page_start and r.page_end %} (Hal. {{ r.page_start }}-{{ r.page_end }}){% endif %}
+                                    {% else %}
+                                        {{ r.surah or '-' }}{% if r.ayat_start and r.ayat_end %} ({{ r.ayat_start }}-{{ r.ayat_end }}){% endif %}
+                                    {% endif %}
+                                </td>
+                                <td class="fw-bold">{{ r.score if r.score is not none else '-' }}</td>
+                                <td>{{ r.notes or '-' }}</td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr><td colspan="5" class="text-center text-muted">Belum ada riwayat setoran bacaan.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-secondary">Penilaian Mata Pelajaran / Evaluasi</h6></div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped">
+                    <thead class="table-secondary">
+                        <tr>
+                            <th>Tanggal</th>
+                            <th>Periode</th>
+                            <th>Nilai</th>
+                            <th>Catatan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if recent_evaluations %}
+                            {% for e in recent_evaluations %}
+                            <tr>
+                                <td>{{ e.date.strftime('%d/%m/%y') if e.date else '-' }}</td>
+                                <td>{{ e.period_type.value if e.period_type else '-' }} {% if e.period_label %}- {{ e.period_label }}{% endif %}</td>
+                                <td class="fw-bold">{{ e.score if e.score is not none else '-' }}</td>
+                                <td>{{ e.notes or '-' }}</td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr><td colspan="4" class="text-center text-muted">Belum ada data penilaian.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-warning">Jadwal Majelis</h6></div>
+        <div class="card-body">
+            <div class="row">
+                {% for day, schedules in weekly_schedule.items() %}
+                <div class="col-md-6 col-lg-4 mb-3">
+                    <div class="card h-100 border-left-warning">
+                        <div class="card-header bg-light py-2"><strong>{{ day }}</strong></div>
+                        <ul class="list-group list-group-flush">
+                            {% if schedules %}
+                                {% for sch in schedules %}
+                                <li class="list-group-item">
+                                    <span class="badge bg-primary me-2">{{ sch.start_time.strftime('%H:%M') }}</span>
+                                    {{ sch.majlis_subject.name if sch.majlis_subject else (sch.subject.name if sch.subject else '-') }}
+                                </li>
+                                {% endfor %}
+                            {% else %}
+                                <li class="list-group-item text-muted text-center">-</li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

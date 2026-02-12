@@ -8,7 +8,7 @@ from app import db
 
 from app.models import (
     UserRole, Student, TahfidzRecord, TahfidzSummary, Announcement, TahfidzEvaluation,
-    Schedule, Grade, Violation, AcademicYear
+    RecitationRecord,Schedule, Grade, Violation, AcademicYear
 )
 from app.decorators import role_required
 
@@ -39,6 +39,11 @@ def dashboard():
         .options(joinedload(TahfidzEvaluation.teacher)) \
         .order_by(TahfidzEvaluation.date.desc()) \
         .limit(3).all()
+
+    recent_recitations = student.recitation_records \
+        .options(joinedload(RecitationRecord.teacher)) \
+        .order_by(RecitationRecord.date.desc()) \
+        .limit(5).all()
 
     announcements = Announcement.query \
         .filter_by(is_active=True) \
@@ -107,6 +112,7 @@ def dashboard():
                            summary=summary,
                            recent_tahfidz=recent_tahfidz,
                            recent_tahfidz_evaluations=recent_tahfidz_evaluations,
+                           recent_recitations=recent_recitations,
                            announcements=announcements,
                            today_name=today_name,
                            todays_schedules=todays_schedules,

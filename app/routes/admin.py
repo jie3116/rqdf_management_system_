@@ -508,10 +508,8 @@ def manage_extracurriculars():
 
 
 # =========================================================
-# 6. MANAJEMEN SISWA (SAMA SEPERTI SEBELUMNYA)
+# 6. MANAJEMEN SISWA
 # =========================================================
-
-# app/routes/admin.py
 
 from app.forms import StudentForm
 from app.models import User, Student, Parent, ClassRoom, UserRole, Gender
@@ -907,6 +905,8 @@ def generate_invoices(fee_id):
     return redirect(url_for('admin.manage_fee_types'))
 
 
+
+
 # =========================================================
 # 8. MANAJEMEN PPDB (SAMA SEPERTI SEBELUMNYA)
 # =========================================================
@@ -937,7 +937,7 @@ def accept_candidate(candidate_id):
                 majlis_user = User(
                     username=calon.parent_phone,
                     email=f"majlis.{calon.id}@sekolah.id",
-                    password_hash=generate_password_hash("123456"),
+                    password_hash=generate_password_hash(calon.parent_phone or "123456"),
                     role=UserRole.MAJLIS_PARTICIPANT,
                     must_change_password=True,
                 )
@@ -967,7 +967,8 @@ def accept_candidate(candidate_id):
         user_wali = User.query.filter_by(username=calon.parent_phone).first()
         if not user_wali:
             user_wali = User(username=calon.parent_phone, email=f"wali.{nis_baru}@sekolah.id",
-                             password_hash=generate_password_hash("123456"), role=UserRole.WALI_MURID,
+                             password_hash=generate_password_hash(calon.parent_phone or "123456"),
+                             role=UserRole.WALI_MURID,
                              must_change_password=True)
             db.session.add(user_wali)
             db.session.flush()
@@ -980,7 +981,7 @@ def accept_candidate(candidate_id):
 
         # User Siswa
         user_siswa = User(username=nis_baru, email=f"{nis_baru}@sekolah.id",
-                          password_hash=generate_password_hash("123456"), role=UserRole.SISWA,
+                          password_hash=generate_password_hash(nis_baru), role=UserRole.SISWA,
                           must_change_password=True)
         db.session.add(user_siswa)
         db.session.flush()

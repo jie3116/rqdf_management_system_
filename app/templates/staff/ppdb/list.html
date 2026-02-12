@@ -35,13 +35,23 @@
                             <div class="small text-muted">{{ c.gender.value }} | {{ c.education_level.value }}</div>
                         </td>
                         <td>
-                            {% if c.program_type.name == 'RQDF_SORE' %}
-                                <span class="badge bg-success">RQDF Sore</span>
+                            {% if c.program_type.name == 'MAJLIS_TALIM' %}
+                                <span class="badge bg-success">Majelis Ta'lim</span>
+                            {% elif c.program_type.name == 'RQDF_SORE' %}
+                                <span class="badge bg-primary">RQDF Sore</span>
+                            {% elif c.program_type.name == 'TAKHOSUS_TAHFIDZ' %}
+                                <span class="badge bg-warning text-dark">Takhosus Tahfidz</span>
                             {% else %}
                                 <span class="badge bg-info text-dark">Sekolah Formal</span>
                             {% endif %}
                         </td>
-                        <td>{{ c.scholarship_category.value }}</td>
+                         <td>
+                            {% if c.program_type.name == 'MAJLIS_TALIM' %}
+                                -
+                            {% else %}
+                                {{ c.scholarship_category.value }}
+                            {% endif %}
+                        </td>
                         <td>{{ c.created_at.strftime('%d %b %Y') }}</td>
                         <td>
                             {% if c.status.name == 'PENDING' %}

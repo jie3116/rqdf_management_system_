@@ -47,10 +47,10 @@
 
                         <div class="mb-3">
                             <div class="btn-group w-100" role="group">
-                                <input type="radio" class="btn-check" name="type" id="ziyadah" value="ZIYADAH" checked>
+                                <input type="radio" class="btn-check" name="jenis_setoran" id="ziyadah" value="ZIYADAH" checked>
                                 <label class="btn btn-outline-success" for="ziyadah">Ziyadah (Baru)</label>
 
-                                <input type="radio" class="btn-check" name="type" id="murajaah" value="MURAJAAH">
+                                <input type="radio" class="btn-check" name="jenis_setoran" id="murajaah" value="MURAJAAH">
                                 <label class="btn btn-outline-warning" for="murajaah">Murajaah (Ulang)</label>
                             </div>
                         </div>
@@ -317,7 +317,7 @@ textarea[name="notes"]::placeholder {
         }
 
         function toggleTahfidzErrors() {
-            const type = document.querySelector('input[name="type"]:checked')?.value;
+            const type = document.querySelector('input[name="jenis_setoran"]:checked')?.value;
             if (type === "ZIYADAH" || type === "MURAJAAH") {
                 tahfidzGroup.classList.remove("d-none");
             } else {
@@ -342,7 +342,7 @@ textarea[name="notes"]::placeholder {
             input.addEventListener("input", updateScore);
         });
         
-        document.querySelectorAll('input[name="type"]').forEach(input => {
+        document.querySelectorAll('input[name="jenis_setoran"]').forEach(input => {
             input.addEventListener("change", toggleTahfidzErrors);
         });
 

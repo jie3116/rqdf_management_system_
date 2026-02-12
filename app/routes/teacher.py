@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from app.models import (
     Teacher, Student, ClassRoom, TahfidzRecord, TahfidzSummary, RecitationRecord,
-    TahfidzEvaluation, TahfidzType, RecitationSource, ParticipantType, Grade, 
-    GradeType, Subject, Attendance, AttendanceStatus, AcademicYear, db, UserRole
+    TahfidzEvaluation, TahfidzType, RecitationSource, ParticipantType, Grade,
+    GradeType, Subject, Attendance, AttendanceStatus, AcademicYear, Schedule, db, UserRole
 )
 from app.decorators import role_required
 
@@ -35,36 +35,52 @@ def _get_teacher_classes(teacher):
 @role_required(UserRole.GURU)
 def dashboard():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
-    
-    # Quick Stats
+
     my_classes = _get_teacher_classes(teacher)
     class_ids = [c.id for c in my_classes]
-    
-    # Hitung siswa aktif di kelas yang diajar
+
     total_students = Student.query.filter(
         Student.current_class_id.in_(class_ids),
         Student.is_deleted == False
     ).count() if class_ids else 0
-    
-    # Tahfidz records hari ini
+
     today = datetime.now().date()
+    today_name_map = {0: 'Senin', 1: 'Selasa', 2: 'Rabu', 3: 'Kamis', 4: 'Jumat', 5: 'Sabtu', 6: 'Minggu'}
+    today_name = today_name_map[today.weekday()]
+
+    todays_schedules = Schedule.query.filter_by(
+        teacher_id=teacher.id,
+        day=today_name,
+        is_deleted=False
+    ).order_by(Schedule.start_time).all()
+
+    teaching_assignments = []
+    seen_assignments = set()
+    all_teacher_schedules = Schedule.query.filter_by(teacher_id=teacher.id, is_deleted=False).all()
+    for sch in all_teacher_schedules:
+        if not sch.class_room or not sch.subject:
+            continue
+        key = (sch.class_id, sch.subject_id)
+        if key in seen_assignments:
+            continue
+        seen_assignments.add(key)
+        teaching_assignments.append((sch.class_id, sch.class_room.name, sch.subject_id, sch.subject.name))
+
+    homeroom_class = teacher.homeroom_class
+
     today_tahfidz = TahfidzRecord.query.filter(
         TahfidzRecord.teacher_id == teacher.id,
         db.func.date(TahfidzRecord.date) == today
     ).count()
-    
-    # Recitation records hari ini  
+
     today_recitation = RecitationRecord.query.filter(
         RecitationRecord.teacher_id == teacher.id,
         db.func.date(RecitationRecord.date) == today
     ).count()
-    
-    # Recent activities (gabungan tahfidz + recitation)
-    recent_tahfidz = TahfidzRecord.query.filter_by(teacher_id=teacher.id)\
-        .order_by(TahfidzRecord.date.desc()).limit(5).all()
-    
-    recent_recitation = RecitationRecord.query.filter_by(teacher_id=teacher.id)\
-        .order_by(RecitationRecord.date.desc()).limit(5).all()
+
+    recent_tahfidz = TahfidzRecord.query.filter_by(teacher_id=teacher.id)        .order_by(TahfidzRecord.date.desc()).limit(5).all()
+
+    recent_recitation = RecitationRecord.query.filter_by(teacher_id=teacher.id)        .order_by(RecitationRecord.date.desc()).limit(5).all()
 
     return render_template('teacher/dashboard.html',
                          teacher=teacher,
@@ -73,7 +89,10 @@ def dashboard():
                          today_tahfidz=today_tahfidz,
                          today_recitation=today_recitation,
                          recent_tahfidz=recent_tahfidz,
-                         recent_recitation=recent_recitation)
+                         recent_recitation=recent_recitation,
+                         todays_schedules=todays_schedules,
+                         homeroom_class=homeroom_class,
+                         teaching_assignments=teaching_assignments)
 
 
 @teacher_bp.route('/input-nilai', methods=['GET', 'POST'])
@@ -186,7 +205,7 @@ def input_tahfidz():
 
     if request.method == 'POST':
         student_id = request.form.get('student_id')
-        jenis_setoran = request.form.get('jenis_setoran')  # ZIYADAH atau MURAJAAH
+        jenis_setoran = request.form.get('jenis_setoran') or request.form.get('type')  # backward-compatible
 
         start_surah = request.form.get('start_surah_name')
         end_surah = request.form.get('end_surah_name')
@@ -210,9 +229,11 @@ def input_tahfidz():
         else:
             final_surah_name = f"{start_surah} - {end_surah}"
 
-        # Hitung skor berdasarkan kesalahan
+        # Hitung skor berdasarkan kesalahan (boleh override dari form jika ada)
         total_errors = tajwid_errors + makhraj_errors + tahfidz_errors
-        score = max(0, 100 - (total_errors * 2))
+        calculated_score = max(0, 100 - (total_errors * 2))
+        score = int(request.form.get('score_preview') or calculated_score)
+        quality = request.form.get('quality')
 
         new_record = TahfidzRecord(
             student_id=student_id,
@@ -227,6 +248,7 @@ def input_tahfidz():
             makhraj_errors=makhraj_errors,
             tahfidz_errors=tahfidz_errors,
             score=score,
+            quality=quality,
             notes=notes,
             date=datetime.now()
         )
@@ -267,7 +289,7 @@ def input_recitation():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
     my_classes = _get_teacher_classes(teacher)
 
-    selected_class_id = request.args.get('class_id')
+    selected_class_id = request.args.get('class_id', type=int)
     students = []
     selected_class = None
 
@@ -279,11 +301,34 @@ def input_recitation():
                 is_deleted=False
             ).order_by(Student.full_name).all()
         else:
-            flash("Anda tidak memiliki akses ke halaqoh tersebut.", "danger")
+            flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
+            selected_class = None
 
     if request.method == 'POST':
-        student_id = request.form.get('student_id')
+        form_class_id = request.form.get('class_id', type=int)
+        student_id = request.form.get('student_id', type=int)
         recitation_source = request.form.get('recitation_source', 'QURAN')
+
+        # Gunakan class_id dari form sebagai prioritas agar redirect konsisten
+        active_class_id = form_class_id or selected_class_id
+
+        if recitation_source not in [s.name for s in RecitationSource]:
+            flash("Sumber bacaan tidak valid.", "danger")
+            return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
+
+        if not student_id:
+            flash("Silakan pilih siswa terlebih dahulu.", "warning")
+            return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
+
+        student = Student.query.filter_by(id=student_id, is_deleted=False).first()
+        if not student:
+            flash("Data siswa tidak ditemukan.", "danger")
+            return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
+
+        # Validasi bahwa siswa berada pada kelas yang sedang dipilih
+        if active_class_id and student.current_class_id != active_class_id:
+            flash("Siswa tidak berada pada kelas yang dipilih.", "danger")
+            return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
 
         start_surah = request.form.get('start_surah_name')
         end_surah = request.form.get('end_surah_name')
@@ -293,8 +338,13 @@ def input_recitation():
         page_start = request.form.get('page_start')
         page_end = request.form.get('page_end')
         notes = request.form.get('notes')
-        tajwid_errors = int(request.form.get('tajwid_errors') or 0)
-        makhraj_errors = int(request.form.get('makhraj_errors') or 0)
+
+        try:
+            tajwid_errors = int(request.form.get('tajwid_errors') or 0)
+            makhraj_errors = int(request.form.get('makhraj_errors') or 0)
+        except ValueError:
+            flash("Input jumlah kesalahan harus berupa angka.", "danger")
+            return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
 
         final_surah_name = None
         final_ayat_start = None
@@ -302,21 +352,39 @@ def input_recitation():
         final_page_start = None
         final_page_end = None
 
-        # Validasi recitation source
-        if recitation_source not in [s.name for s in RecitationSource]:
-            flash("Sumber bacaan tidak valid.", "danger")
-            return redirect(url_for('teacher.input_recitation', class_id=selected_class_id))
-
         if recitation_source == 'QURAN':
-            if not end_surah or start_surah == end_surah:
-                final_surah_name = start_surah
-            else:
-                final_surah_name = f"{start_surah} - {end_surah}"
-            final_ayat_start = int(ayat_start)
-            final_ayat_end = int(ayat_end)
+            if not start_surah or not ayat_start or not ayat_end:
+                flash("Untuk setoran Al-Qur'an, surat dan ayat wajib diisi.", "warning")
+                return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
+
+            try:
+                final_ayat_start = int(ayat_start)
+                final_ayat_end = int(ayat_end)
+            except ValueError:
+                flash("Ayat awal/akhir harus berupa angka.", "warning")
+                return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
+
+            if final_ayat_end < final_ayat_start:
+                flash("Ayat akhir tidak boleh lebih kecil dari ayat awal.", "warning")
+                return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
+
+            final_surah_name = start_surah if (not end_surah or start_surah == end_surah) else f"{start_surah} - {end_surah}"
+
         else:  # BOOK
-            final_page_start = int(page_start) if page_start else None
-            final_page_end = int(page_end) if page_end else None
+            if not book_name:
+                flash("Nama kitab/buku wajib diisi untuk setoran jenis kitab.", "warning")
+                return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
+
+            try:
+                final_page_start = int(page_start) if page_start else None
+                final_page_end = int(page_end) if page_end else None
+            except ValueError:
+                flash("Halaman awal/akhir harus berupa angka.", "warning")
+                return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
+
+            if final_page_start and final_page_end and final_page_end < final_page_start:
+                flash("Halaman akhir tidak boleh lebih kecil dari halaman awal.", "warning")
+                return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
 
         score = max(0, 100 - ((tajwid_errors + makhraj_errors) * 2))
 
@@ -340,7 +408,7 @@ def input_recitation():
         db.session.add(new_record)
         db.session.commit()
         flash('Setoran bacaan berhasil disimpan!', 'success')
-        return redirect(url_for('teacher.input_recitation', class_id=selected_class_id))
+        return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
 
     return render_template('teacher/input_recitation.html',
                            my_classes=my_classes,
@@ -356,7 +424,7 @@ def input_tahfidz_evaluation():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
     my_classes = _get_teacher_classes(teacher)
 
-    selected_class_id = request.args.get('class_id')
+    selected_class_id = request.args.get('class_id', type=int)
     students = []
     selected_class = None
 
@@ -367,17 +435,44 @@ def input_tahfidz_evaluation():
                 current_class_id=selected_class_id,
                 is_deleted=False
             ).order_by(Student.full_name).all()
+        else:
+            flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
+            selected_class = None
 
     if request.method == 'POST':
-        student_id = request.form.get('student_id')
+        form_class_id = request.form.get('class_id', type=int)
+        student_id = request.form.get('student_id', type=int)
         period_type = request.form.get('period_type')
         period_label = request.form.get('period_label')
-        
-        makhraj_errors = int(request.form.get('makhraj_errors') or 0)
-        tajwid_errors = int(request.form.get('tajwid_errors') or 0)
-        harakat_errors = int(request.form.get('harakat_errors') or 0)
-        tahfidz_errors = int(request.form.get('tahfidz_errors') or 0)
         notes = request.form.get('notes')
+
+        active_class_id = form_class_id or selected_class_id
+
+        if not student_id:
+            flash("Silakan pilih siswa terlebih dahulu.", "warning")
+            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+
+        if period_type not in [p.name for p in EvaluationPeriod]:
+            flash("Periode evaluasi tidak valid.", "danger")
+            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+
+        student = Student.query.filter_by(id=student_id, is_deleted=False).first()
+        if not student:
+            flash("Data siswa tidak ditemukan.", "danger")
+            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+
+        if active_class_id and student.current_class_id != active_class_id:
+            flash("Siswa tidak berada pada kelas yang dipilih.", "danger")
+            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+
+        try:
+            makhraj_errors = int(request.form.get('makhraj_errors') or 0)
+            tajwid_errors = int(request.form.get('tajwid_errors') or 0)
+            harakat_errors = int(request.form.get('harakat_errors') or 0)
+            tahfidz_errors = int(request.form.get('tahfidz_errors') or 0)
+        except ValueError:
+            flash("Input jumlah kesalahan harus berupa angka.", "danger")
+            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         total_errors = makhraj_errors + tajwid_errors + harakat_errors + tahfidz_errors
         score = max(0, 100 - (total_errors * 2))
@@ -386,7 +481,7 @@ def input_tahfidz_evaluation():
             student_id=student_id,
             participant_type=ParticipantType.STUDENT,
             teacher_id=teacher.id,
-            period_type=period_type,
+            period_type=EvaluationPeriod[period_type],
             period_label=period_label,
             makhraj_errors=makhraj_errors,
             tajwid_errors=tajwid_errors,
@@ -398,9 +493,9 @@ def input_tahfidz_evaluation():
         )
         db.session.add(new_evaluation)
         db.session.commit()
-        
+
         flash('Evaluasi tahfidz berhasil disimpan!', 'success')
-        return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=selected_class_id))
+        return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
     return render_template('teacher/input_tahfidz_evaluation.html',
                            my_classes=my_classes,

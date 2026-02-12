@@ -9,7 +9,7 @@ from app.forms import PaymentForm, StudentForm  # Pastikan import ini ada
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType,
-    StudentCandidate, RegistrationStatus
+    StudentCandidate, RegistrationStatus, ProgramType, MajlisParticipant
 )
 from app.utils.nis import generate_nis
 
@@ -226,6 +226,38 @@ def accept_candidate(candidate_id):
         return redirect(url_for('staff.ppdb_detail', candidate_id=calon.id))
 
     try:
+        # Jalur khusus peserta Majelis Ta'lim (tidak membuat akun siswa/wali)
+        if calon.program_type == ProgramType.MAJLIS_TALIM:
+            nomor_majelis = calon.personal_phone or calon.parent_phone
+            if not nomor_majelis:
+                raise ValueError('Nomor WhatsApp peserta Majelis tidak ditemukan.')
+
+            majlis_user = User.query.filter_by(username=nomor_majelis).first()
+            if not majlis_user:
+                majlis_user = User(
+                    username=nomor_majelis,
+                    email=f"majlis.{calon.id}@sekolah.id",
+                    password_hash=generate_password_hash("123456"),
+                    role=UserRole.MAJLIS_PARTICIPANT,
+                    must_change_password=True
+                )
+                db.session.add(majlis_user)
+                db.session.flush()
+
+            if not majlis_user.majlis_profile:
+                db.session.add(MajlisParticipant(
+                    user_id=majlis_user.id,
+                    full_name=calon.full_name,
+                    phone=nomor_majelis,
+                    address=calon.address,
+                    job=calon.personal_job,
+                ))
+
+            calon.status = RegistrationStatus.ACCEPTED
+            db.session.commit()
+            flash(f'Peserta Majelis {calon.full_name} berhasil diterima.', 'success')
+            return redirect(url_for('staff.ppdb_detail', candidate_id=candidate_id))
+
         # --- 1. PROSES AKUN ---
         nis_baru = generate_nis()
 
@@ -233,7 +265,8 @@ def accept_candidate(candidate_id):
         user_wali = User.query.filter_by(username=calon.parent_phone).first()
         if not user_wali:
             user_wali = User(username=calon.parent_phone, email=f"wali.{nis_baru}@sekolah.id",
-                             password_hash=generate_password_hash("123456"), role=UserRole.WALI_MURID,
+                             password_hash=generate_password_hash(calon.parent_phone or "123456"),
+                             role=UserRole.WALI_MURID,
                              must_change_password=True)
             db.session.add(user_wali)
             db.session.flush()
@@ -246,7 +279,7 @@ def accept_candidate(candidate_id):
 
         # User Siswa
         user_siswa = User(username=nis_baru, email=f"{nis_baru}@sekolah.id",
-                          password_hash=generate_password_hash("123456"), role=UserRole.SISWA,
+                          password_hash=generate_password_hash(nis_baru), role=UserRole.SISWA,
                           must_change_password=True)
         db.session.add(user_siswa)
         db.session.flush()
