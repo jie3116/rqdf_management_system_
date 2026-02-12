@@ -27,23 +27,20 @@
 
         /* --- RESPONSIVE MOBILE CSS  --- */
         @media (max-width: 768px) {
-            /* 1. Sembunyikan Sidebar ke kiri layar */
             .sidebar {
                 position: fixed;
                 top: 0;
-                left: -260px; /* Geser keluar layar */
+                left: -260px;
                 height: 100vh;
                 z-index: 9999;
                 width: 250px !important;
                 box-shadow: 4px 0 10px rgba(0,0,0,0.1);
             }
 
-            /* 2. Class ini ditambahkan lewat JS saat tombol diklik */
             .sidebar.show-mobile {
-                left: 0; /* Munculkan kembali */
+                left: 0;
             }
 
-            /* 3. Overlay Gelap di belakang menu saat aktif */
             .sidebar-overlay {
                 display: none;
                 position: fixed;
@@ -124,6 +121,8 @@
                 {% if current_user.role.value == 'teacher' %}
                     <div class="nav-header">Akademik</div>
                     <li><a href="{{ url_for('teacher.input_tahfidz') }}"><i class="fas fa-quran me-2"></i> Input Tahfidz</a></li>
+                    <li><a href="{{ url_for('teacher.input_recitation') }}"><i class="fas fa-book-reader me-2"></i> Input Bacaan</a></li>
+                    <li><a href="{{ url_for('teacher.input_tahfidz_evaluation') }}"><i class="fas fa-clipboard-check me-2"></i> Evaluasi Tahfidz</a></li>
                 {% endif %}
 
                 {% if current_user.role.value == 'tata_usaha' %}
@@ -131,12 +130,14 @@
                     <li><a href="{{ url_for('staff.cashier_search') }}" class="text-warning fw-bold"><i class="fas fa-cash-register me-2"></i> Kasir</a></li>
                     <li><a href="{{ url_for('staff.ppdb_list') }}"><i class="fas fa-user-plus me-2"></i> Verifikasi PPDB</a></li>
                     <li><a href="{{ url_for('staff.list_students') }}"><i class="fas fa-users me-2"></i> Data Santri</a></li>
+                    <li><a href="{{ url_for('staff.assign_majlis_classes') }}"><i class="fas fa-school me-2"></i> Kelas Majlis Ta'lim</a></li>
                     <li><a href="{{ url_for('admin.manage_fee_types') }}"><i class="fas fa-file-invoice-dollar me-2"></i> Terbitkan Tagihan</a></li>
                 {% endif %}
 
             </ul>
             <hr>
 
+            <!-- PERBAIKAN: Tambahkan menu Ganti Password ke dropdown sidebar -->
             <div class="dropdown">
                 <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle" id="dropdownUser1" data-bs-toggle="dropdown" aria-expanded="false">
                     <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px;">
@@ -145,9 +146,18 @@
                     <strong>{{ current_user.username }}</strong>
                 </a>
                 <ul class="dropdown-menu dropdown-menu-dark text-small shadow" aria-labelledby="dropdownUser1">
-                    <li><a class="dropdown-item" href="#">Profile</a></li>
+                    <li><a class="dropdown-item" href="{{ url_for('auth.change_password') }}">
+                        <i class="fas fa-key me-2"></i>Ganti Password
+                    </a></li>
                     <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">Sign out</a></li>
+                    <li>
+                        <form method="POST" action="{{ url_for('auth.logout') }}" class="dropdown-item p-0">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                            <button type="submit" class="btn btn-link text-start w-100 text-white-50">
+                                <i class="fas fa-sign-out-alt me-2"></i>Sign out
+                            </button>
+                        </form>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -164,9 +174,32 @@
 
                 <span class="navbar-brand d-md-none fw-bold text-primary">RQDF SYSTEM</span>
 
-                <span class="navbar-text ms-auto text-muted small d-none d-md-block">
-                    <i class="fas fa-clock me-1"></i> {{ datetime.now().strftime('%A, %d %b %Y') }}
-                </span>
+                <div class="navbar-nav ms-auto">
+                    <span class="navbar-text text-muted small d-none d-md-block me-3">
+                        <i class="fas fa-clock me-1"></i> {{ datetime.now().strftime('%A, %d %b %Y') }}
+                    </span>
+
+                    <!-- TAMBAHAN: Dropdown user di navbar untuk mobile -->
+                    <div class="nav-item dropdown d-md-none">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdownMobile" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-user me-1"></i>{{ current_user.username }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{{ url_for('auth.change_password') }}">
+                                <i class="fas fa-key me-2"></i>Ganti Password
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form method="POST" action="{{ url_for('auth.logout') }}" class="dropdown-item p-0">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    <button type="submit" class="btn btn-link text-start w-100">
+                                        <i class="fas fa-sign-out-alt me-2"></i>Logout
+                                    </button>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
             </div>
         </nav>
         {% endif %}
@@ -199,7 +232,6 @@
         const sidebar = document.getElementById('sidebarWrapper');
         const overlay = document.getElementById('sidebarOverlay');
 
-        // Fungsi Buka/Tutup
         function toggleMenu() {
             if (sidebar) {
                 sidebar.classList.toggle('show-mobile');
@@ -211,7 +243,6 @@
             toggleBtn.addEventListener('click', toggleMenu);
         }
 
-        // Tutup jika overlay diklik
         if (overlay) {
             overlay.addEventListener('click', function() {
                 sidebar.classList.remove('show-mobile');

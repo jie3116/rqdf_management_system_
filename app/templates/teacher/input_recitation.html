@@ -2,11 +2,11 @@
 
 {% block content %}
 <div class="container-fluid">
-    <h1 class="h3 mb-4 text-gray-800">Input Setoran Tahfidz</h1>
+    <h1 class="h3 mb-4 text-gray-800">Input Setoran Bacaan</h1>
 
     <div class="card mb-4 border-left-primary">
         <div class="card-body py-2">
-            <form method="GET" action="{{ url_for('teacher.input_tahfidz') }}" class="row align-items-center">
+            <form method="GET" action="{{ url_for('teacher.input_recitation') }}" class="row align-items-center">
                 <div class="col-auto">
                     <label class="fw-bold mb-0">Pilih Halaqoh/Kelas:</label>
                 </div>
@@ -26,10 +26,10 @@
 
     {% if selected_class %}
     <div class="row">
-        <div class="col-lg-7">
+        <div class="col-lg-8">
             <div class="card shadow mb-4">
-                <div class="card-header py-3 bg-success text-white">
-                    <h6 class="m-0 fw-bold"><i class="fas fa-quran me-2"></i>Formulir Setoran ({{ selected_class.name }})</h6>
+                <div class="card-header py-3 bg-primary text-white">
+                    <h6 class="m-0 fw-bold"><i class="fas fa-book-reader me-2"></i>Formulir Setoran Bacaan</h6>
                 </div>
                 <div class="card-body">
                     <form method="POST">
@@ -49,42 +49,66 @@
                         </div>
 
                         <div class="mb-3">
+                            <label class="fw-bold small d-block mb-2">Sumber Bacaan</label>
                             <div class="btn-group w-100" role="group">
-                                <input type="radio" class="btn-check" name="jenis_setoran" id="ziyadah" value="ZIYADAH" checked>
-                                <label class="btn btn-outline-success" for="ziyadah">Ziyadah (Baru)</label>
+                                <input type="radio" class="btn-check" name="recitation_source" id="source-quran" value="QURAN" checked>
+                                <label class="btn btn-outline-primary" for="source-quran">Al-Qur'an (Surat/Ayat)</label>
 
-                                <input type="radio" class="btn-check" name="jenis_setoran" id="murajaah" value="MURAJAAH">
-                                <label class="btn btn-outline-warning" for="murajaah">Murajaah (Ulang)</label>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-8 mb-3">
-                                <label class="small text-muted fw-bold">Nama Surat</label>
-                                <select id="quran-surah" name="start_surah_name" class="form-select select2" required>
-                                    <option value="">Cari Surat...</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4 mb-3">
-                                <label class="small text-muted fw-bold">Ayat Awal</label>
-                                <input type="number" name="ayat_start" id="ayat_start" class="form-control" value="1" min="1" required>
+                                <input type="radio" class="btn-check" name="recitation_source" id="source-book" value="BOOK">
+                                <label class="btn btn-outline-secondary" for="source-book">Buku Latihan (Iqra/Yanbua)</label>
                             </div>
                         </div>
 
-                        <div class="row">
-                            <div class="col-md-8 mb-3">
-                                <label class="small text-muted">Sampai Surat (Opsional jika beda surat)</label>
-                                <select id="quran-surah-end" name="end_surah_name" class="form-select select2">
-                                    <option value="">-- Sama dengan awal --</option>
-                                </select>
+                        <div id="quran-section">
+                            <div class="row">
+                                <div class="col-md-8 mb-3">
+                                    <label class="small text-muted fw-bold">Nama Surat</label>
+                                    <select id="quran-surah" name="start_surah_name" class="form-select select2" required>
+                                        <option value="">Cari Surat...</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="small text-muted fw-bold">Ayat Awal</label>
+                                    <input type="number" name="ayat_start" id="ayat_start" class="form-control" value="1" min="1" required>
+                                </div>
                             </div>
-                            <div class="col-md-4 mb-3">
-                                <label class="small text-muted fw-bold">Ayat Akhir</label>
-                                <input type="number" name="ayat_end" id="ayat_end" class="form-control" required>
-                                <small class="text-danger" id="max-ayat-info" style="font-size: 10px;"></small>
+
+                            <div class="row">
+                                <div class="col-md-8 mb-3">
+                                    <label class="small text-muted">Sampai Surat (Opsional jika beda surat)</label>
+                                    <select id="quran-surah-end" name="end_surah_name" class="form-select select2">
+                                        <option value="">-- Sama dengan awal --</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="small text-muted fw-bold">Ayat Akhir</label>
+                                    <input type="number" name="ayat_end" id="ayat_end" class="form-control" required>
+                                    <small class="text-danger" id="max-ayat-info" style="font-size: 10px;"></small>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- SECTION EVALUASI BACAAN -->
+                        <div id="book-section" class="d-none">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="small text-muted fw-bold">Nama Buku</label>
+                                    <select name="book_name" class="form-select">
+                                        <option value="">-- Pilih Buku --</option>
+                                        <option value="Iqra">Iqra</option>
+                                        <option value="Yanbua">Yanbua</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label class="small text-muted fw-bold">Halaman Awal</label>
+                                    <input type="number" name="page_start" class="form-control" min="1">
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label class="small text-muted fw-bold">Halaman Akhir</label>
+                                    <input type="number" name="page_end" class="form-control" min="1">
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="card border-0 bg-light mb-3">
                             <div class="card-body">
                                 <h6 class="fw-bold mb-3">Evaluasi Bacaan</h6>
@@ -105,62 +129,28 @@
                                             <button class="btn btn-outline-secondary btn-counter" type="button" data-target="makhraj_errors" data-step="1">+</button>
                                         </div>
                                     </div>
-                                    <div class="col-md-4" id="tahfidz-errors-group">
-                                        <label class="small fw-bold text-muted">Kesalahan Tahfidz</label>
-                                        <div class="input-group">
-                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="tahfidz_errors" data-step="-1">-</button>
-                                            <input type="number" name="tahfidz_errors" id="tahfidz_errors" class="form-control text-center" value="0" min="0">
-                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="tahfidz_errors" data-step="1">+</button>
-                                        </div>
-                                    </div>
-                                    
-                                    <!-- NILAI DAN PREDIKAT DALAM SATU BARIS -->
-                                    <div class="col-md-6">
+                                    <div class="col-md-4">
                                         <label class="small fw-bold text-muted">Nilai (100 - 2×kesalahan)</label>
                                         <input type="number" id="score_preview" class="form-control text-center fw-bold" value="100" readonly>
-                                        <!-- PREDIKAT DI BAWAH NILAI -->
-                                        <div class="mt-2">
-                                            <label class="small fw-bold text-muted">Predikat</label>
-                                            <select name="quality" id="quality_select" class="form-select">
-                                                <option value="Mumtaz">Mumtaz (Lancar)</option>
-                                                <option value="Jayyid Jiddan">Jayyid Jiddan (Sangat Baik)</option>
-                                                <option value="Jayyid">Jayyid (Baik)</option>
-                                                <option value="Maqbul">Maqbul (Cukup)</option>
-                                                <option value="Naqis">Naqis (Kurang/Ulang)</option>
-                                            </select>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- CATATAN DENGAN KOTAK LEBIH BESAR -->
-                        <div class="mb-4">
-                            <label class="fw-bold small text-muted">Catatan Ustadz/Ustadzah</label>
-                            <textarea name="notes" class="form-control" rows="6" 
-                                      placeholder="Tulis catatan detail tentang perkembangan santri...
-
-Contoh:
-- Bacaan sudah lancar, perlu perbaikan tajwid mad
-- Semangat menghafal sangat baik, lanjutkan!
-- Perlu latihan murajaah lebih rutin
-- Kesalahan terbanyak pada makhorijul huruf
-- Hafalan kuat, hanya perlu perbaikan kelancaran"></textarea>
-                            <small class="form-text text-muted mt-1">
-                                <i class="fas fa-lightbulb text-warning"></i> 
-                                Catatan ini akan membantu siswa dan orangtua memahami progress tahfidz
-                            </small>
+                        <div class="mb-3">
+                            <label class="small text-muted">Catatan</label>
+                            <input type="text" name="notes" class="form-control" placeholder="Tajwid, Makhraj...">
                         </div>
 
-                        <button type="submit" class="btn btn-success w-100 fw-bold shadow">
-                            <i class="fas fa-save me-2"></i> Simpan Setoran
+                        <button type="submit" class="btn btn-primary w-100 fw-bold shadow">
+                            <i class="fas fa-save me-2"></i> Simpan
                         </button>
                     </form>
                 </div>
             </div>
         </div>
 
-        <div class="col-lg-5">
+        <div class="col-lg-4">
             <div class="alert alert-info">
                 <i class="fas fa-info-circle me-2"></i>
                 Pilih <strong>Halaqoh</strong> di atas terlebih dahulu, maka daftar santri yang muncul hanya yang ada di halaqoh tersebut.
@@ -173,46 +163,9 @@ Contoh:
         <h5 class="mt-3 text-gray-500">Silakan Pilih Halaqoh/Kelas Terlebih Dahulu</h5>
     </div>
     {% endif %}
-
 </div>
 
-<style>
-/* Custom styling untuk form input tahfidz */
-textarea[name="notes"] {
-    border: 2px solid #e3e6f0;
-    border-radius: 8px;
-    min-height: 140px;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    line-height: 1.5;
-    padding: 12px;
-}
-
-textarea[name="notes"]:focus {
-    border-color: #1cc88a;
-    box-shadow: 0 0 0 0.2rem rgba(28, 200, 138, 0.25);
-}
-
-textarea[name="notes"]::placeholder {
-    color: #6c757d;
-    font-style: italic;
-}
-
-#score_preview {
-    background-color: #f8f9fc;
-    border: 2px solid #1cc88a;
-    color: #1cc88a;
-    font-size: 1.1em;
-    font-weight: bold;
-}
-
-.card.bg-light {
-    background-color: #f8f9fc !important;
-    border: 1px solid #e3e6f0;
-}
-</style>
-
 <script>
-    // Data Surat Ringkas (Nama & Total Ayat)
     const quranData = [
         {no:1, name:"Al-Fatihah", ayat:7}, {no:2, name:"Al-Baqarah", ayat:286}, {no:3, name:"Ali 'Imran", ayat:200},
         {no:4, name:"An-Nisa'", ayat:176}, {no:5, name:"Al-Ma'idah", ayat:120}, {no:6, name:"Al-An'am", ayat:165},
@@ -265,26 +218,20 @@ textarea[name="notes"]::placeholder {
         const bookSection = document.getElementById("book-section");
         const tajwidInput = document.getElementById("tajwid_errors");
         const makhrajInput = document.getElementById("makhraj_errors");
-        const tahfidzInput = document.getElementById("tahfidz_errors");
         const scorePreview = document.getElementById("score_preview");
-        const qualitySelect = document.getElementById("quality_select");
-        const tahfidzGroup = document.getElementById("tahfidz-errors-group");
 
-        // Populate Dropdown
         quranData.forEach(surah => {
             let option = new Option(`${surah.no}. ${surah.name}`, surah.name);
-            option.setAttribute("data-ayat", surah.ayat); // Simpan max ayat di attribute
+            option.setAttribute("data-ayat", surah.ayat);
             selectStart.add(option);
 
             let option2 = new Option(`${surah.no}. ${surah.name}`, surah.name);
             selectEnd.add(option2);
         });
 
-        // Initialize Select2 (Agar bisa search nama surat)
         $(selectStart).select2({ theme: 'bootstrap-5' });
         $(selectEnd).select2({ theme: 'bootstrap-5' });
 
-        // Logic Max Ayat
         $(selectStart).on('change', function() {
             let selectedOption = this.options[this.selectedIndex];
             let maxAyat = selectedOption.getAttribute("data-ayat");
@@ -297,37 +244,28 @@ textarea[name="notes"]::placeholder {
             }
         });
 
-        function updateScore() {
-            const tajwid = parseInt(tajwidInput.value || "0", 10);
-            const makhraj = parseInt(makhrajInput.value || "0", 10);
-            const tahfidz = parseInt(tahfidzInput.value || "0", 10);
-            const total = tajwid + makhraj + (tahfidzGroup.classList.contains("d-none") ? 0 : tahfidz);
-            const score = Math.max(0, 100 - (total * 2));
-            scorePreview.value = score;
-            
-            // Auto update predikat berdasarkan nilai
-            if (score >= 90) {
-                qualitySelect.value = 'Mumtaz';
-            } else if (score >= 80) {
-                qualitySelect.value = 'Jayyid Jiddan';
-            } else if (score >= 70) {
-                qualitySelect.value = 'Jayyid';
-            } else if (score >= 60) {
-                qualitySelect.value = 'Maqbul';
+        function toggleSource() {
+            if (sourceBook.checked) {
+                quranSection.classList.add("d-none");
+                bookSection.classList.remove("d-none");
+                ayatEndInput.removeAttribute("required");
+                document.getElementById("ayat_start").removeAttribute("required");
+                selectStart.removeAttribute("required");
             } else {
-                qualitySelect.value = 'Naqis';
+                quranSection.classList.remove("d-none");
+                bookSection.classList.add("d-none");
+                ayatEndInput.setAttribute("required", "required");
+                document.getElementById("ayat_start").setAttribute("required", "required");
+                selectStart.setAttribute("required", "required");
             }
         }
 
-        function toggleTahfidzErrors() {
-            const type = document.querySelector('input[name="jenis_setoran"]:checked')?.value;
-            if (type === "ZIYADAH" || type === "MURAJAAH") {
-                tahfidzGroup.classList.remove("d-none");
-            } else {
-                tahfidzGroup.classList.add("d-none");
-                tahfidzInput.value = 0;
-            }
-            updateScore();
+        function updateScore() {
+            const tajwid = parseInt(tajwidInput.value || "0", 10);
+            const makhraj = parseInt(makhrajInput.value || "0", 10);
+            const total = tajwid + makhraj;
+            const score = Math.max(0, 100 - (total * 2));
+            scorePreview.value = score;
         }
 
         document.querySelectorAll(".btn-counter").forEach(button => {
@@ -341,15 +279,14 @@ textarea[name="notes"]::placeholder {
             });
         });
 
-        [tajwidInput, makhrajInput, tahfidzInput].forEach(input => {
+        [tajwidInput, makhrajInput].forEach(input => {
             input.addEventListener("input", updateScore);
         });
-        
-        document.querySelectorAll('input[name="jenis_setoran"]').forEach(input => {
-            input.addEventListener("change", toggleTahfidzErrors);
+        [sourceQuran, sourceBook].forEach(input => {
+            input.addEventListener("change", toggleSource);
         });
 
-        toggleTahfidzErrors();
+        toggleSource();
         updateScore();
     });
 </script>

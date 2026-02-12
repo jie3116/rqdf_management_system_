@@ -9,26 +9,11 @@
             <div class="card-body">
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <div class="mb-3">
-                        <label>NIP / Username Login</label>
-                        <input type="text" name="nip" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label>Nama Lengkap & Gelar</label>
-                        <input type="text" name="full_name" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label>Spesialisasi (Mapel)</label>
-                        <input type="text" name="specialty" class="form-control" placeholder="Cth: Matematika, Tahfidz">
-                    </div>
-                    <div class="mb-3">
-                        <label>No. WhatsApp</label>
-                        <input type="text" name="phone" class="form-control" placeholder="08xxx">
-                    </div>
-                    <div class="mb-3">
-                        <label>Password (Opsional)</label>
-                        <input type="password" name="password" class="form-control" placeholder="Default: guru123">
-                    </div>
+                    <div class="mb-3"><label>NIP / Username Login</label><input type="text" name="nip" class="form-control" required></div>
+                    <div class="mb-3"><label>Nama Lengkap & Gelar</label><input type="text" name="full_name" class="form-control" required></div>
+                    <div class="mb-3"><label>Spesialisasi (Mapel)</label><input type="text" name="specialty" class="form-control" placeholder="Cth: Matematika, Tahfidz"></div>
+                    <div class="mb-3"><label>No. WhatsApp</label><input type="text" name="phone" class="form-control" placeholder="08xxx"></div>
+                    <div class="mb-3"><label>Password (Opsional)</label><input type="password" name="password" class="form-control" placeholder="Default: guru123"></div>
                     <button type="submit" class="btn btn-success w-100">Simpan Data Guru</button>
                 </form>
             </div>
@@ -43,34 +28,25 @@
             <div class="card-body">
                 <table class="table table-hover">
                     <thead>
-                        <tr>
-                            <th>Nama</th>
-                            <th>NIP</th>
-                            <th>Spesialisasi</th>
-                            <th>Status</th>
-                            <th width="15%">Aksi</th> </tr>
-                        </tr>
+                        <tr><th>Nama</th><th>NIP</th><th>Spesialisasi</th><th>Status</th><th width="15%">Aksi</th></tr>
                     </thead>
                     <tbody>
                         {% for t in teachers %}
                         <tr>
-                            <td>
-                                <div class="fw-bold">{{ t.full_name }}</div>
-                                <small class="text-muted">{{ t.phone }}</small>
-                            </td>
+                            <td><div class="fw-bold">{{ t.full_name }}</div><small class="text-muted">{{ t.phone }}</small></td>
                             <td>{{ t.nip }}</td>
                             <td><span class="badge bg-info text-dark">{{ t.specialty }}</span></td>
-                            <td>
-                                <span class="badge bg-success">Aktif</span>
-                            </td>
-                            <td>
-                                <a href="{{ url_for('admin.edit_teacher', id=t.id) }}" class="btn btn-sm btn-warning" title="Edit">
-                                    <i class="fas fa-edit"></i>
-                                </a><button class="btn btn-sm btn-danger disabled"><i class="fas fa-trash"></i></button>
+                            <td><span class="badge bg-success">Aktif</span></td>
+                            <td class="d-flex gap-1">
+                                <a href="{{ url_for('admin.edit_teacher', id=t.id) }}" class="btn btn-sm btn-warning" title="Edit"><i class="fas fa-edit"></i></a>
+                                <form method="POST" action="{{ url_for('admin.delete_teacher', id=t.id) }}" onsubmit="return confirm('Yakin hapus data guru ini?')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    <button type="submit" class="btn btn-sm btn-danger" title="Hapus"><i class="fas fa-trash"></i></button>
+                                </form>
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="4" class="text-center">Belum ada data guru.</td></tr>
+                         <tr><td colspan="5" class="text-center">Belum ada data guru.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

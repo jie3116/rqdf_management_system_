@@ -1,4 +1,6 @@
 from flask import Flask
+from sqlalchemy import event
+from sqlalchemy.orm import with_loader_criteria
 from config import Config
 from app.extensions import db, migrate, login_manager, csrf
 
@@ -32,6 +34,22 @@ def create_app(config_class=Config):
     @login_manager.user_loader
     def load_user(user_id):
         return models.User.query.get(int(user_id))
+
+    # 4b. Global Soft Delete Filter (hindari data is_deleted muncul tanpa sengaja)
+
+    @event.listens_for(db.session, "do_orm_execute")
+    def _add_soft_delete_filter(execute_state):
+        if not execute_state.is_select:
+            return
+        if execute_state.execution_options.get("include_deleted", False):
+            return
+        execute_state.statement = execute_state.statement.options(
+            with_loader_criteria(
+                models.BaseModel,
+                lambda cls: cls.is_deleted.is_(False),
+                include_aliases=True,
+            )
+        )
 
     # 5. Registrasi Blueprint
     from app.routes.auth import auth_bp

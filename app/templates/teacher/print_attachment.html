@@ -36,47 +36,88 @@
         </div>
 
         <div class="border-bottom border-dark mb-4 pb-2">
-            <h5 class="fw-bold mb-0">RINCIAN KOMPONEN NILAI</h5>
-            <small>Nama: {{ student.full_name }} | Kelas: {{ student.current_class.name }}</small>
+            <h5 class="fw-bold mb-0">LAPORAN SETORAN TAHFIDZ & BACAAN</h5>
+            <small>Nama: {{ student.full_name }} | Kelas: {{ student.current_class.name if student.current_class else '-' }}</small>
         </div>
 
-        <table class="table table-bordered border-dark table-sm table-striped">
+        <h6 class="fw-bold mt-3">A. Setoran Tahfidz</h6>
+        <table class="table table-bordered border-dark table-sm table-striped mb-4">
             <thead class="text-center bg-light">
                 <tr>
-                    <th rowspan="2" class="align-middle">No</th>
-                    <th rowspan="2" class="align-middle">Mata Pelajaran</th>
-                    <th colspan="3">Rincian Nilai</th>
-                    <th rowspan="2" class="align-middle">Nilai Akhir</th>
-                </tr>
-                <tr>
-                    <th>Rata-rata Harian</th>
-                    <th>UTS</th>
-                    <th>UAS</th>
+                    <th>No</th>
+                    <th>Tanggal</th>
+                    <th>Jenis</th>
+                    <th>Materi</th>
+                    <th>Nilai Angka</th>
+                    <th>Predikat</th>
                 </tr>
             </thead>
             <tbody>
-                {% if final_report %}
-                    {% for item in final_report %}
+                {% if tahfidz_records %}
+                    {% for record in tahfidz_records %}
                     <tr>
                         <td class="text-center">{{ loop.index }}</td>
-                        <td class="fw-bold">{{ item.subject }}</td>
-                        <td class="text-center">{{ item.harian }}</td>
-                        <td class="text-center">{{ item.uts }}</td>
-                        <td class="text-center">{{ item.uas }}</td>
-                        <td class="text-center fw-bold bg-light">{{ item.final }}</td>
+                        <td class="text-center">{{ record.date.strftime('%d/%m/%Y') if record.date else '-' }}</td>
+                        <td class="text-center">{{ record.type.value if record.type else '-' }}</td>
+                        <td>
+                            {{ record.surah or '-' }}
+                            {% if record.ayat_start and record.ayat_end %}
+                                ({{ record.ayat_start }}-{{ record.ayat_end }})
+                            {% endif %}
+                        </td>
+                        <td class="text-center fw-bold">{{ record.score if record.score is not none else '-' }}</td>
+                        <td class="text-center">{{ record.quality or '-' }}</td>
                     </tr>
                     {% endfor %}
                 {% else %}
                     <tr>
-                        <td colspan="6" class="text-center">Belum ada data nilai.</td>
+                        <td colspan="6" class="text-center">Belum ada data setoran tahfidz.</td>
                     </tr>
                 {% endif %}
             </tbody>
         </table>
 
-        <div class="mt-3 small text-muted">
-            <em>* Catatan: Nilai Akhir dihitung dari 30% Harian + 30% UTS + 40% UAS.</em>
-        </div>
+        <h6 class="fw-bold mt-4">B. Setoran Bacaan</h6>
+        <table class="table table-bordered border-dark table-sm table-striped">
+            <thead class="text-center bg-light">
+                <tr>
+                    <th>No</th>
+                    <th>Tanggal</th>
+                    <th>Sumber</th>
+                    <th>Materi</th>
+                    <th>Nilai Angka</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if recitation_records %}
+                    {% for record in recitation_records %}
+                    <tr>
+                        <td class="text-center">{{ loop.index }}</td>
+                        <td class="text-center">{{ record.date.strftime('%d/%m/%Y') if record.date else '-' }}</td>
+                        <td class="text-center">{{ record.recitation_source.value if record.recitation_source else '-' }}</td>
+                        <td>
+                            {% if record.recitation_source and record.recitation_source.name == 'QURAN' %}
+                                {{ record.surah or '-' }}
+                                {% if record.ayat_start and record.ayat_end %}
+                                    ({{ record.ayat_start }}-{{ record.ayat_end }})
+                                {% endif %}
+                            {% else %}
+                                {{ record.book_name or '-' }}
+                                {% if record.page_start and record.page_end %}
+                                    (Hal. {{ record.page_start }}-{{ record.page_end }})
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td class="text-center fw-bold">{{ record.score if record.score is not none else '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center">Belum ada data setoran bacaan.</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
     </div>
 </body>
 </html>

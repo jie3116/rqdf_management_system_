@@ -1,8 +1,8 @@
-"""Rebuild db
+"""initial migration - fresh database
 
-Revision ID: 90447d576555
+Revision ID: 3516e071ac1b
 Revises: 
-Create Date: 2026-01-01 21:49:29.896927
+Create Date: 2026-02-10 18:31:20.105076
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '90447d576555'
+revision = '3516e071ac1b'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -39,10 +39,33 @@ def upgrade():
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('key')
     )
+    op.create_table('majlis_subjects',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('name', sa.String(length=100), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('is_active', sa.Boolean(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('school_documents',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('title', sa.String(length=150), nullable=False),
+    sa.Column('category', sa.String(length=50), nullable=True),
+    sa.Column('file_path', sa.String(length=255), nullable=True),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('is_indexed', sa.Boolean(), nullable=True),
+    sa.Column('vector_id', sa.String(length=100), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('student_candidates',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('registration_no', sa.String(length=20), nullable=True),
-    sa.Column('program_type', sa.Enum('RQDF_SORE', 'SEKOLAH_FULLDAY', name='programtype'), nullable=True),
+    sa.Column('program_type', sa.Enum('RQDF_SORE', 'SEKOLAH_FULLDAY', 'TAKHOSUS_TAHFIDZ', 'MAJLIS_TALIM', name='programtype'), nullable=True),
     sa.Column('education_level', sa.Enum('NON_FORMAL', 'SD', 'SMP', 'SMA', name='educationlevel'), nullable=True),
     sa.Column('scholarship_category', sa.Enum('NON_BEASISWA', 'TAHFIDZ_5_JUZ', 'TAHFIDZ_10_30_JUZ', 'YATIM_DHUAFA', name='scholarshipcategory'), nullable=True),
     sa.Column('status', sa.Enum('PENDING', 'INTERVIEW', 'ACCEPTED', 'REJECTED', name='registrationstatus'), nullable=True),
@@ -90,7 +113,7 @@ def upgrade():
     sa.Column('username', sa.String(length=64), nullable=False),
     sa.Column('email', sa.String(length=120), nullable=False),
     sa.Column('password_hash', sa.String(length=256), nullable=True),
-    sa.Column('role', sa.Enum('ADMIN', 'GURU', 'SISWA', 'WALI_MURID', 'TU', name='userrole'), nullable=False),
+    sa.Column('role', sa.Enum('ADMIN', 'GURU', 'SISWA', 'WALI_MURID', 'TU', 'MAJLIS_PARTICIPANT', name='userrole'), nullable=False),
     sa.Column('last_login', sa.DateTime(), nullable=True),
     sa.Column('must_change_password', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
@@ -121,6 +144,19 @@ def upgrade():
     sa.ForeignKeyConstraint(['academic_year_id'], ['academic_years.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('grade_weights',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('academic_year_id', sa.Integer(), nullable=True),
+    sa.Column('subject_id', sa.Integer(), nullable=True),
+    sa.Column('grade_type', sa.Enum('TUGAS', 'UH', 'UTS', 'UAS', 'SIKAP', name='gradetype'), nullable=True),
+    sa.Column('weight_percentage', sa.Float(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=True),
+    sa.ForeignKeyConstraint(['academic_year_id'], ['academic_years.id'], ),
+    sa.ForeignKeyConstraint(['subject_id'], ['subjects.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('notification_queues',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=True),
@@ -133,22 +169,6 @@ def upgrade():
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_table('parents',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('user_id', sa.Integer(), nullable=False),
-    sa.Column('full_name', sa.String(length=100), nullable=False),
-    sa.Column('phone', sa.String(length=20), nullable=False),
-    sa.Column('address', sa.Text(), nullable=True),
-    sa.Column('job', sa.String(length=100), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
-    sa.Column('updated_at', sa.DateTime(), nullable=True),
-    sa.Column('is_deleted', sa.Boolean(), nullable=True),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
-    with op.batch_alter_table('parents', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('ix_parents_phone'), ['phone'], unique=False)
-
     op.create_table('staff',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
@@ -172,16 +192,32 @@ def upgrade():
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('nip')
+    sa.UniqueConstraint('nip'),
+    sa.UniqueConstraint('user_id')
     )
-    op.create_table('class_rooms',
+    op.create_table('admission_fee_templates',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('name', sa.String(length=20), nullable=False),
-    sa.Column('grade_level', sa.Integer(), nullable=True),
-    sa.Column('homeroom_teacher_id', sa.Integer(), nullable=True),
+    sa.Column('program_type', sa.Enum('RQDF_SORE', 'SEKOLAH_FULLDAY', 'MAJLIS_TALIM', name='programtype'), nullable=False),
+    sa.Column('scholarship_category', sa.Enum('NON_BEASISWA', 'TAHFIDZ_5_JUZ', 'TAHFIDZ_10_30_JUZ', 'YATIM_DHUAFA', name='scholarshipcategory'), nullable=True),
+    sa.Column('fee_type_id', sa.Integer(), nullable=False),
+    sa.Column('custom_amount', sa.Float(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
+    sa.ForeignKeyConstraint(['fee_type_id'], ['fee_types.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('class_rooms',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('name', sa.String(length=50), nullable=False),
+    sa.Column('grade_level', sa.Integer(), nullable=True),
+    sa.Column('homeroom_teacher_id', sa.Integer(), nullable=True),
+    sa.Column('class_type', sa.Enum('REGULAR', 'MAJLIS_TALIM', name='classtype'), nullable=True),
+    sa.Column('academic_year_id', sa.Integer(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=True),
+    sa.ForeignKeyConstraint(['academic_year_id'], ['academic_years.id'], ),
     sa.ForeignKeyConstraint(['homeroom_teacher_id'], ['teachers.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -210,10 +246,64 @@ def upgrade():
     sa.ForeignKeyConstraint(['teacher_id'], ['teachers.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('announcements',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('title', sa.String(length=150), nullable=False),
+    sa.Column('content', sa.Text(), nullable=False),
+    sa.Column('is_active', sa.Boolean(), nullable=True),
+    sa.Column('target_class_id', sa.Integer(), nullable=True),
+    sa.Column('user_id', sa.Integer(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=True),
+    sa.ForeignKeyConstraint(['target_class_id'], ['class_rooms.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('majlis_participants',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('full_name', sa.String(length=100), nullable=False),
+    sa.Column('phone', sa.String(length=20), nullable=False),
+    sa.Column('address', sa.Text(), nullable=True),
+    sa.Column('job', sa.String(length=100), nullable=True),
+    sa.Column('majlis_class_id', sa.Integer(), nullable=True),
+    sa.Column('join_date', sa.Date(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=True),
+    sa.ForeignKeyConstraint(['majlis_class_id'], ['class_rooms.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    with op.batch_alter_table('majlis_participants', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_majlis_participants_phone'), ['phone'], unique=False)
+
+    op.create_table('parents',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('full_name', sa.String(length=100), nullable=False),
+    sa.Column('phone', sa.String(length=20), nullable=False),
+    sa.Column('address', sa.Text(), nullable=True),
+    sa.Column('job', sa.String(length=100), nullable=True),
+    sa.Column('is_majlis_participant', sa.Boolean(), nullable=True),
+    sa.Column('majlis_class_id', sa.Integer(), nullable=True),
+    sa.Column('majlis_join_date', sa.Date(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=True),
+    sa.ForeignKeyConstraint(['majlis_class_id'], ['class_rooms.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    with op.batch_alter_table('parents', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_parents_phone'), ['phone'], unique=False)
+
     op.create_table('schedules',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('class_id', sa.Integer(), nullable=True),
     sa.Column('subject_id', sa.Integer(), nullable=True),
+    sa.Column('majlis_subject_id', sa.Integer(), nullable=True),
     sa.Column('teacher_id', sa.Integer(), nullable=True),
     sa.Column('day', sa.String(length=10), nullable=True),
     sa.Column('start_time', sa.Time(), nullable=True),
@@ -222,6 +312,7 @@ def upgrade():
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.ForeignKeyConstraint(['class_id'], ['class_rooms.id'], ),
+    sa.ForeignKeyConstraint(['majlis_subject_id'], ['majlis_subjects.id'], ),
     sa.ForeignKeyConstraint(['subject_id'], ['subjects.id'], ),
     sa.ForeignKeyConstraint(['teacher_id'], ['teachers.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -245,24 +336,40 @@ def upgrade():
     sa.ForeignKeyConstraint(['current_class_id'], ['class_rooms.id'], ),
     sa.ForeignKeyConstraint(['parent_id'], ['parents.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('nis'),
-    sa.UniqueConstraint('nisn')
+    sa.PrimaryKeyConstraint('id')
     )
+    with op.batch_alter_table('students', schema=None) as batch_op:
+        batch_op.create_index('idx_student_class_academic', ['current_class_id', 'created_at'], unique=False)
+        batch_op.create_index(batch_op.f('ix_students_nis'), ['nis'], unique=True)
+        batch_op.create_index(batch_op.f('ix_students_nisn'), ['nisn'], unique=True)
+
     op.create_table('attendances',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('student_id', sa.Integer(), nullable=True),
+    sa.Column('parent_id', sa.Integer(), nullable=True),
+    sa.Column('majlis_participant_id', sa.Integer(), nullable=True),
+    sa.Column('participant_type', sa.Enum('STUDENT', 'PARENT_MAJLIS', 'EXTERNAL_MAJLIS', name='participanttype'), nullable=True),
+    sa.Column('class_id', sa.Integer(), nullable=False),
+    sa.Column('teacher_id', sa.Integer(), nullable=False),
     sa.Column('academic_year_id', sa.Integer(), nullable=True),
-    sa.Column('date', sa.Date(), nullable=True),
+    sa.Column('date', sa.Date(), nullable=False),
     sa.Column('status', sa.Enum('HADIR', 'SAKIT', 'IZIN', 'ALPA', name='attendancestatus'), nullable=True),
     sa.Column('notes', sa.String(length=100), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.ForeignKeyConstraint(['academic_year_id'], ['academic_years.id'], ),
+    sa.ForeignKeyConstraint(['class_id'], ['class_rooms.id'], ),
+    sa.ForeignKeyConstraint(['majlis_participant_id'], ['majlis_participants.id'], ),
+    sa.ForeignKeyConstraint(['parent_id'], ['parents.id'], ),
     sa.ForeignKeyConstraint(['student_id'], ['students.id'], ),
+    sa.ForeignKeyConstraint(['teacher_id'], ['teachers.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    with op.batch_alter_table('attendances', schema=None) as batch_op:
+        batch_op.create_index('idx_attendance_date_class', ['date', 'class_id'], unique=False)
+        batch_op.create_index('idx_attendance_participant_date', ['participant_type', 'date'], unique=False)
+
     op.create_table('grades',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('student_id', sa.Integer(), nullable=True),
@@ -298,6 +405,72 @@ def upgrade():
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('invoice_number')
     )
+    op.create_table('recitation_records',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('student_id', sa.Integer(), nullable=True),
+    sa.Column('parent_id', sa.Integer(), nullable=True),
+    sa.Column('majlis_participant_id', sa.Integer(), nullable=True),
+    sa.Column('participant_type', sa.Enum('STUDENT', 'PARENT_MAJLIS', 'EXTERNAL_MAJLIS', name='participanttype'), nullable=True),
+    sa.Column('teacher_id', sa.Integer(), nullable=True),
+    sa.Column('date', sa.DateTime(), nullable=True),
+    sa.Column('recitation_source', sa.Enum('QURAN', 'BOOK', name='recitationsource'), nullable=True),
+    sa.Column('surah', sa.String(length=50), nullable=True),
+    sa.Column('ayat_start', sa.Integer(), nullable=True),
+    sa.Column('ayat_end', sa.Integer(), nullable=True),
+    sa.Column('book_name', sa.String(length=100), nullable=True),
+    sa.Column('page_start', sa.Integer(), nullable=True),
+    sa.Column('page_end', sa.Integer(), nullable=True),
+    sa.Column('tajwid_errors', sa.Integer(), nullable=True),
+    sa.Column('makhraj_errors', sa.Integer(), nullable=True),
+    sa.Column('score', sa.Integer(), nullable=True),
+    sa.Column('notes', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=True),
+    sa.ForeignKeyConstraint(['majlis_participant_id'], ['majlis_participants.id'], ),
+    sa.ForeignKeyConstraint(['parent_id'], ['parents.id'], ),
+    sa.ForeignKeyConstraint(['student_id'], ['students.id'], ),
+    sa.ForeignKeyConstraint(['teacher_id'], ['teachers.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('report_cards',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('student_id', sa.Integer(), nullable=True),
+    sa.Column('class_id', sa.Integer(), nullable=True),
+    sa.Column('academic_year_id', sa.Integer(), nullable=True),
+    sa.Column('subject_id', sa.Integer(), nullable=True),
+    sa.Column('knowledge_score', sa.Float(), nullable=True),
+    sa.Column('knowledge_predikat', sa.String(length=2), nullable=True),
+    sa.Column('skill_score', sa.Float(), nullable=True),
+    sa.Column('skill_predikat', sa.String(length=2), nullable=True),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=True),
+    sa.ForeignKeyConstraint(['academic_year_id'], ['academic_years.id'], ),
+    sa.ForeignKeyConstraint(['class_id'], ['class_rooms.id'], ),
+    sa.ForeignKeyConstraint(['student_id'], ['students.id'], ),
+    sa.ForeignKeyConstraint(['subject_id'], ['subjects.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('student_attitudes',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('student_id', sa.Integer(), nullable=True),
+    sa.Column('academic_year_id', sa.Integer(), nullable=True),
+    sa.Column('spiritual_predikat', sa.String(length=20), nullable=True),
+    sa.Column('spiritual_desc', sa.Text(), nullable=True),
+    sa.Column('social_predikat', sa.String(length=20), nullable=True),
+    sa.Column('social_desc', sa.Text(), nullable=True),
+    sa.Column('sick_count', sa.Integer(), nullable=True),
+    sa.Column('permit_count', sa.Integer(), nullable=True),
+    sa.Column('alpha_count', sa.Integer(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=True),
+    sa.ForeignKeyConstraint(['academic_year_id'], ['academic_years.id'], ),
+    sa.ForeignKeyConstraint(['student_id'], ['students.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('student_class_history',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('student_id', sa.Integer(), nullable=True),
@@ -319,9 +492,37 @@ def upgrade():
     sa.ForeignKeyConstraint(['student_id'], ['students.id'], ),
     sa.PrimaryKeyConstraint('student_id', 'extracurricular_id')
     )
+    op.create_table('tahfidz_evaluations',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('student_id', sa.Integer(), nullable=True),
+    sa.Column('parent_id', sa.Integer(), nullable=True),
+    sa.Column('majlis_participant_id', sa.Integer(), nullable=True),
+    sa.Column('participant_type', sa.Enum('STUDENT', 'PARENT_MAJLIS', 'EXTERNAL_MAJLIS', name='participanttype'), nullable=True),
+    sa.Column('teacher_id', sa.Integer(), nullable=True),
+    sa.Column('date', sa.DateTime(), nullable=True),
+    sa.Column('period_type', sa.Enum('BULANAN', 'TENGAH_SEMESTER', 'SEMESTER', name='evaluationperiod'), nullable=True),
+    sa.Column('period_label', sa.String(length=30), nullable=True),
+    sa.Column('makhraj_errors', sa.Integer(), nullable=True),
+    sa.Column('tajwid_errors', sa.Integer(), nullable=True),
+    sa.Column('harakat_errors', sa.Integer(), nullable=True),
+    sa.Column('tahfidz_errors', sa.Integer(), nullable=True),
+    sa.Column('score', sa.Integer(), nullable=True),
+    sa.Column('notes', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('is_deleted', sa.Boolean(), nullable=True),
+    sa.ForeignKeyConstraint(['majlis_participant_id'], ['majlis_participants.id'], ),
+    sa.ForeignKeyConstraint(['parent_id'], ['parents.id'], ),
+    sa.ForeignKeyConstraint(['student_id'], ['students.id'], ),
+    sa.ForeignKeyConstraint(['teacher_id'], ['teachers.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('tahfidz_records',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('student_id', sa.Integer(), nullable=True),
+    sa.Column('parent_id', sa.Integer(), nullable=True),
+    sa.Column('majlis_participant_id', sa.Integer(), nullable=True),
+    sa.Column('participant_type', sa.Enum('STUDENT', 'PARENT_MAJLIS', 'EXTERNAL_MAJLIS', name='participanttype'), nullable=True),
     sa.Column('teacher_id', sa.Integer(), nullable=True),
     sa.Column('date', sa.DateTime(), nullable=True),
     sa.Column('type', sa.Enum('ZIYADAH', 'MURAJAAH', name='tahfidztype'), nullable=True),
@@ -330,10 +531,16 @@ def upgrade():
     sa.Column('ayat_start', sa.Integer(), nullable=True),
     sa.Column('ayat_end', sa.Integer(), nullable=True),
     sa.Column('quality', sa.String(length=20), nullable=True),
+    sa.Column('tajwid_errors', sa.Integer(), nullable=True),
+    sa.Column('makhraj_errors', sa.Integer(), nullable=True),
+    sa.Column('tahfidz_errors', sa.Integer(), nullable=True),
+    sa.Column('score', sa.Integer(), nullable=True),
     sa.Column('notes', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
+    sa.ForeignKeyConstraint(['majlis_participant_id'], ['majlis_participants.id'], ),
+    sa.ForeignKeyConstraint(['parent_id'], ['parents.id'], ),
     sa.ForeignKeyConstraint(['student_id'], ['students.id'], ),
     sa.ForeignKeyConstraint(['teacher_id'], ['teachers.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -341,15 +548,19 @@ def upgrade():
     op.create_table('tahfidz_summaries',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('student_id', sa.Integer(), nullable=True),
+    sa.Column('parent_id', sa.Integer(), nullable=True),
+    sa.Column('majlis_participant_id', sa.Integer(), nullable=True),
+    sa.Column('participant_type', sa.Enum('STUDENT', 'PARENT_MAJLIS', 'EXTERNAL_MAJLIS', name='participanttype'), nullable=True),
     sa.Column('total_juz', sa.Float(), nullable=True),
     sa.Column('last_surah', sa.String(length=50), nullable=True),
     sa.Column('last_ayat', sa.Integer(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
+    sa.ForeignKeyConstraint(['majlis_participant_id'], ['majlis_participants.id'], ),
+    sa.ForeignKeyConstraint(['parent_id'], ['parents.id'], ),
     sa.ForeignKeyConstraint(['student_id'], ['students.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('student_id')
+    sa.PrimaryKeyConstraint('id')
     )
     op.create_table('violations',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -387,28 +598,50 @@ def downgrade():
     op.drop_table('violations')
     op.drop_table('tahfidz_summaries')
     op.drop_table('tahfidz_records')
+    op.drop_table('tahfidz_evaluations')
     op.drop_table('student_extracurriculars')
     op.drop_table('student_class_history')
+    op.drop_table('student_attitudes')
+    op.drop_table('report_cards')
+    op.drop_table('recitation_records')
     op.drop_table('invoices')
     op.drop_table('grades')
+    with op.batch_alter_table('attendances', schema=None) as batch_op:
+        batch_op.drop_index('idx_attendance_participant_date')
+        batch_op.drop_index('idx_attendance_date_class')
+
     op.drop_table('attendances')
+    with op.batch_alter_table('students', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_students_nisn'))
+        batch_op.drop_index(batch_op.f('ix_students_nis'))
+        batch_op.drop_index('idx_student_class_academic')
+
     op.drop_table('students')
     op.drop_table('schedules')
-    op.drop_table('learning_materials')
-    op.drop_table('extracurriculars')
-    op.drop_table('class_rooms')
-    op.drop_table('teachers')
-    op.drop_table('staff')
     with op.batch_alter_table('parents', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_parents_phone'))
 
     op.drop_table('parents')
+    with op.batch_alter_table('majlis_participants', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_majlis_participants_phone'))
+
+    op.drop_table('majlis_participants')
+    op.drop_table('announcements')
+    op.drop_table('learning_materials')
+    op.drop_table('extracurriculars')
+    op.drop_table('class_rooms')
+    op.drop_table('admission_fee_templates')
+    op.drop_table('teachers')
+    op.drop_table('staff')
     op.drop_table('notification_queues')
+    op.drop_table('grade_weights')
     op.drop_table('fee_types')
     op.drop_table('audit_logs')
     op.drop_table('users')
     op.drop_table('subjects')
     op.drop_table('student_candidates')
+    op.drop_table('school_documents')
+    op.drop_table('majlis_subjects')
     op.drop_table('app_configs')
     op.drop_table('academic_years')
     # ### end Alembic commands ###

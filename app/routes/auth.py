@@ -5,6 +5,8 @@ from app.models import User
 from app.forms import LoginForm, ChangePasswordForm
 from sqlalchemy import or_
 from werkzeug.security import generate_password_hash
+from app.utils.security import is_safe_url
+
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -27,7 +29,7 @@ def check_force_password_change():
             return redirect(url_for('auth.change_password'))
 
 
-# --- ROUTE LOGIN (Sama seperti sebelumnya) ---
+# --- ROUTE LOGIN ----
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
@@ -50,7 +52,10 @@ def login():
                 return redirect(url_for('auth.change_password'))
 
             next_page = request.args.get('next')
-            return redirect(next_page) if next_page else redirect(url_for('main.dashboard'))
+            if is_safe_url(next_page):
+                return redirect(next_page)
+
+            return redirect(url_for('main.dashboard'))
         else:
             flash('Login gagal. Cek kembali Email/No HP dan password.', 'danger')
 
@@ -83,7 +88,8 @@ def change_password():
     return render_template('auth/change_password.html', form=form)
 
 
-@auth_bp.route('/logout')
+@auth_bp.route('/logout', methods=['POST'])
+@login_required
 def logout():
     logout_user()
     return redirect(url_for('auth.login'))

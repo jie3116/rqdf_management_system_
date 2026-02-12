@@ -38,6 +38,28 @@
         {% endif %}
     </div>
 
+    <div class="alert alert-light border d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h6 class="mb-1"><i class="fas fa-mosque me-2"></i>Program Majelis Ta'lim</h6>
+            {% if current_user.parent_profile.is_majlis_participant %}
+            <small class="text-muted">Anda sudah terdaftar sebagai peserta. Dashboard Majelis dipisah dari Dashboard Wali.</small>
+            {% else %}
+            <small class="text-muted">Anda belum terdaftar sebagai peserta Majelis Ta'lim.</small>
+            {% endif %}
+        </div>
+        <div class="d-flex gap-2">
+            {% if current_user.parent_profile.is_majlis_participant %}
+            <a href="{{ url_for('parent.majlis_dashboard') }}" class="btn btn-success btn-sm">
+                <i class="fas fa-mosque me-1"></i>Dashboard Majelis
+            </a>
+            {% else %}
+            <a href="{{ url_for('parent.join_majlis') }}" class="btn btn-primary btn-sm">
+                <i class="fas fa-plus me-1"></i>Daftar Sekarang
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
     <div class="row">
         <div class="col-xl-3 col-md-6 mb-4">
             <div class="card border-left-success shadow h-100 py-2">
@@ -71,6 +93,7 @@
             </div>
         </div>
 
+        {% if not current_user.parent_profile.is_majlis_participant %}
         <div class="col-xl-3 col-md-6 mb-4">
             <div class="card border-left-danger shadow h-100 py-2">
                 <div class="card-body">
@@ -84,6 +107,21 @@
                 </div>
             </div>
         </div>
+        {% else %}
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Status</div>
+                            <div class="h6 mb-0 font-weight-bold text-gray-800">Peserta Majelis Ta'lim</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-mosque fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
 
         <div class="col-xl-3 col-md-6 mb-4">
             <div class="card border-left-info shadow h-100 py-2">
@@ -107,7 +145,9 @@
         <li class="nav-item"><button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#pills-akademik"><i class="fas fa-book-reader me-1"></i> Akademik & Tahfidz</button></li>
         <li class="nav-item"><button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#pills-jadwal"><i class="fas fa-calendar-alt me-1"></i> Jadwal</button></li>
         <li class="nav-item"><button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#pills-nilai"><i class="fas fa-chart-bar me-1"></i> Nilai</button></li>
+        {% if not current_user.parent_profile.is_majlis_participant %}
         <li class="nav-item"><button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#pills-perilaku"><i class="fas fa-user-check me-1"></i> Perilaku</button></li>
+        {% endif %}
     </ul>
 
     <div class="tab-content" id="pills-tabContent">
@@ -146,8 +186,8 @@
                                     {% for inv in invoices %}
                                     <tr>
                                         <td class="small">{{ inv.invoice_number }}</td>
-                                        <td>{{ inv.fee_type.name }}</td>
-                                        <td>{{ inv.due_date.strftime('%d %b %Y') }}</td>
+                                        <td>{{ inv.fee_type.name if inv.fee_type else '-' }}</td>
+                                        <td>{{ inv.due_date.strftime('%d %b %Y') if inv.due_date else '-' }}</td>
                                         <td class="text-end">Rp {{ "{:,.0f}".format(inv.total_amount) }}</td>
                                         <td class="text-end fw-bold {% if inv.total_amount - inv.paid_amount > 0 %}text-danger{% endif %}">
                                             Rp {{ "{:,.0f}".format(inv.total_amount - inv.paid_amount) }}
@@ -186,6 +226,7 @@
                                             <th>Tanggal</th>
                                             <th>Jenis</th>
                                             <th>Surat (Ayat)</th>
+                                            <th>Nilai</th>
                                             <th>Predikat</th>
                                         </tr>
                                     </thead>
@@ -195,16 +236,93 @@
                                             <tr>
                                                 <td>{{ record.date.strftime('%d/%m/%y') }}</td>
                                                 <td>
-                                                    <span class="badge {% if record.type.name == 'ZIYADAH' %}bg-success{% else %}bg-warning text-dark{% endif %}">
-                                                        {{ record.type.name }}
+                                                    <span class="badge {% if record.type and record.type.name == 'ZIYADAH' %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                                                        {{ record.type.name if record.type else '-' }}
                                                     </span>
                                                 </td>
-                                                <td>{{ record.surah }} ({{ record.ayat_start }}-{{ record.ayat_end }})</td>
-                                                <td>{{ record.quality }}</td>
+                                                <td>{{ record.surah }}{% if record.ayat_start and record.ayat_end %} ({{ record.ayat_start }}-{{ record.ayat_end }}){% endif %}</td>
+                                                <td class="fw-bold">{{ record.score if record.score is not none else '-' }}</td>
+                                                <td>{{ record.quality or '-' }}</td>
                                             </tr>
                                             {% endfor %}
                                         {% else %}
-                                            <tr><td colspan="4" class="text-center">Belum ada data hafalan.</td></tr>
+                                            <tr><td colspan="5" class="text-center">Belum ada data hafalan.</td></tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-12">
+                    <div class="card shadow mb-4">
+                        <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-info">Riwayat Setoran Bacaan</h6></div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-striped">
+                                    <thead class="bg-info text-white">
+                                        <tr>
+                                            <th>Tanggal</th>
+                                            <th>Sumber</th>
+                                            <th>Materi</th>
+                                            <th>Nilai</th>
+                                            <th>Catatan</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% if recent_recitation %}
+                                            {% for r in recent_recitation %}
+                                            <tr>
+                                                <td>{{ r.date.strftime('%d/%m/%y') }}</td>
+                                                <td>{{ r.recitation_source.value if r.recitation_source else '-' }}</td>
+                                                <td>
+                                                    {% if r.recitation_source and r.recitation_source.name == 'BOOK' %}
+                                                        {{ r.book_name or '-' }}{% if r.page_start and r.page_end %} (Hal. {{ r.page_start }}-{{ r.page_end }}){% endif %}
+                                                    {% else %}
+                                                        {{ r.surah or '-' }}{% if r.ayat_start and r.ayat_end %} ({{ r.ayat_start }}-{{ r.ayat_end }}){% endif %}
+                                                    {% endif %}
+                                                </td>
+                                                <td class="fw-bold">{{ r.score if r.score is not none else '-' }}</td>
+                                                <td>{{ r.notes or '-' }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        {% else %}
+                                            <tr><td colspan="5" class="text-center">Belum ada data setoran bacaan.</td></tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-12">
+                    <div class="card shadow mb-4">
+                        <div class="card-header py-3"><h6 class="m-0 font-weight-bold text-warning">Evaluasi Tahfidz</h6></div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-striped">
+                                    <thead class="bg-warning text-dark">
+                                        <tr>
+                                            <th>Tanggal</th>
+                                            <th>Periode</th>
+                                            <th>Nilai</th>
+                                            <th>Catatan</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% if recent_tahfidz_evaluations %}
+                                            {% for e in recent_tahfidz_evaluations %}
+                                            <tr>
+                                                <td>{{ e.date.strftime('%d/%m/%y') }}</td>
+                                                <td>{{ e.period_type.value if e.period_type else '-' }} {% if e.period_label %}- {{ e.period_label }}{% endif %}</td>
+                                                <td class="fw-bold">{{ e.score if e.score is not none else '-' }}</td>
+                                                <td>{{ e.notes or '-' }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        {% else %}
+                                            <tr><td colspan="4" class="text-center">Belum ada evaluasi.</td></tr>
                                         {% endif %}
                                     </tbody>
                                 </table>
@@ -278,6 +396,7 @@
             </div>
         </div>
 
+        {% if not current_user.parent_profile.is_majlis_participant %}
         <div class="tab-pane fade" id="pills-perilaku">
             <div class="card shadow mb-4">
                 <div class="card-header py-3 bg-danger text-white"><h6 class="m-0 fw-bold">Catatan Kedisiplinan</h6></div>
@@ -310,6 +429,7 @@
                 </div>
             </div>
         </div>
+        {% endif %}
 
     </div>
 </div>

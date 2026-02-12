@@ -106,7 +106,9 @@
                                         <tr>
                                             <th>Tanggal</th>
                                             <th>Surat</th>
+                                            <th>Nilai</th>
                                             <th>Predikat</th>
+                                            <th>Kesalahan</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -120,11 +122,13 @@
                                                     </span>
                                                     {{ record.surah }}
                                                 </td>
-                                                <td>{{ record.quality }}</td>
+                                                <td class="fw-bold">{{ record.score if record.score is not none else '-' }}</td>
+                                                <td>{{ record.quality or '-' }}</td>
+                                                <td>{{ (record.tajwid_errors or 0) + (record.makhraj_errors or 0) + (record.tahfidz_errors or 0) }}</td>
                                             </tr>
                                             {% endfor %}
                                         {% else %}
-                                            <tr><td colspan="3" class="text-center">Belum ada data.</td></tr>
+                                            <tr><td colspan="5" class="text-center">Belum ada data.</td></tr>
                                         {% endif %}
                                     </tbody>
                                 </table>
@@ -164,6 +168,95 @@
                             {% else %}
                                 <p class="text-muted small text-center">Tidak ada pelajaran.</p>
                             {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-lg-8 mb-4">
+                    <div class="card shadow mb-4">
+                        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                            <h6 class="m-0 font-weight-bold text-warning">Evaluasi Tahfidz Terbaru</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-striped" width="100%">
+                                    <thead class="table-warning">
+                                        <tr>
+                                            <th>Tanggal</th>
+                                            <th>Periode</th>
+                                            <th>Nilai</th>
+                                            <th>Catatan</th>
+                                            <th>Kesalahan</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% if recent_tahfidz_evaluations %}
+                                            {% for evaluation in recent_tahfidz_evaluations %}
+                                            <tr>
+                                                <td>{{ evaluation.date.strftime('%d/%m/%y') }}</td>
+                                                <td>
+                                                    {{ evaluation.period_type.value }}
+                                                    {% if evaluation.period_label %}- {{ evaluation.period_label }}{% endif %}
+                                                </td>
+                                                <td class="fw-bold">{{ evaluation.score }}</td>
+                                                <td>{{ evaluation.notes or '-' }}</td>
+                                                <td>{{ (evaluation.tajwid_errors or 0) + (evaluation.makhraj_errors or 0) + (evaluation.harakat_errors or 0) + (evaluation.tahfidz_errors or 0) }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        {% else %}
+                                            <tr><td colspan="5" class="text-center">Belum ada evaluasi.</td></tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="row">
+                <div class="col-lg-8 mb-4">
+                    <div class="card shadow mb-4">
+                        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                            <h6 class="m-0 font-weight-bold text-info">Riwayat Setoran Bacaan Terbaru</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-striped" width="100%">
+                                    <thead class="table-info">
+                                        <tr>
+                                            <th>Tanggal</th>
+                                            <th>Sumber</th>
+                                            <th>Materi</th>
+                                            <th>Nilai</th>
+                                            <th>Kesalahan</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% if recent_recitations %}
+                                            {% for rec in recent_recitations %}
+                                            <tr>
+                                                <td>{{ rec.date.strftime('%d/%m/%y') }}</td>
+                                                <td>{{ rec.recitation_source.value if rec.recitation_source else '-' }}</td>
+                                                <td>
+                                                    {% if rec.recitation_source and rec.recitation_source.name == 'BOOK' %}
+                                                        {{ rec.book_name or '-' }}{% if rec.page_start and rec.page_end %} (Hal. {{ rec.page_start }}-{{ rec.page_end }}){% endif %}
+                                                    {% else %}
+                                                        {{ rec.surah or '-' }}{% if rec.ayat_start and rec.ayat_end %} ({{ rec.ayat_start }}-{{ rec.ayat_end }}){% endif %}
+                                                    {% endif %}
+                                                </td>
+                                                <td class="fw-bold">{{ rec.score if rec.score is not none else '-' }}</td>
+                                                <td>{{ (rec.tajwid_errors or 0) + (rec.makhraj_errors or 0) }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        {% else %}
+                                            <tr><td colspan="5" class="text-center">Belum ada setoran bacaan.</td></tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -219,37 +312,14 @@
                     <div class="table-responsive">
                         <table class="table table-bordered table-hover" id="dataTableNilai">
                             <thead class="bg-primary text-white">
-                                <tr>
-                                    <th>Mata Pelajaran</th>
-                                    <th>Kategori</th>
-                                    <th>Nilai</th>
-                                    <th>Guru Pengampu</th>
-                                    <th>Catatan</th>
-                                </tr>
+                                <tr><th>Mata Pelajaran</th><th>Tugas/UH (30%)</th><th>UTS (30%)</th><th>UAS (40%)</th><th>Nilai Final</th></tr>
                             </thead>
                             <tbody>
-                                {% if grades %}
-                                    {% for g in grades %}
-                                    <tr>
-                                        <td class="fw-bold">{{ g.subject.name }}</td>
-                                        <td>
-                                            <span class="badge bg-secondary">{{ g.type.value }}</span>
-                                        </td>
-                                        <td class="text-center fw-bold {% if g.score < g.subject.kkm %}text-danger{% else %}text-success{% endif %}">
-                                            {{ g.score }}
-                                        </td>
-                                        <td>{{ g.teacher.full_name }}</td>
-                                        <td class="small">{{ g.notes or '-' }}</td>
-                                    </tr>
-                                    {% endfor %}
+                                {% for r in academic_recap %}
+                                <tr><td>{{ r.subject }}</td><td>{{ r.tugas_uh }}</td><td>{{ r.uts }}</td><td>{{ r.uas }}</td><td class="fw-bold">{{ r.final }}</td></tr>
                                 {% else %}
-                                    <tr>
-                                        <td colspan="5" class="text-center text-muted py-5">
-                                            <i class="fas fa-clipboard-list fa-3x mb-3"></i><br>
-                                            Belum ada data nilai yang diinput untuk periode ini.
-                                        </td>
-                                    </tr>
-                                {% endif %}
+                                <tr><td colspan="5" class="text-center">Belum ada nilai akademik.</td></tr>
+                                {% endfor %}
                             </tbody>
                         </table>
                     </div>

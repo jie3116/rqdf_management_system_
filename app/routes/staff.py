@@ -9,8 +9,9 @@ from app.forms import PaymentForm, StudentForm  # Pastikan import ini ada
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType,
-    StudentCandidate, RegistrationStatus
+    StudentCandidate, RegistrationStatus, ProgramType, MajlisParticipant, ClassType
 )
+from app.utils.nis import generate_nis
 
 staff_bp = Blueprint('staff', __name__)
 
@@ -157,9 +158,40 @@ def generate_invoices(fee_id):
 @login_required
 @role_required(UserRole.TU)
 def list_students():
-    students = Student.query.order_by(Student.id.desc()).all()
-    # Kita reuse template admin agar hemat, atau buat folder staff/students
-    return render_template('student/list_students.html', students=students)
+    students = Student.query.filter_by(is_deleted=False).order_by(Student.id.desc()).all()
+    majlis_participants = MajlisParticipant.query.filter_by(is_deleted=False).order_by(MajlisParticipant.id.desc()).all()
+    return render_template('student/list_students.html', students=students, majlis_participants=majlis_participants)
+
+
+@staff_bp.route('/majlis/penempatan-kelas', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.TU)
+def assign_majlis_classes():
+    majlis_participants = MajlisParticipant.query.filter_by(is_deleted=False).order_by(MajlisParticipant.full_name).all()
+    majlis_classes = ClassRoom.query.filter_by(is_deleted=False, class_type=ClassType.MAJLIS_TALIM).order_by(ClassRoom.name).all()
+
+    # Fallback: jika belum ada class_type khusus, tetap izinkan pilih semua kelas agar operasional tidak terblokir
+    if not majlis_classes:
+        majlis_classes = ClassRoom.query.filter_by(is_deleted=False).order_by(ClassRoom.name).all()
+
+    if request.method == 'POST':
+        updated = 0
+        for participant in majlis_participants:
+            class_id_raw = request.form.get(f'class_{participant.id}', '').strip()
+            new_class_id = int(class_id_raw) if class_id_raw else None
+            if participant.majlis_class_id != new_class_id:
+                participant.majlis_class_id = new_class_id
+                updated += 1
+
+        db.session.commit()
+        flash(f'Penempatan kelas peserta Majlis berhasil diperbarui ({updated} perubahan).', 'success')
+        return redirect(url_for('staff.assign_majlis_classes'))
+
+    return render_template(
+        'staff/majlis_class_assignment.html',
+        majlis_participants=majlis_participants,
+        majlis_classes=majlis_classes
+    )
 
 
 @staff_bp.route('/siswa/edit/<int:student_id>', methods=['GET', 'POST'])
@@ -225,16 +257,47 @@ def accept_candidate(candidate_id):
         return redirect(url_for('staff.ppdb_detail', candidate_id=calon.id))
 
     try:
+        # Jalur khusus peserta Majelis Ta'lim (tidak membuat akun siswa/wali)
+        if calon.program_type == ProgramType.MAJLIS_TALIM:
+            nomor_majelis = calon.personal_phone or calon.parent_phone
+            if not nomor_majelis:
+                raise ValueError('Nomor WhatsApp peserta Majelis tidak ditemukan.')
+
+            majlis_user = User.query.filter_by(username=nomor_majelis).first()
+            if not majlis_user:
+                majlis_user = User(
+                    username=nomor_majelis,
+                    email=f"majlis.{calon.id}@sekolah.id",
+                    password_hash=generate_password_hash("123456"),
+                    role=UserRole.MAJLIS_PARTICIPANT,
+                    must_change_password=True
+                )
+                db.session.add(majlis_user)
+                db.session.flush()
+
+            if not majlis_user.majlis_profile:
+                db.session.add(MajlisParticipant(
+                    user_id=majlis_user.id,
+                    full_name=calon.full_name,
+                    phone=nomor_majelis,
+                    address=calon.address,
+                    job=calon.personal_job,
+                ))
+
+            calon.status = RegistrationStatus.ACCEPTED
+            db.session.commit()
+            flash(f'Peserta Majelis {calon.full_name} berhasil diterima.', 'success')
+            return redirect(url_for('staff.ppdb_detail', candidate_id=candidate_id))
+
         # --- 1. PROSES AKUN ---
-        tahun_masuk = datetime.now().year
-        urutan = Student.query.filter(Student.nis.like(f"{tahun_masuk}%")).count() + 1
-        nis_baru = f"{tahun_masuk}{str(urutan).zfill(4)}"
+        nis_baru = generate_nis()
 
         # User Wali
         user_wali = User.query.filter_by(username=calon.parent_phone).first()
         if not user_wali:
             user_wali = User(username=calon.parent_phone, email=f"wali.{nis_baru}@sekolah.id",
-                             password_hash=generate_password_hash("123456"), role=UserRole.WALI_MURID,
+                             password_hash=generate_password_hash(calon.parent_phone or "123456"),
+                             role=UserRole.WALI_MURID,
                              must_change_password=True)
             db.session.add(user_wali)
             db.session.flush()

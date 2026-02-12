@@ -5,11 +5,44 @@
     <h1 class="h3 mb-0 text-gray-800">Data Santri</h1>
     
     {% if current_user.role.value == 'admin' %}
-        <a href="{{ url_for('admin.add_student') }}" class="btn btn-sm btn-primary shadow-sm">
-            <i class="fas fa-user-plus fa-sm text-white-50 me-1"></i> Input Santri Manual
-        </a>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('admin.add_student') }}" class="btn btn-sm btn-primary shadow-sm">
+                <i class="fas fa-user-plus fa-sm text-white-50 me-1"></i> Input Santri Manual
+            </a>
+            <button class="btn btn-sm btn-outline-primary shadow-sm" type="button" data-bs-toggle="collapse" data-bs-target="#uploadSiswa">
+                <i class="fas fa-file-upload fa-sm me-1"></i> Upload CSV/XLSX
+            </button>
+        </div>
     {% endif %}
 </div>
+
+{% if current_user.role.value == 'admin' %}
+<div class="collapse mb-3" id="uploadSiswa">
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('admin.upload_students') }}" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-6">
+                        <label class="form-label">File CSV/XLSX</label>
+                        <input type="file" name="file" class="form-control" accept=".csv,.xlsx" required>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-text">
+                            Kolom wajib: full_name, gender (L/P), date_of_birth (YYYY-MM-DD), parent_phone.
+                            Kolom opsional: nis (otomatis jika kosong), class_name/kelas, place_of_birth, address, email,
+                            parent_name, parent_job.
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-outline-primary">Upload Siswa</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div class="card shadow mb-4">
     <div class="card-header py-3 bg-primary text-white">
@@ -89,6 +122,31 @@
         </div>
     </div>
 </div>
+
+{% if majlis_participants is defined %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3 bg-success text-white">
+        <h6 class="m-0 fw-bold"><i class="fas fa-mosque me-2"></i>Peserta Majlis Ta'lim Aktif</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead class="table-light"><tr><th>Nama</th><th>No WA</th><th>Kelas Majlis</th><th>Alamat</th></tr></thead>
+                <tbody>
+                    {% for m in majlis_participants %}
+                    <tr>
+                        <td class="fw-bold">{{ m.full_name }}</td><td>{{ m.phone }}</td>
+                        <td>{{ m.majlis_class.name if m.majlis_class else '-' }}</td><td>{{ m.address or '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center text-muted">Belum ada peserta majlis ta'lim.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <script>
 document.getElementById('searchBox').addEventListener('keyup', function() {

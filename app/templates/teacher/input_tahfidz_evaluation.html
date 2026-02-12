@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="h3 mb-4 text-gray-800">Evaluasi Tahfidz</h1>
+
+    <div class="card mb-4 border-left-primary">
+        <div class="card-body py-2">
+            <form method="GET" action="{{ url_for('teacher.input_tahfidz_evaluation') }}" class="row align-items-center">
+                <div class="col-auto">
+                    <label class="fw-bold mb-0">Pilih Halaqoh/Kelas:</label>
+                </div>
+                <div class="col-md-6">
+                    <select name="class_id" class="form-select" onchange="this.form.submit()">
+                        <option value="">-- Pilih Halaqoh --</option>
+                        {% for cls in my_classes %}
+                        <option value="{{ cls.id }}" {% if selected_class and selected_class.id == cls.id %}selected{% endif %}>
+                            {{ cls.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if selected_class %}
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-warning text-dark">
+                    <h6 class="m-0 fw-bold"><i class="fas fa-clipboard-check me-2"></i>Form Evaluasi Tahfidz</h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                        <div class="mb-3">
+                            <label class="fw-bold small">Nama Santri</label>
+                            <select name="student_id" class="form-select select2" required>
+                                <option value="">-- Pilih Santri --</option>
+                                {% for student in students %}
+                                <option value="S-{{ student.id }}">{{ student.full_name }} (Santri - {{ student.nis }})</option>
+                                {% endfor %}
+                                {% for participant in majlis_participants %}
+                                <option value="M-{{ participant.id }}">{{ participant.full_name }} (Majlis Ta'lim)</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="fw-bold small">Periode Evaluasi</label>
+                                <select name="period_type" class="form-select" required>
+                                    {% for period in EvaluationPeriod %}
+                                    <option value="{{ period.name }}">{{ period.value }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="fw-bold small">Keterangan (contoh: Juli 2024)</label>
+                                <input type="text" name="period_label" class="form-control" placeholder="Bulan / Semester">
+                            </div>
+                        </div>
+
+                        <div class="card border-0 bg-light mb-3">
+                            <div class="card-body">
+                                <h6 class="fw-bold mb-3">Komponen Penilaian</h6>
+                                <div class="row g-3">
+                                    <div class="col-md-3">
+                                        <label class="small fw-bold text-muted">Kesalahan Tajwid</label>
+                                        <div class="input-group">
+                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="tajwid_errors" data-step="-1">-</button>
+                                            <input type="number" name="tajwid_errors" id="tajwid_errors" class="form-control text-center" value="0" min="0">
+                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="tajwid_errors" data-step="1">+</button>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="small fw-bold text-muted">Kesalahan Makhraj</label>
+                                        <div class="input-group">
+                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="makhraj_errors" data-step="-1">-</button>
+                                            <input type="number" name="makhraj_errors" id="makhraj_errors" class="form-control text-center" value="0" min="0">
+                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="makhraj_errors" data-step="1">+</button>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="small fw-bold text-muted">Kesalahan Harakat</label>
+                                        <div class="input-group">
+                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="harakat_errors" data-step="-1">-</button>
+                                            <input type="number" name="harakat_errors" id="harakat_errors" class="form-control text-center" value="0" min="0">
+                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="harakat_errors" data-step="1">+</button>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="small fw-bold text-muted">Kesalahan Tahfidz</label>
+                                        <div class="input-group">
+                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="tahfidz_errors" data-step="-1">-</button>
+                                            <input type="number" name="tahfidz_errors" id="tahfidz_errors" class="form-control text-center" value="0" min="0">
+                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="tahfidz_errors" data-step="1">+</button>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="small fw-bold text-muted">Nilai (100 - 2×kesalahan)</label>
+                                        <input type="number" id="score_preview" class="form-control text-center fw-bold" value="100" readonly>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="small text-muted">Catatan</label>
+                            <input type="text" name="notes" class="form-control" placeholder="Catatan evaluasi">
+                        </div>
+
+                        <button type="submit" class="btn btn-warning w-100 fw-bold shadow">
+                            <i class="fas fa-save me-2"></i> Simpan Evaluasi
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                Pilih <strong>Halaqoh</strong> di atas terlebih dahulu, maka daftar santri yang muncul hanya yang ada di halaqoh tersebut.
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+        <img src="{{ url_for('static', filename='img/undraw_reading_time_re_phf7.svg') }}" style="width: 200px; opacity: 0.5">
+        <h5 class="mt-3 text-gray-500">Silakan Pilih Halaqoh/Kelas Terlebih Dahulu</h5>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const tajwidInput = document.getElementById("tajwid_errors");
+        const makhrajInput = document.getElementById("makhraj_errors");
+        const harakatInput = document.getElementById("harakat_errors");
+        const tahfidzInput = document.getElementById("tahfidz_errors");
+        const scorePreview = document.getElementById("score_preview");
+
+        function updateScore() {
+            const tajwid = parseInt(tajwidInput.value || "0", 10);
+            const makhraj = parseInt(makhrajInput.value || "0", 10);
+            const harakat = parseInt(harakatInput.value || "0", 10);
+            const tahfidz = parseInt(tahfidzInput.value || "0", 10);
+            const total = tajwid + makhraj + harakat + tahfidz;
+            const score = Math.max(0, 100 - (total * 2));
+            scorePreview.value = score;
+        }
+
+        document.querySelectorAll(".btn-counter").forEach(button => {
+            button.addEventListener("click", function() {
+                const target = document.getElementById(this.dataset.target);
+                const step = parseInt(this.dataset.step, 10);
+                const current = parseInt(target.value || "0", 10);
+                const next = Math.max(0, current + step);
+                target.value = next;
+                updateScore();
+            });
+        });
+
+        [tajwidInput, makhrajInput, harakatInput, tahfidzInput].forEach(input => {
+            input.addEventListener("input", updateScore);
+        });
+
+        updateScore();
+    });
+</script>
+{% endblock %}

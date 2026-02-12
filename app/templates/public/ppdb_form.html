@@ -23,6 +23,14 @@
                     <div class="mb-3">
                         <label class="form-label fw-bold">{{ form.program_type.label.text }} <span class="text-danger">*</span></label>
                         {{ form.program_type(class="form-select form-select-lg bg-light border-primary", id="programSelector") }}
+
+                        <div id="majlis_info" class="alert alert-success mt-3" style="display: none;">
+                            <h6><i class="fas fa-mosque me-2"></i>Majelis Ta'lim IQRA WATTAQI</h6>
+                            <ul class="mb-0 small">
+                                <li>Khusus untuk <strong>Ibu-ibu</strong> yang ingin belajar agama Islam</li>
+                                <li>Materi: Al-Qur'an, Tajwid, Tahfidz, Fiqh Wanita, Akhlak</li>
+                            </ul>
+                        </div>
                     </div>
 
                     <div id="group_formal_options">
@@ -100,24 +108,26 @@
                         {% endfor %}
                     </div>
 
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">NIK (16 Digit)</label>
-                            {{ form.nik(class="form-control", maxlength="16") }}
+                    <div id="optional_data">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">NIK (16 Digit)</label>
+                                {{ form.nik(class="form-control", maxlength="16") }}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">No. Kartu Keluarga</label>
+                                {{ form.kk_number(class="form-control", maxlength="16") }}
+                            </div>
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">No. Kartu Keluarga</label>
-                            {{ form.kk_number(class="form-control", maxlength="16") }}
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Nama Panggilan</label>
-                            {{ form.nickname(class="form-control") }}
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Usia</label>
-                            {{ form.age(class="form-control") }}
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Nama Panggilan</label>
+                                {{ form.nickname(class="form-control") }}
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Usia</label>
+                                {{ form.age(class="form-control") }}
+                            </div>
                         </div>
                     </div>
 
@@ -126,7 +136,7 @@
                         {{ form.address(class="form-control", rows="2") }}
                     </div>
 
-                    <div class="row">
+                    <div id="education_background" class="row">
                         <div class="col-md-8 mb-3">
                             <label class="form-label fw-bold">{{ form.previous_school.label.text }} <span class="text-danger">*</span></label>
                             {{ form.previous_school(class="form-control") }}
@@ -136,10 +146,27 @@
                             {{ form.previous_school_class(class="form-control") }}
                         </div>
                     </div>
+
+                    <div id="majlis_personal_data" style="display: none;">
+                        <div class="alert alert-info">
+                            <strong>Data Kontak & Pekerjaan</strong>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">{{ form.personal_phone.label.text }} <span class="text-danger">*</span></label>
+                                {{ form.personal_phone(class="form-control", placeholder="08xxxxxxxxxx") }}
+                                <small class="text-muted">Nomor WhatsApp Anda</small>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">{{ form.personal_job.label.text }} <span class="text-danger">*</span></label>
+                                {{ form.personal_job(class="form-control", placeholder="Contoh: Ibu Rumah Tangga") }}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="card shadow-sm border-0 mb-4">
+            <div class="card shadow-sm border-0 mb-4" id="parent_data">
                 <div class="card-header bg-white py-3">
                     <h5 class="m-0 fw-bold text-primary">3. Data Orang Tua</h5>
                 </div>
@@ -176,7 +203,7 @@
                 </div>
             </div>
 
-            <div class="card shadow-sm border-0 mb-4 bg-light" id="section_rqdf" style="display:none;">
+            <div class="card shadow-sm border-0 mb-4 bg-light" id="rqdf_options" style="display:none;">
                 <div class="card-header bg-success text-white py-3">
                     <h5 class="m-0 fw-bold">Detail Kelas Reguler (Sore)</h5>
                 </div>
@@ -198,12 +225,12 @@
                 </div>
             </div>
 
-            <div class="card shadow-sm border-0 mb-4" id="section_biaya_sekolah">
+            <div class="card shadow-sm border-0 mb-4" id="payment_details">
                 <div class="card-header bg-warning text-dark py-3">
                     <h5 class="m-0 fw-bold">Rincian Pembiayaan</h5>
                 </div>
                 <div class="card-body p-4">
-                    <h5 class="fw-bold mb-3" id="judul_biaya">Estimasi Biaya</h5>
+                    <h5 class="fw-bold mb-3" id="payment_caption">Estimasi Biaya</h5>
 
                     <div class="table-responsive">
                         <table class="table table-bordered table-striped table-sm">
@@ -213,26 +240,25 @@
                                     <th class="text-end">Nominal</th>
                                 </tr>
                             </thead>
-                            <tbody id="tabel_biaya_body"></tbody>
+                            <tbody id="payment_table_body"></tbody>
                             <tfoot class="table-dark">
                                 <tr>
                                     <th>Total Estimasi</th>
-                                    <th class="text-end" id="total_biaya">Rp 0</th>
+                                    <th class="text-end" id="payment_total">Rp 0</th>
                                 </tr>
                             </tfoot>
                         </table>
-                    </div>
-
-                    <div class="form-check mt-3">
-                        {{ form.finance_agreement(class="form-check-input") }}
-                        <label class="form-check-label fw-bold" for="finance_agreement">
-                            {{ form.finance_agreement.label.text }}
-                        </label>
                     </div>
                 </div>
             </div>
 
             <div class="d-grid mb-5">
+                <div class="form-check mt-2 mb-3" id="agreement_section">
+                    {{ form.finance_agreement(class="form-check-input") }}
+                    <label class="form-check-label fw-bold" for="finance_agreement">
+                        {{ form.finance_agreement.label.text }}
+                    </label>
+                </div>
                 {{ form.submit(class="btn btn-primary btn-lg fw-bold py-3 shadow") }}
             </div>
         </form>
@@ -240,209 +266,264 @@
 </div>
 
 <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        const programSelect = document.getElementById("programSelector");
-        const educationSelect = document.getElementById("educationSelector");
-        const scholarshipSelect = document.getElementById("scholarshipSelector");
-        const uniformSelect = document.getElementById("uniformSelector");
-        const infaqSelect = document.getElementById("infaqSelector");
+document.addEventListener('DOMContentLoaded', function() {
+    const programSelect = document.getElementById('programSelector');
+    const educationSelect = document.getElementById('educationSelector');
+    const scholarshipSelect = document.getElementById('scholarshipSelector');
+    const uniformSelect = document.getElementById('uniformSelector');
+    const infaqSelect = document.getElementById('infaqSelector');
 
-        // Sections & Divs
-        const sectionRqdf = document.getElementById("section_rqdf");
-        const groupFormalOptions = document.getElementById("group_formal_options");
-        const divJenjang = document.getElementById("div_jenjang");
-        const divJalurBeasiswa = document.getElementById("div_jalur_beasiswa");
+    const majlisInfo = document.getElementById('majlis_info');
+    const majlisPersonalData = document.getElementById('majlis_personal_data');
+    const parentData = document.getElementById('parent_data');
+    const educationBackground = document.getElementById('education_background');
+    const optionalData = document.getElementById('optional_data');
+    const agreementSection = document.getElementById('agreement_section');
 
-        // SD Logic
-        const sdSpecialOptions = document.getElementById("sd_special_options");
-        const sdMakanOption = document.getElementById("sd_makan_option");
-        const sdRadios = document.querySelectorAll(".sd-radio");
-        const radioPondok = document.getElementById("sd_pondok");
-        const radioMakanYa = document.getElementById("makan_ya");
+    const groupFormalOptions = document.getElementById('group_formal_options');
+    const divJenjang = document.getElementById('div_jenjang');
+    const divJalurBeasiswa = document.getElementById('div_jalur_beasiswa');
+    const sdSpecialOptions = document.getElementById('sd_special_options');
+    const sdMakanOption = document.getElementById('sd_makan_option');
+    const sdRadios = document.querySelectorAll('.sd-radio');
+    const radioPondok = document.getElementById('sd_pondok');
+    const radioMakanYa = document.getElementById('makan_ya');
 
-        // Output
-        const tabelBody = document.getElementById("tabel_biaya_body");
-        const totalBiayaEl = document.getElementById("total_biaya");
-        const judulBiaya = document.getElementById("judul_biaya");
+    const rqdfOptions = document.getElementById('rqdf_options');
+    const paymentDetails = document.getElementById('payment_details');
+    const paymentCaption = document.getElementById('payment_caption');
+    const paymentTableBody = document.getElementById('payment_table_body');
+    const paymentTotal = document.getElementById('payment_total');
 
-        function formatRupiah(angka) {
-            return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka);
+    function formatRupiah(amount) {
+        return new Intl.NumberFormat('id-ID', {
+            style: 'currency',
+            currency: 'IDR',
+            minimumFractionDigits: 0
+        }).format(amount);
+    }
+
+    const BIAYA_SD_NON_PONDOK_DGN_MAKAN = [
+        { item: 'Biaya Pendaftaran', harga: 400000 },
+        { item: 'SPP Bulan Pertama', harga: 500000 },
+        { item: 'Wakaf Bangunan', harga: 500000 },
+        { item: 'Biaya Buku', harga: 250000 },
+        { item: 'Raport Pesantren', harga: 50000 }
+    ];
+
+    const BIAYA_SD_NON_PONDOK_TDK_DGN_MAKAN = [
+        { item: 'Biaya Pendaftaran', harga: 400000 },
+        { item: 'SPP Bulan Pertama', harga: 300000 },
+        { item: 'Wakaf Bangunan', harga: 500000 },
+        { item: 'Biaya Buku', harga: 250000 },
+        { item: 'Raport Pesantren', harga: 50000 }
+    ];
+
+    const BIAYA_SD_PONDOK = [
+        { item: 'Biaya Pendaftaran', harga: 400000 },
+        { item: 'SPP Bulan Pertama', harga: 1000000 },
+        { item: 'Wakaf Bangunan', harga: 500000 },
+        { item: 'Biaya Lemari', harga: 500000 },
+        { item: 'Biaya Kasur', harga: 500000 },
+        { item: 'Biaya Peralatan Makan', harga: 100000 },
+        { item: 'Biaya Raport Pesantren', harga: 50000 },
+        { item: 'Biaya Buku', harga: 250000 }
+    ];
+
+    const BIAYA_SEKOLAH_NORMAL = [
+        { item: 'Pendaftaran', harga: 200000 },
+        { item: 'Seragam Batik', harga: 100000 },
+        { item: 'Infaq Bulanan (Juli)', harga: 650000 },
+        { item: 'Wakaf Bangunan', harga: 1000000 },
+        { item: 'Fasilitas Lemari', harga: 500000 },
+        { item: 'Fasilitas Kasur', harga: 500000 },
+        { item: 'Orientasi Siswa', harga: 150000 },
+        { item: 'Wakaf Perpustakaan', harga: 100000 },
+        { item: 'Infaq Qurban', harga: 100000 },
+        { item: 'Raport Pesantren', harga: 65000 },
+        { item: 'Adm Sekolah Formal', harga: 500000 },
+        { item: 'Infaq Kegiatan', harga: 100000 }
+    ];
+
+    const BIAYA_SEKOLAH_BEASISWA = [
+        { item: 'Pendaftaran', harga: 100000 },
+        { item: 'Infaq Bulanan', harga: 325000 },
+        { item: 'Wakaf Bangunan', harga: 500000 },
+        { item: 'Fasilitas Lemari', harga: 250000 },
+        { item: 'Fasilitas Kasur', harga: 250000 },
+        { item: 'Orientasi Siswa', harga: 75000 },
+        { item: 'Raport Pesantren', harga: 65000 },
+        { item: 'Wakaf Perpustakaan', harga: 50000 },
+        { item: 'Infaq Kegiatan', harga: 50000 },
+        { item: 'Infaq Qurban', harga: 50000 },
+        { item: 'Seragam Batik', harga: 100000 },
+        { item: 'Adm Sekolah Formal', harga: 500000 }
+    ];
+
+    const BIAYA_TAKHOSUS = [
+        { item: 'Pendaftaran', harga: 200000 },
+        { item: 'Infaq Bulanan (Juli)', harga: 650000 },
+        { item: 'Wakaf Bangunan', harga: 1000000 },
+        { item: 'Fasilitas Lemari', harga: 500000 },
+        { item: 'Fasilitas Kasur', harga: 500000 },
+        { item: 'Wakaf Perpustakaan', harga: 100000 },
+        { item: 'Infaq Qurban', harga: 100000 },
+        { item: 'Raport Pesantren', harga: 65000 },
+        { item: 'Infaq Kegiatan', harga: 100000 }
+    ];
+
+    function hitungBiayaRQDF() {
+        const biayaList = [
+            { item: 'Infaq Pendaftaran', harga: 300000 },
+            { item: 'Uang Dana Semesteran', harga: 50000 },
+            { item: 'Infaq Bulanan', harga: 150000 },
+            { item: 'Atribut (Syal) & Buku', harga: 100000 },
+            { item: 'Raport Pesantren', harga: 65000 }
+        ];
+
+        const infaqVal = infaqSelect ? parseInt(infaqSelect.value, 10) || 0 : 0;
+        if (infaqVal > 0) biayaList.push({ item: 'Infaq Pembangunan', harga: infaqVal });
+
+        const size = uniformSelect ? uniformSelect.value : '';
+        let hargaSeragam = 0;
+        if (size === 'S' || size === 'M') hargaSeragam = 345000;
+        else if (size === 'L' || size === 'XL') hargaSeragam = 355000;
+        else if (size === 'XXL') hargaSeragam = 380000;
+
+        if (hargaSeragam > 0) biayaList.push({ item: `Seragam (${size})`, harga: hargaSeragam });
+
+        return biayaList;
+    }
+
+    function renderTabel(dataBiaya) {
+        if (!paymentTableBody || !paymentTotal) {
+            return;
         }
 
-        // --- DATA BIAYA ---
-        const BIAYA_SD_NON_PONDOK_DGN_MAKAN = [
-            {item: "Biaya Pendaftaran", harga: 400000},
-            {item: "SPP Bulan Pertama", harga: 500000},
-            {item: "Wakaf Bangunan", harga: 500000},
-            {item: "Biaya Buku", harga: 250000},
-            {item: "Raport Pesantren", harga: 50000}
+        let html = '';
+        let total = 0;
+        dataBiaya.forEach((d) => {
+            html += `<tr><td>${d.item}</td><td class="text-end">${formatRupiah(d.harga)}</td></tr>`;
+            total += d.harga;
+        });
 
-        ];
-        const BIAYA_SD_NON_PONDOK_TDK_DGN_MAKAN = [
-            {item: "Biaya Pendaftaran", harga: 400000},
-            {item: "SPP Bulan Pertama", harga: 300000},
-            {item: "Wakaf Bangunan", harga: 500000},
-            {item: "Biaya Buku", harga: 250000},
-            {item: "Raport Pesantren", harga: 50000}
-        ];
-        const BIAYA_SD_PONDOK = [
-            {item: "Biaya Pendaftaran", harga: 400000},
-            {item: "SPP Bulan Pertama", harga: 1000000},
-            {item: "Wakaf Bangunan", harga: 500000},
-            {item: "Biaya Lemari", harga: 500000},
-            {item: "Biaya Kasur", harga: 500000},
-            {item: "Biaya Peralatan Makan", harga: 100000},
-            {item: "Biaya Raport Pesantren", harga: 50000},
-            {item: "Biaya Buku", harga: 250000}
-        ];
+        paymentTableBody.innerHTML = html;
+        paymentTotal.textContent = formatRupiah(total);
+    }
 
-        const BIAYA_SEKOLAH_NORMAL = [
-            {item: "Pendaftaran", harga: 200000},
-            {item: "Seragam Batik", harga: 100000},
-            {item: "Infaq Bulanan (Juli)", harga: 650000},
-            {item: "Wakaf Bangunan", harga: 1000000},
-            {item: "Fasilitas Lemari", harga: 500000},
-            {item: "Fasilitas Kasur", harga: 500000},
-            {item: "Orientasi Siswa", harga: 150000},
-            {item: "Wakaf Perpustakaan", harga: 100000},
-            {item: "Infaq Qurban", harga: 100000},
-            {item: "Raport Pesantren", harga: 65000},
-            {item: "Adm Sekolah Formal", harga: 500000},
-            {item: "Infaq Kegiatan", harga: 100000}
-        ];
+    function toggleMajlisFields(isMajlis) {
+        if (majlisInfo) majlisInfo.style.display = isMajlis ? 'block' : 'none';
+        if (majlisPersonalData) majlisPersonalData.style.display = isMajlis ? 'block' : 'none';
+        if (parentData) parentData.style.display = isMajlis ? 'none' : 'block';
+        if (educationBackground) educationBackground.style.display = isMajlis ? 'none' : 'flex';
+        if (optionalData) optionalData.style.display = isMajlis ? 'none' : 'block';
 
-        const BIAYA_SEKOLAH_BEASISWA = [
-            {item: "Pendaftaran", harga: 100000},
-            {item: "Infaq Bulanan", harga: 325000},
-            {item: "Wakaf Bangunan", harga: 500000},
-            {item: "Fasilitas Lemari", harga: 250000},
-            {item: "Fasilitas Kasur", harga: 250000},
-            {item: "Orientasi Siswa", harga: 75000},
-            {item: "Raport", harga: 65000},
-            {item: "Wakaf Perpustakaan", harga: 50000},
-            {item: "Infaq Kegiatan", harga: 50000},
-            {item: "Infaq Qurban", harga: 50000},
-            {item: "Seragam Batik", harga: 100000},
-            {item: "Adm Sekolah Formal", harga: 500000}
-        ];
+        const personalJobField = document.querySelector('[name="personal_job"]');
+        const fatherNameField = document.querySelector('[name="father_name"]');
+        const motherNameField = document.querySelector('[name="mother_name"]');
+        const previousSchoolField = document.querySelector('[name="previous_school"]');
+        const agreementLabel = agreementSection ? agreementSection.querySelector('label') : null;
 
-                const BIAYA_TAKHOSUS = [
-            {item: "Pendaftaran", harga: 200000},
-            {item: "Infaq Bulanan (Juli)", harga: 650000},
-            {item: "Wakaf Bangunan", harga: 1000000},
-            {item: "Fasilitas Lemari", harga: 500000},
-            {item: "Fasilitas Kasur", harga: 500000},
-            {item: "Wakaf Perpustakaan", harga: 100000},
-            {item: "Infaq Qurban", harga: 100000},
-            {item: "Raport Pesantren", harga: 65000},
-            {item: "Infaq Kegiatan", harga: 100000}
-        ];
-
-
-        function hitungBiayaRQDF() {
-            let biayaList = [
-                {item: "Infaq Pendaftaran", harga: 300000},
-                {item: "Uang Dana Semesteran", harga: 50000},
-                {item: "Infaq Bulanan", harga: 150000},
-                {item: "Atribut (Syal) & Buku", harga: 100000},
-                {item: "Raport", harga: 65000}
-            ];
-            let infaqVal = parseInt(infaqSelect.value) || 0;
-            if(infaqVal > 0) biayaList.push({item: "Infaq Pembangunan", harga: infaqVal});
-
-            let size = uniformSelect.value;
-            let hargaSeragam = 0;
-            if (size === 'S' || size === 'M') hargaSeragam = 345000;
-            else if (size === 'L' || size === 'XL') hargaSeragam = 355000;
-            else if (size === 'XXL') hargaSeragam = 380000;
-            if(hargaSeragam > 0) biayaList.push({item: `Seragam (${size})`, harga: hargaSeragam});
-
-            return biayaList;
-        }
-
-        function renderTabel(dataBiaya) {
-            let html = "";
-            let total = 0;
-            dataBiaya.forEach(d => {
-                let classText = d.harga === 0 ? "text-danger" : "text-dark";
-                html += `<tr><td>${d.item}</td><td class="text-end ${classText}">${formatRupiah(d.harga)}</td></tr>`;
-                total += d.harga;
-            });
-            tabelBody.innerHTML = html;
-            totalBiayaEl.innerHTML = formatRupiah(total);
-        }
-
-        // --- UPDATE FORM LOGIC ---
-        function updateForm() {
-            const program = programSelect.value;
-
-            // 1. Reset Display
-            sectionRqdf.style.display = "none";
-            groupFormalOptions.style.display = "block";
-            sdSpecialOptions.style.display = "none";
-            divJenjang.style.display = "block";
-            divJalurBeasiswa.style.display = "block";
-
-            // 2. Logic Per Program
-
-            if (program === 'RQDF_SORE') {
-                sectionRqdf.style.display = "block";
-                groupFormalOptions.style.display = "none";
-                judulBiaya.innerText = "Rincian Biaya Kelas Reguler RQDF";
-                renderTabel(hitungBiayaRQDF());
-
-            } else if (program === 'TAKHOSUS TAHFIDZ') {
-                divJenjang.style.display = "none";
-                divJalurBeasiswa.style.display = "none";
-                judulBiaya.innerText = "Rincian Biaya Takhosus Tahfidz";
-                renderTabel(BIAYA_TAKHOSUS);
-
-            } else {
-                // Program SBQ (Sekolah Bina Qur'an)
-                const jenjang = educationSelect.value;
-
-                if (jenjang === 'SD') {
-                    // SD Logic: Hide Jalur Beasiswa, Show Special Option
-                    divJalurBeasiswa.style.display = "none";
-                    sdSpecialOptions.style.display = "block";
-
-                    if (radioPondok.checked) {
-                        sdMakanOption.style.display = "none";
-                        judulBiaya.innerText = "Biaya SD Bina Qur'an (Pondok)";
-                        renderTabel(BIAYA_SD_PONDOK);
-                    } else {
-                        sdMakanOption.style.display = "block";
-                        if (radioMakanYa.checked) {
-                            judulBiaya.innerText = "Biaya SD Bina Qur'an (Non Pondok - Makan)";
-                            renderTabel(BIAYA_SD_NON_PONDOK_DGN_MAKAN);
-                        } else {
-                            judulBiaya.innerText = "Biaya SD Bina Qur'an (Non Pondok - Tanpa Makan)";
-                            renderTabel(BIAYA_SD_NON_PONDOK_TDK_DGN_MAKAN);
-                        }
-                    }
-
-                } else {
-                    // SMP / SMA Logic
-                    const jalur = scholarshipSelect.value;
-                    if (jalur === 'NON_BEASISWA') {
-                        judulBiaya.innerText = "Rincian Biaya Pondok (Reguler)";
-                        renderTabel(BIAYA_SEKOLAH_NORMAL);
-                    } else {
-                        judulBiaya.innerText = "Rincian Biaya Pondok (Beasiswa)";
-                        renderTabel(BIAYA_SEKOLAH_BEASISWA);
-                    }
-                }
+        if (isMajlis) {
+            if (personalJobField) personalJobField.required = true;
+            if (fatherNameField) fatherNameField.required = false;
+            if (motherNameField) motherNameField.required = false;
+            if (previousSchoolField) previousSchoolField.required = false;
+            if (agreementLabel) {
+                agreementLabel.textContent = 'Saya bersedia mengikuti kegiatan Majelis Ta\'lim sesuai jadwal yang ditentukan';
+            }
+        } else {
+            if (personalJobField) personalJobField.required = false;
+            if (fatherNameField) fatherNameField.required = true;
+            if (motherNameField) motherNameField.required = true;
+            if (previousSchoolField) previousSchoolField.required = true;
+            if (agreementLabel) {
+                agreementLabel.textContent = 'Saya telah membaca dan menyetujui rincian biaya pendidikan di atas';
             }
         }
+    }
 
-        programSelect.addEventListener("change", updateForm);
-        educationSelect.addEventListener("change", updateForm);
-        scholarshipSelect.addEventListener("change", updateForm);
-        uniformSelect.addEventListener("change", updateForm);
-        infaqSelect.addEventListener("change", updateForm);
-        sdRadios.forEach(r => r.addEventListener("change", updateForm));
+    function updateForm() {
+        if (!programSelect) {
+            return;
+        }
 
-        updateForm();
-    });
+        const program = programSelect.value;
+        const isMajlis = program === 'MAJLIS_TALIM';
+        const isRqdf = program === 'RQDF_SORE';
+        const isTakhosus = program === 'TAKHOSUS_TAHFIDZ';
+
+        toggleMajlisFields(isMajlis);
+
+        if (rqdfOptions) rqdfOptions.style.display = isRqdf ? 'block' : 'none';
+        if (groupFormalOptions) groupFormalOptions.style.display = isMajlis || isRqdf || isTakhosus ? 'none' : 'block';
+
+        if (divJenjang) divJenjang.style.display = 'block';
+        if (divJalurBeasiswa) divJalurBeasiswa.style.display = 'block';
+        if (sdSpecialOptions) sdSpecialOptions.style.display = 'none';
+        if (sdMakanOption) sdMakanOption.style.display = 'block';
+
+        if (paymentDetails) {
+            paymentDetails.style.display = isMajlis ? 'none' : 'block';
+        }
+
+        if (isMajlis) {
+            renderTabel([]);
+            return;
+        }
+
+        if (isRqdf) {
+            if (paymentCaption) paymentCaption.textContent = 'Rincian Biaya Kelas Reguler RQDF';
+            renderTabel(hitungBiayaRQDF());
+            return;
+        }
+
+        if (isTakhosus) {
+            if (paymentCaption) paymentCaption.textContent = 'Rincian Biaya Takhosus Tahfidz';
+            renderTabel(BIAYA_TAKHOSUS);
+            return;
+        }
+
+        const jenjang = educationSelect ? educationSelect.value : '';
+        if (jenjang === 'SD') {
+            if (divJalurBeasiswa) divJalurBeasiswa.style.display = 'none';
+            if (sdSpecialOptions) sdSpecialOptions.style.display = 'block';
+
+            if (radioPondok && radioPondok.checked) {
+                if (sdMakanOption) sdMakanOption.style.display = 'none';
+                if (paymentCaption) paymentCaption.textContent = 'Biaya SD Bina Qur\'an (Pondok)';
+                renderTabel(BIAYA_SD_PONDOK);
+            } else {
+                if (sdMakanOption) sdMakanOption.style.display = 'block';
+                if (radioMakanYa && radioMakanYa.checked) {
+                    if (paymentCaption) paymentCaption.textContent = 'Biaya SD Bina Qur\'an (Non Pondok - Makan)';
+                    renderTabel(BIAYA_SD_NON_PONDOK_DGN_MAKAN);
+                } else {
+                    if (paymentCaption) paymentCaption.textContent = 'Biaya SD Bina Qur\'an (Non Pondok - Tanpa Makan)';
+                    renderTabel(BIAYA_SD_NON_PONDOK_TDK_DGN_MAKAN);
+                }
+            }
+            return;
+        }
+
+        const jalur = scholarshipSelect ? scholarshipSelect.value : 'NON_BEASISWA';
+        if (jalur === 'NON_BEASISWA') {
+            if (paymentCaption) paymentCaption.textContent = 'Rincian Biaya Pondok (Reguler)';
+            renderTabel(BIAYA_SEKOLAH_NORMAL);
+        } else {
+            if (paymentCaption) paymentCaption.textContent = 'Rincian Biaya Pondok (Beasiswa)';
+            renderTabel(BIAYA_SEKOLAH_BEASISWA);
+        }
+    }
+
+    if (programSelect) programSelect.addEventListener('change', updateForm);
+    if (educationSelect) educationSelect.addEventListener('change', updateForm);
+    if (scholarshipSelect) scholarshipSelect.addEventListener('change', updateForm);
+    if (uniformSelect) uniformSelect.addEventListener('change', updateForm);
+    if (infaqSelect) infaqSelect.addEventListener('change', updateForm);
+    sdRadios.forEach((r) => r.addEventListener('change', updateForm));
+
+    updateForm();
+});
 </script>
 {% endblock %}

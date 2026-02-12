@@ -81,11 +81,13 @@ class FeeTypeForm(FlaskForm):
 class PPDBForm(FlaskForm):
     # === LANGKAH 1: PILIH PROGRAM ===
     program_type = SelectField('Pilihan Program', choices=[
-        ('SEKOLAH_BINA_QUR\'AN', 'Sekolah Bina Qur\'an'),
+        ('SEKOLAH_FULLDAY', 'Sekolah Bina Qur\'an'),
         ('RQDF_SORE', 'Kelas Reguler RQDF'),
-        ('TAKHOSUS TAHFIDZ', 'Takhosus Tahfidz')
+        ('TAKHOSUS_TAHFIDZ', 'Takhosus Tahfidz'),
+        ('MAJLIS_TALIM', 'Majelis Ta\'lim')
     ], validators=[DataRequired()])
 
+    # Scholarship hanya untuk program sekolah/siswa
     scholarship_category = SelectField('Jalur Pendaftaran', choices=[
         ('NON_BEASISWA', 'Non Beasiswa (Reguler)'),
         ('TAHFIDZ_5_JUZ', 'Beasiswa Tahfidz 5 Juz'),
@@ -93,7 +95,7 @@ class PPDBForm(FlaskForm):
         ('YATIM_DHUAFA', 'Beasiswa Yatim Dhuafa')
     ], default='NON_BEASISWA')
 
-    # [UPDATE] Tambahkan pilihan SD
+    # Education level hanya untuk program siswa, TIDAK untuk Majelis Ta'lim
     education_level = SelectField('Jenjang Pendidikan', choices=[
         ('SD', 'SD'),
         ('SMP', 'SMP'),
@@ -103,7 +105,7 @@ class PPDBForm(FlaskForm):
     # === LANGKAH 2: DATA DIRI ===
     full_name = StringField('Nama Lengkap', validators=[DataRequired()])
 
-    # [UBAH] Jadi Optional agar user SD tidak error saat submit kosong
+    # Fields yang akan disembunyikan untuk Majelis Ta'lim
     nickname = StringField('Nama Panggilan', validators=[Optional()])
     nik = StringField('NIK', validators=[Optional(), Length(max=16)])
     kk_number = StringField('No. KK', validators=[Optional(), Length(max=16)])
@@ -111,23 +113,19 @@ class PPDBForm(FlaskForm):
     gender = RadioField('Jenis Kelamin', choices=[('L', 'Laki-laki'), ('P', 'Perempuan')], validators=[DataRequired()])
     place_of_birth = StringField('Tempat Lahir', validators=[DataRequired()])
     date_of_birth = DateField('Tanggal Bulan Tahun Lahir', format='%Y-%m-%d', validators=[DataRequired()])
-
-    # [UBAH] Jadi Optional
     age = IntegerField('Usia (Tahun)', validators=[Optional()])
-
     address = TextAreaField('Alamat Lengkap', validators=[DataRequired()])
 
-    # === LANGKAH 3: SEKOLAH ASAL ===
-    # Label disesuaikan permintaan
-    previous_school = StringField('Sekolah Asal', validators=[DataRequired()])
+    # === DATA KHUSUS MAJELIS TA'LIM ===
+    # Field pekerjaan untuk peserta majlis (akan ditampilkan hanya untuk majlis)
+    personal_job = StringField('Pekerjaan', validators=[Optional()])
 
-    # [UBAH] Jadi Optional
+    # === LANGKAH 3: SEKOLAH ASAL (HANYA SISWA) ===
+    previous_school = StringField('Sekolah Asal', validators=[Optional()])
     previous_school_class = StringField('Kelas Terakhir', validators=[Optional()])
 
-    # === LANGKAH 4: DATA ORANG TUA ===
-    father_name = StringField('Nama Ayah', validators=[DataRequired()])
-
-    # [UBAH] Jadi Optional (Hidden untuk SD)
+    # === LANGKAH 4: DATA ORANG TUA (HANYA SISWA) ===
+    father_name = StringField('Nama Ayah', validators=[Optional()])
     father_job = StringField('Pekerjaan Ayah', validators=[Optional()])
     father_income_range = SelectField('Penghasilan Ayah', choices=[
         ('-', 'Pilih Penghasilan'),
@@ -137,9 +135,7 @@ class PPDBForm(FlaskForm):
         ('ABOVE_10M', 'Di atas Rp 10.000.000')
     ], validators=[Optional()])
 
-    mother_name = StringField('Nama Ibu', validators=[DataRequired()])
-
-    # [UBAH] Jadi Optional (Hidden untuk SD)
+    mother_name = StringField('Nama Ibu', validators=[Optional()])
     mother_job = StringField('Pekerjaan Ibu', validators=[Optional()])
     mother_income_range = SelectField('Penghasilan Ibu', choices=[
         ('-', 'Pilih Penghasilan'),
@@ -149,8 +145,11 @@ class PPDBForm(FlaskForm):
         ('ABOVE_10M', 'Di atas Rp 10.000.000')
     ], validators=[Optional()])
 
-    # Label disesuaikan permintaan
-    parent_phone = StringField('Nomor Telepon Orang Tua (WhatsApp)', validators=[DataRequired()])
+    # Khusus Majelis Ta'lim
+    personal_phone = StringField('Nomor Telepon Pribadi (WhatsApp)', validators=[Optional()])
+
+    # Khusus program siswa
+    parent_phone = StringField('Nomor Telepon Orang Tua (WhatsApp)', validators=[Optional()])
 
     # === LANGKAH 5: KHUSUS RQDF SORE ===
     tahfidz_schedule = SelectField('Pilihan Jadwal Tahfidz', choices=[
@@ -175,10 +174,10 @@ class PPDBForm(FlaskForm):
         ('1500000', 'Rp 1.500.000')
     ], coerce=int, validators=[Optional()])
 
-    # Label disesuaikan permintaan
+    # Finance agreement hanya untuk program berbayar
     finance_agreement = BooleanField(
         'Saya telah membaca dan menyetujui rincian biaya pendidikan di atas',
-        validators=[DataRequired(message="Anda harus mencentang YA untuk melanjutkan.")]
+        validators=[Optional()]
     )
 
     submit = SubmitField('Kirim Pendaftaran')
