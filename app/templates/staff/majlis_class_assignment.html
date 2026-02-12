@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">Penempatan Kelas Peserta Majlis Ta'lim</h1>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3 bg-success text-white">
+        <h6 class="m-0 fw-bold"><i class="fas fa-mosque me-2"></i>Atur Kelas Peserta</h6>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info small">
+            Pilih kelas untuk setiap peserta majlis, lalu klik <b>Simpan Penempatan</b>.
+            Penempatan ini dipakai sebagai dasar pengelompokan pembelajaran/penilaian majlis.
+        </div>
+
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Nama Peserta</th>
+                            <th>No. WhatsApp</th>
+                            <th style="width: 35%">Kelas Majlis</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in majlis_participants %}
+                        <tr>
+                            <td class="fw-bold">{{ p.full_name }}</td>
+                            <td>{{ p.phone }}</td>
+                            <td>
+                                <select class="form-select" name="class_{{ p.id }}">
+                                    <option value="">-- Belum ditempatkan --</option>
+                                    {% for cls in majlis_classes %}
+                                        <option value="{{ cls.id }}" {% if p.majlis_class_id == cls.id %}selected{% endif %}>{{ cls.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" class="text-center text-muted">Belum ada peserta Majlis Ta'lim.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="d-flex justify-content-end">
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-save me-1"></i> Simpan Penempatan
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

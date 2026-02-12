@@ -251,6 +251,19 @@ def manage_teachers():
     return render_template('admin/hr/teachers.html', teachers=teachers)
 
 
+@admin_bp.route('/sdm/guru/hapus/<int:id>', methods=['POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def delete_teacher(id):
+    teacher = Teacher.query.get_or_404(id)
+    teacher.delete()
+    if teacher.user:
+        teacher.user.delete()
+    db.session.commit()
+    flash('Data guru berhasil dihapus.', 'success')
+    return redirect(url_for('admin.manage_teachers'))
+
+
 @admin_bp.route('/sdm/guru/upload', methods=['POST'])
 @login_required
 @role_required(UserRole.ADMIN)
@@ -402,6 +415,19 @@ def manage_staff():
     return render_template('admin/hr/staff.html', staff_list=staff_list)
 
 
+@admin_bp.route('/sdm/staff/hapus/<int:id>', methods=['POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def delete_staff(id):
+    staff = Staff.query.get_or_404(id)
+    staff.delete()
+    if staff.user:
+        staff.user.delete()
+    db.session.commit()
+    flash('Data staff berhasil dihapus.', 'success')
+    return redirect(url_for('admin.manage_staff'))
+
+
 @admin_bp.route('/sdm/staff/edit/<int:id>', methods=['GET', 'POST'])
 @login_required
 @role_required(UserRole.ADMIN)
@@ -542,7 +568,7 @@ def add_student():
                 email=form.email.data,  # Pakai email dari inputan form
                 role=UserRole.SISWA
             )
-            student_user.set_password(form.nis.data)  # Default Pass = NIS
+            student_user.set_password("123456")  # Default Pass
             db.session.add(student_user)
             db.session.flush()
 
@@ -641,7 +667,8 @@ def edit_student(student_id):
 def list_students():
     # Menampilkan siswa yang TIDAK dihapus (Soft Delete Check)
     students = Student.query.filter_by(is_deleted=False).order_by(Student.id.desc()).all()
-    return render_template('student/list_students.html', students=students)
+    majlis_participants = MajlisParticipant.query.filter_by(is_deleted=False).order_by(MajlisParticipant.id.desc()).all()
+    return render_template('student/list_students.html', students=students, majlis_participants=majlis_participants)
 
 
 @admin_bp.route('/student/upload', methods=['POST'])
@@ -717,7 +744,7 @@ def upload_students():
                     email=email or f"{nis}@sekolah.id",
                     role=UserRole.SISWA
                 )
-                student_user.set_password(nis)
+                student_user.set_password("123456")
                 db.session.add(student_user)
                 db.session.flush()
 

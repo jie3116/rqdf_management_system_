@@ -99,6 +99,27 @@ def dashboard():
             .order_by(Grade.subject_id, Grade.type) \
             .all()
 
+
+    academic_recap = []
+    if grades:
+        by_subject = {}
+        for g in grades:
+            key = g.subject.name if g.subject else '-'
+            by_subject.setdefault(key, {'subject': key, 'tugas_uh': [], 'uts': [], 'uas': []})
+            if g.type.name in ('TUGAS', 'UH'):
+                by_subject[key]['tugas_uh'].append(g.score)
+            elif g.type.name == 'UTS':
+                by_subject[key]['uts'].append(g.score)
+            elif g.type.name == 'UAS':
+                by_subject[key]['uas'].append(g.score)
+
+        for item in by_subject.values():
+            tugas = sum(item['tugas_uh']) / len(item['tugas_uh']) if item['tugas_uh'] else 0
+            uts = sum(item['uts']) / len(item['uts']) if item['uts'] else 0
+            uas = sum(item['uas']) / len(item['uas']) if item['uas'] else 0
+            final = round((tugas * 0.3) + (uts * 0.3) + (uas * 0.4), 2)
+            academic_recap.append({'subject': item['subject'], 'tugas_uh': round(tugas, 2), 'uts': round(uts, 2), 'uas': round(uas, 2),'final': final})
+
     # --- BAGIAN 4: CATATAN PERILAKU ---
     # [OPTIMASI DYNAMIC] Cukup panggil student.violations
     violations = student.violations \
@@ -118,5 +139,6 @@ def dashboard():
                            todays_schedules=todays_schedules,
                            weekly_schedule=weekly_schedule,
                            grades=grades,
+                           academic_recap=academic_recap,
                            violations=violations,
                            total_points=total_points)

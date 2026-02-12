@@ -7,8 +7,8 @@
         <div>
             <h1 class="h3 mb-0 text-gray-800">Input Nilai Akademik</h1>
             <p class="mb-0 text-muted">
-                Kelas: <strong class="text-primary">{{ target_class.name }}</strong> &bull; 
-                Mapel: <strong class="text-primary">{{ subject.name }}</strong>
+                Kelas: <strong class="text-primary">{{ target_class.name if target_class else '-' }}</strong> &bull;
+                Mapel: <strong class="text-primary">{{ subject.name if subject else '-' }}</strong>
             </p>
         </div>
         <a href="{{ url_for('teacher.dashboard') }}" class="btn btn-sm btn-secondary shadow-sm">
@@ -49,6 +49,7 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 
                 <input type="hidden" name="grade_type" value="{{ type_name }}">
+                <input type="hidden" name="subject_id" value="{{ subject.id if subject else "" }}">
 
                 <div class="alert alert-info border-left-info py-2 small">
                     <i class="fas fa-info-circle me-1"></i> 

@@ -1,69 +1,44 @@
 {% extends "base.html" %}
-
 {% block content %}
 <div class="container-fluid">
-
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
         <h1 class="h3 mb-0 text-gray-800">Data Siswa Perwalian</h1>
-        <span class="badge bg-warning text-dark px-3 py-2 fs-6">
-            <i class="fas fa-chalkboard-teacher me-2"></i>Kelas: {{ c_class.name }}
-        </span>
+        <span class="badge bg-warning text-dark px-3 py-2 fs-6"><i class="fas fa-chalkboard-teacher me-2"></i>Kelas: {{ homeroom_class.name }}</span>
     </div>
 
+    {% if homeroom_classes and homeroom_classes|length > 1 %}
+    <form method="GET" class="mb-3">
+        <label class="small fw-bold text-muted">Pilih Kelas Perwalian</label>
+        <select name="class_id" class="form-select" onchange="this.form.submit()">
+            {% for cls in homeroom_classes %}
+            <option value="{{ cls.id }}" {% if cls.id == homeroom_class.id %}selected{% endif %}>{{ cls.name }}</option>
+            {% endfor %}
+        </select>
+    </form>
+    {% endif %}
+
     <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 fw-bold text-primary">Daftar Santri</h6>
-        </div>
+        <div class="card-header py-3"><h6 class="m-0 fw-bold text-primary">Daftar Santri</h6></div>
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-bordered table-striped table-hover" width="100%" cellspacing="0">
-                    <thead class="bg-dark text-white text-center">
-                        <tr>
-                            <th style="width: 15%">NIS</th>
-                            <th>Nama Lengkap</th>
-                            <th style="width: 10%">L/P</th>
-                            <th style="width: 15%">No. HP Wali</th>
-                            <th style="width: 20%">Aksi (Cetak)</th>
-                        </tr>
-                    </thead>
+                <table class="table table-bordered table-striped table-hover" width="100%">
+                    <thead class="bg-dark text-white text-center"><tr><th>NIS</th><th>Nama Lengkap</th><th>L/P</th><th>No. HP Wali</th><th>Aksi (Cetak)</th></tr></thead>
                     <tbody>
                         {% for student in students %}
                         <tr>
-                            <td class="text-center align-middle">{{ student.nis }}</td>
-                            <td class="fw-bold align-middle">{{ student.full_name }}</td>
-                            <td class="text-center align-middle">{{ student.gender.value if student.gender else '-' }}</td>
-                            <td class="align-middle">{{ student.parent.phone if student.parent else '-' }}</td>
-
+                            <td class="text-center">{{ student.nis }}</td><td class="fw-bold">{{ student.full_name }}</td><td class="text-center">{{ student.gender.value if student.gender else '-' }}</td><td>{{ student.parent.phone if student.parent else '-' }}</td>
                             <td class="text-center">
-                                <div class="btn-group">
-                                    <button type="button" class="btn btn-primary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                                        <i class="fas fa-print me-1"></i> Cetak
-                                    </button>
-                                    <ul class="dropdown-menu shadow animated--fade-in">
-                                        <li>
-                                            <a class="dropdown-item" href="{{ url_for('teacher.print_report_card', student_id=student.id) }}" target="_blank">
-                                                <i class="fas fa-file-alt me-2 text-primary"></i> Raport Utama
-                                            </a>
-                                        </li>
-                                        <li>
-                                            <a class="dropdown-item" href="{{ url_for('teacher.print_attachment', student_id=student.id) }}" target="_blank">
-                                                <i class="fas fa-list-alt me-2 text-info"></i> Lampiran Rincian
-                                            </a>
-                                        </li>
-                                    </ul>
-                                </div>
-
-                                <a href="#" class="btn btn-danger btn-sm ms-1" title="Catatan BK / Pelanggaran">
-                                    <i class="fas fa-exclamation-triangle"></i>
-                                </a>
+                                <a class="btn btn-primary btn-sm" href="{{ url_for('teacher.print_report_card', student_id=student.id) }}" target="_blank"><i class="fas fa-file-alt me-1"></i> Raport</a>
+                                <a class="btn btn-info btn-sm" href="{{ url_for('teacher.print_attachment', student_id=student.id) }}" target="_blank"><i class="fas fa-list-alt me-1"></i> Lampiran</a>
                             </td>
                         </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted">Belum ada siswa di kelas ini.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
-
 </div>
 {% endblock %}

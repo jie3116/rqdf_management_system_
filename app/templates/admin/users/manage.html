@@ -28,6 +28,7 @@
                                     {% if u.role.value == 'student' %}bg-success
                                     {% elif u.role.value == 'teacher' %}bg-info
                                     {% elif u.role.value == 'tata_usaha' %}bg-warning text-dark
+                                    {% elif u.role.value == 'majlis_participant' %}bg-primary
                                     {% else %}bg-secondary{% endif %}">
                                     {{ u.role.value|upper }}
                                 </span>
@@ -42,6 +43,8 @@
                                     {{ u.staff_profile.full_name }}
                                 {% elif u.parent_profile %}
                                     {{ u.parent_profile.full_name }}
+                                {% elif u.majlis_profile %}
+                                    {{ u.majlis_profile.full_name }}
                                 {% else %}
                                     <span class="text-muted fst-italic">- Nama tidak ditemukan -</span>
                                 {% endif %}

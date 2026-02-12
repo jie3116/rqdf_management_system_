@@ -123,6 +123,31 @@
     </div>
 </div>
 
+{% if majlis_participants is defined %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3 bg-success text-white">
+        <h6 class="m-0 fw-bold"><i class="fas fa-mosque me-2"></i>Peserta Majlis Ta'lim Aktif</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead class="table-light"><tr><th>Nama</th><th>No WA</th><th>Kelas Majlis</th><th>Alamat</th></tr></thead>
+                <tbody>
+                    {% for m in majlis_participants %}
+                    <tr>
+                        <td class="fw-bold">{{ m.full_name }}</td><td>{{ m.phone }}</td>
+                        <td>{{ m.majlis_class.name if m.majlis_class else '-' }}</td><td>{{ m.address or '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center text-muted">Belum ada peserta majlis ta'lim.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <script>
 document.getElementById('searchBox').addEventListener('keyup', function() {
     let searchValue = this.value.toLowerCase();

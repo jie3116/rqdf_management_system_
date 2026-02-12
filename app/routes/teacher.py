@@ -5,7 +5,8 @@ from collections import defaultdict
 from app.models import (
     Teacher, Student, ClassRoom, TahfidzRecord, TahfidzSummary, RecitationRecord,
     TahfidzEvaluation, TahfidzType, RecitationSource, ParticipantType, Grade,
-    GradeType, Subject, Attendance, AttendanceStatus, AcademicYear, Schedule, db, UserRole
+    EvaluationPeriod,
+    GradeType, Subject, Attendance, AttendanceStatus, AcademicYear, Schedule, db, UserRole, MajlisParticipant
 )
 from app.decorators import role_required
 
@@ -29,6 +30,41 @@ def _get_teacher_classes(teacher):
     
     return list(classes)
 
+
+def _get_class_participants(class_id):
+    students = Student.query.filter_by(
+        current_class_id=class_id,
+        is_deleted=False
+    ).order_by(Student.full_name).all()
+    majlis_participants = MajlisParticipant.query.filter_by(
+        majlis_class_id=class_id,
+        is_deleted=False
+    ).order_by(MajlisParticipant.full_name).all()
+    return students, majlis_participants
+
+
+def _parse_participant_key(participant_key):
+    if not participant_key:
+        return None, None
+
+    if '-' in participant_key:
+        prefix, raw_id = participant_key.split('-', 1)
+        try:
+            participant_id = int(raw_id)
+        except ValueError:
+            return None, None
+
+        if prefix == 'S':
+            return ParticipantType.STUDENT, participant_id
+        if prefix == 'M':
+            return ParticipantType.EXTERNAL_MAJLIS, participant_id
+        return None, None
+
+    # Backward-compatible: nilai lama hanya student_id integer
+    try:
+        return ParticipantType.STUDENT, int(participant_key)
+    except (TypeError, ValueError):
+        return None, None
 
 @teacher_bp.route('/dashboard')
 @login_required
@@ -101,85 +137,79 @@ def dashboard():
 def input_grades():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
     my_classes = _get_teacher_classes(teacher)
-    
-    selected_class_id = request.args.get('class_id')
-    selected_subject_id = request.args.get('subject_id')
+
+    selected_class_id = request.args.get('class_id', type=int)
+    selected_subject_id = request.args.get('subject_id', type=int)
     students = []
-    selected_class = None
-    subjects = Subject.query.filter_by(is_deleted=False).all()
-    
+    target_class = None
+    subject = Subject.query.get(selected_subject_id) if selected_subject_id else None
+
     if selected_class_id:
-        selected_class = ClassRoom.query.get(selected_class_id)
-        if selected_class in my_classes:
-            students = Student.query.filter_by(
-                current_class_id=selected_class_id,
-                is_deleted=False
-            ).order_by(Student.full_name).all()
+        target_class = ClassRoom.query.get(selected_class_id)
+        if target_class in my_classes:
+            students = Student.query.filter_by(current_class_id=selected_class_id, is_deleted=False).order_by(Student.full_name).all()
+
+    active_year = AcademicYear.query.filter_by(is_active=True).first()
+    existing_grades = {}
+    if active_year and selected_subject_id and students:
+        for g in Grade.query.filter_by(subject_id=selected_subject_id, academic_year_id=active_year.id).filter(Grade.student_id.in_([s.id for s in students])).all():
+            existing_grades.setdefault(g.student_id, {})[g.type.name] = g.score
     
     if request.method == 'POST':
-        subject_id = request.form.get('subject_id')
-        grade_type = request.form.get('grade_type')
-        notes = request.form.get('notes', '')
-        
-        active_year = AcademicYear.query.filter_by(is_active=True).first()
         if not active_year:
             flash('Tahun ajaran aktif belum diatur.', 'warning')
-            return redirect(url_for('teacher.input_grades'))
+            return redirect(url_for('teacher.input_grades', class_id=selected_class_id, subject_id=selected_subject_id))
+
+        grade_type = request.form.get('grade_type')
+        notes = request.form.get('notes', '')
+        subject_id = selected_subject_id or request.form.get('subject_id', type=int)
         
         success_count = 0
         for student in students:
-            score_key = f'score_{student.id}'
-            score = request.form.get(score_key)
-            
-            if score and score.strip():
-                try:
-                    score_float = float(score)
-                    
-                    # Cek apakah sudah ada nilai untuk kombinasi ini
-                    existing = Grade.query.filter_by(
-                        student_id=student.id,
-                        subject_id=subject_id,
-                        academic_year_id=active_year.id,
-                        type=GradeType[grade_type],
-                        teacher_id=teacher.id
-                    ).first()
-                    
-                    if existing:
-                        existing.score = score_float
-                        existing.notes = notes
-                    else:
-                        new_grade = Grade(
-                            student_id=student.id,
-                            subject_id=subject_id,
-                            academic_year_id=active_year.id,
-                            teacher_id=teacher.id,
-                            type=GradeType[grade_type],
-                            score=score_float,
-                            notes=notes
-                        )
-                        db.session.add(new_grade)
-                    
-                    success_count += 1
-                except ValueError:
-                    continue
-        
-        if success_count > 0:
+            score = request.form.get(f'score_{student.id}')
+            if not score or not score.strip():
+                continue
+            try:
+                score_float = float(score)
+            except ValueError:
+                continue
+
+            existing = Grade.query.filter_by(
+                student_id=student.id,
+                subject_id=subject_id,
+                academic_year_id=active_year.id,
+                type=GradeType[grade_type],
+                teacher_id=teacher.id
+            ).first()
+            if existing:
+                existing.score = score_float
+                existing.notes = notes
+            else:
+                db.session.add(Grade(
+                    student_id=student.id,
+                    subject_id=subject_id,
+                    academic_year_id=active_year.id,
+                    teacher_id=teacher.id,
+                    type=GradeType[grade_type],
+                    score=score_float,
+                    notes=notes
+                ))
+            success_count += 1
+
+        if success_count:
             db.session.commit()
             flash(f'Berhasil menyimpan {success_count} nilai!', 'success')
         else:
             flash('Tidak ada nilai yang berhasil disimpan.', 'warning')
-        
-        return redirect(url_for('teacher.input_grades', 
-                              class_id=selected_class_id, 
-                              subject_id=selected_subject_id))
+
+        return redirect(url_for('teacher.input_grades', class_id=selected_class_id, subject_id=selected_subject_id))
     
     return render_template('teacher/input_grades.html',
-                         my_classes=my_classes,
-                         students=students,
-                         selected_class=selected_class,
-                         subjects=subjects,
-                         selected_subject_id=selected_subject_id,
-                         grade_types=GradeType)
+                           my_classes=my_classes,
+                           students=students,
+                           target_class=target_class,
+                           subject=subject,
+                           existing_grades=existing_grades)
 
 
 @teacher_bp.route('/input-tahfidz', methods=['GET', 'POST'])
@@ -189,22 +219,20 @@ def input_tahfidz():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
     my_classes = _get_teacher_classes(teacher)
 
-    selected_class_id = request.args.get('class_id')
+    selected_class_id = request.args.get('class_id', type=int)
     students = []
+    majlis_participants = []
     selected_class = None
 
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
         if selected_class in my_classes:
-            students = Student.query.filter_by(
-                current_class_id=selected_class_id,
-                is_deleted=False
-            ).order_by(Student.full_name).all()
+            students, majlis_participants = _get_class_participants(selected_class_id)
         else:
             flash("Anda tidak memiliki akses ke halaqoh tersebut.", "danger")
 
     if request.method == 'POST':
-        student_id = request.form.get('student_id')
+        participant_type, participant_id = _parse_participant_key(request.form.get('student_id'))
         jenis_setoran = request.form.get('jenis_setoran') or request.form.get('type')  # backward-compatible
 
         start_surah = request.form.get('start_surah_name')
@@ -212,24 +240,24 @@ def input_tahfidz():
         ayat_start = request.form.get('ayat_start')
         ayat_end = request.form.get('ayat_end')
         notes = request.form.get('notes')
-        
+
         tajwid_errors = int(request.form.get('tajwid_errors') or 0)
         makhraj_errors = int(request.form.get('makhraj_errors') or 0)
         tahfidz_errors = int(request.form.get('tahfidz_errors') or 0)
 
-        # Validasi jenis setoran
+        if not participant_id or not participant_type:
+            flash("Silakan pilih peserta terlebih dahulu.", "warning")
+            return redirect(url_for('teacher.input_tahfidz', class_id=selected_class_id))
+
+        student_id = participant_id if participant_type == ParticipantType.STUDENT else None
+        majlis_participant_id = participant_id if participant_type == ParticipantType.EXTERNAL_MAJLIS else None
+
         if jenis_setoran not in [t.name for t in TahfidzType]:
             flash("Jenis setoran tidak valid.", "danger")
             return redirect(url_for('teacher.input_tahfidz', class_id=selected_class_id))
 
-        # Logic nama surah final
-        final_surah_name = None
-        if not end_surah or start_surah == end_surah:
-            final_surah_name = start_surah
-        else:
-            final_surah_name = f"{start_surah} - {end_surah}"
+        final_surah_name = start_surah if(not end_surah or start_surah == end_surah) else f"{start_surah} - {end_surah}"
 
-        # Hitung skor berdasarkan kesalahan (boleh override dari form jika ada)
         total_errors = tajwid_errors + makhraj_errors + tahfidz_errors
         calculated_score = max(0, 100 - (total_errors * 2))
         score = int(request.form.get('score_preview') or calculated_score)
@@ -237,10 +265,11 @@ def input_tahfidz():
 
         new_record = TahfidzRecord(
             student_id=student_id,
-            participant_type=ParticipantType.STUDENT,
+            majlis_participant_id=majlis_participant_id,
+            participant_type=participant_type,
             teacher_id=teacher.id,
             type=TahfidzType[jenis_setoran],
-            juz=0,  # Bisa ditambahkan logic auto-detect juz via JS nanti
+            juz=0,
             surah=final_surah_name,
             ayat_start=int(ayat_start),
             ayat_end=int(ayat_end),
@@ -254,19 +283,19 @@ def input_tahfidz():
         )
         db.session.add(new_record)
 
-        # Update Summary
         summary = TahfidzSummary.query.filter_by(
-            student_id=student_id, 
-            participant_type=ParticipantType.STUDENT
+            student_id=student_id,
+            majlis_participant_id=majlis_participant_id,
+            participant_type=participant_type
         ).first()
         if not summary:
             summary = TahfidzSummary(
                 student_id=student_id,
-                participant_type=ParticipantType.STUDENT
+                majlis_participant_id=majlis_participant_id,
+                participant_type=participant_type
             )
             db.session.add(summary)
 
-        # Update last_surah dan last_ayat jika ini Ziyadah
         if jenis_setoran == 'ZIYADAH':
             summary.last_surah = final_surah_name
             summary.last_ayat = int(ayat_end)
@@ -278,6 +307,7 @@ def input_tahfidz():
     return render_template('teacher/input_tahfidz.html',
                            my_classes=my_classes,
                            students=students,
+                           majlis_participants=majlis_participants,
                            selected_class=selected_class,
                            tahfidz_types=TahfidzType)
 
@@ -291,44 +321,51 @@ def input_recitation():
 
     selected_class_id = request.args.get('class_id', type=int)
     students = []
+    majlis_participants = []
     selected_class = None
 
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
         if selected_class in my_classes:
-            students = Student.query.filter_by(
-                current_class_id=selected_class_id,
-                is_deleted=False
-            ).order_by(Student.full_name).all()
+            students, majlis_participants = _get_class_participants(selected_class_id)
         else:
             flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
             selected_class = None
 
     if request.method == 'POST':
         form_class_id = request.form.get('class_id', type=int)
-        student_id = request.form.get('student_id', type=int)
+        participant_type, participant_id = _parse_participant_key(request.form.get('student_id'))
         recitation_source = request.form.get('recitation_source', 'QURAN')
 
-        # Gunakan class_id dari form sebagai prioritas agar redirect konsisten
         active_class_id = form_class_id or selected_class_id
 
         if recitation_source not in [s.name for s in RecitationSource]:
             flash("Sumber bacaan tidak valid.", "danger")
             return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
 
-        if not student_id:
-            flash("Silakan pilih siswa terlebih dahulu.", "warning")
+        if not participant_id or not participant_type:
+            flash("Silakan pilih peserta terlebih dahulu.", "warning")
             return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
 
-        student = Student.query.filter_by(id=student_id, is_deleted=False).first()
-        if not student:
-            flash("Data siswa tidak ditemukan.", "danger")
-            return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
+        student_id = participant_id if participant_type == ParticipantType.STUDENT else None
+        majlis_participant_id = participant_id if participant_type == ParticipantType.EXTERNAL_MAJLIS else None
 
-        # Validasi bahwa siswa berada pada kelas yang sedang dipilih
-        if active_class_id and student.current_class_id != active_class_id:
-            flash("Siswa tidak berada pada kelas yang dipilih.", "danger")
-            return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
+        if participant_type == ParticipantType.STUDENT:
+            student = Student.query.filter_by(id=student_id, is_deleted=False).first()
+            if not student:
+                flash("Data siswa tidak ditemukan.", "danger")
+                return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
+            if active_class_id and student.current_class_id != active_class_id:
+                flash("Siswa tidak berada pada kelas yang dipilih.", "danger")
+                return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
+        else:
+            participant = MajlisParticipant.query.filter_by(id=majlis_participant_id, is_deleted=False).first()
+            if not participant:
+                flash("Data peserta majlis tidak ditemukan.", "danger")
+                return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
+            if active_class_id and participant.majlis_class_id != active_class_id:
+                flash("Peserta majlis tidak berada pada kelas yang dipilih.", "danger")
+                return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
 
         start_surah = request.form.get('start_surah_name')
         end_surah = request.form.get('end_surah_name')
@@ -370,7 +407,7 @@ def input_recitation():
 
             final_surah_name = start_surah if (not end_surah or start_surah == end_surah) else f"{start_surah} - {end_surah}"
 
-        else:  # BOOK
+        else:
             if not book_name:
                 flash("Nama kitab/buku wajib diisi untuk setoran jenis kitab.", "warning")
                 return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
@@ -390,7 +427,8 @@ def input_recitation():
 
         new_record = RecitationRecord(
             student_id=student_id,
-            participant_type=ParticipantType.STUDENT,
+            majlis_participant_id=majlis_participant_id,
+            participant_type=participant_type,
             teacher_id=teacher.id,
             recitation_source=RecitationSource[recitation_source],
             surah=final_surah_name,
@@ -413,6 +451,7 @@ def input_recitation():
     return render_template('teacher/input_recitation.html',
                            my_classes=my_classes,
                            students=students,
+                           majlis_participants=majlis_participants,
                            selected_class=selected_class,
                            recitation_sources=RecitationSource)
 
@@ -426,44 +465,53 @@ def input_tahfidz_evaluation():
 
     selected_class_id = request.args.get('class_id', type=int)
     students = []
+    majlis_participants = []
     selected_class = None
 
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
         if selected_class in my_classes:
-            students = Student.query.filter_by(
-                current_class_id=selected_class_id,
-                is_deleted=False
-            ).order_by(Student.full_name).all()
+            students, majlis_participants = _get_class_participants(selected_class_id)
         else:
             flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
             selected_class = None
 
     if request.method == 'POST':
         form_class_id = request.form.get('class_id', type=int)
-        student_id = request.form.get('student_id', type=int)
+        participant_type, participant_id = _parse_participant_key(request.form.get('student_id'))
         period_type = request.form.get('period_type')
         period_label = request.form.get('period_label')
         notes = request.form.get('notes')
 
         active_class_id = form_class_id or selected_class_id
 
-        if not student_id:
-            flash("Silakan pilih siswa terlebih dahulu.", "warning")
+        if not participant_id or not participant_type:
+            flash("Silakan pilih peserta terlebih dahulu.", "warning")
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         if period_type not in [p.name for p in EvaluationPeriod]:
             flash("Periode evaluasi tidak valid.", "danger")
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
-        student = Student.query.filter_by(id=student_id, is_deleted=False).first()
-        if not student:
-            flash("Data siswa tidak ditemukan.", "danger")
-            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+        student_id = participant_id if participant_type == ParticipantType.STUDENT else None
+        majlis_participant_id = participant_id if participant_type == ParticipantType.EXTERNAL_MAJLIS else None
 
-        if active_class_id and student.current_class_id != active_class_id:
-            flash("Siswa tidak berada pada kelas yang dipilih.", "danger")
-            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+        if participant_type == ParticipantType.STUDENT:
+            student = Student.query.filter_by(id=student_id, is_deleted=False).first()
+            if not student:
+                flash("Data siswa tidak ditemukan.", "danger")
+                return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+            if active_class_id and student.current_class_id != active_class_id:
+                flash("Siswa tidak berada pada kelas yang dipilih.", "danger")
+                return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+        else:
+            participant = MajlisParticipant.query.filter_by(id=majlis_participant_id, is_deleted=False).first()
+            if not participant:
+                flash("Data peserta majlis tidak ditemukan.", "danger")
+                return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+            if active_class_id and participant.majlis_class_id != active_class_id:
+                flash("Peserta majlis tidak berada pada kelas yang dipilih.", "danger")
+                return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         try:
             makhraj_errors = int(request.form.get('makhraj_errors') or 0)
@@ -479,7 +527,8 @@ def input_tahfidz_evaluation():
 
         new_evaluation = TahfidzEvaluation(
             student_id=student_id,
-            participant_type=ParticipantType.STUDENT,
+            majlis_participant_id=majlis_participant_id,
+            participant_type=participant_type,
             teacher_id=teacher.id,
             period_type=EvaluationPeriod[period_type],
             period_label=period_label,
@@ -500,7 +549,9 @@ def input_tahfidz_evaluation():
     return render_template('teacher/input_tahfidz_evaluation.html',
                            my_classes=my_classes,
                            students=students,
-                           selected_class=selected_class)
+                           majlis_participants=majlis_participants,
+                           selected_class=selected_class,
+                           EvaluationPeriod=EvaluationPeriod)
 
 
 @teacher_bp.route('/siswa-wali-kelas')
@@ -508,20 +559,22 @@ def input_tahfidz_evaluation():
 @role_required(UserRole.GURU)
 def homeroom_students():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
-    
-    if not teacher.homeroom_class:
+    homeroom_classes = ClassRoom.query.filter_by(homeroom_teacher_id=teacher.id, is_deleted=False).order_by(ClassRoom.name).all()
+
+    if not homeroom_classes:
         flash("Anda belum ditugaskan sebagai wali kelas.", "warning")
         return redirect(url_for('teacher.dashboard'))
-    
-    students = Student.query.filter_by(
-        current_class_id=teacher.homeroom_class.id,
-        is_deleted=False
-    ).order_by(Student.full_name).all()
-    
+
+    selected_class_id = request.args.get('class_id', type=int) or homeroom_classes[0].id
+    selected_class = next((c for c in homeroom_classes if c.id == selected_class_id), homeroom_classes[0])
+
+    students = Student.query.filter_by(current_class_id=selected_class.id, is_deleted=False).order_by(Student.full_name).all()
+
     return render_template('teacher/homeroom_students.html',
                          teacher=teacher,
                          students=students,
-                         homeroom_class=teacher.homeroom_class)
+                         homeroom_class=selected_class,
+                         homeroom_classes=homeroom_classes)
 
 
 @teacher_bp.route('/hitung-nilai-siswa/<int:student_id>')
@@ -592,24 +645,51 @@ def calculate_student_grades(student_id):
 @role_required(UserRole.GURU)
 def print_report_card(student_id):
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
-    
-    # Cek akses wali kelas
-    if not teacher.homeroom_class:
+    homeroom_classes = ClassRoom.query.filter_by(homeroom_teacher_id=teacher.id, is_deleted=False).all()
+
+    if not homeroom_classes:
         flash("Hanya wali kelas yang dapat mencetak raport.", "danger")
         return redirect(url_for('teacher.dashboard'))
     
     student = Student.query.get_or_404(student_id)
-    if student.current_class_id != teacher.homeroom_class.id:
-        flash("Siswa tidak ada di kelas Anda.", "danger")
+    if student.current_class_id not in [c.id for c in homeroom_classes]:
+        flash("Siswa tidak ada di kelas perwalian Anda.", "danger")
         return redirect(url_for('teacher.homeroom_students'))
-    
-    # Logic cetak raport (simplified)
+
     active_year = AcademicYear.query.filter_by(is_active=True).first()
-    
-    return render_template('teacher/print_report_card.html',
-                         student=student,
-                         teacher=teacher,
-                         active_year=active_year)
+    final_report = []
+    if active_year:
+        grades = Grade.query.filter_by(student_id=student.id, academic_year_id=active_year.id).all()
+        grouped = defaultdict(lambda: defaultdict(list))
+        for g in grades:
+            grouped[g.subject][g.type.name].append(g.score)
+
+        for sub, data in grouped.items():
+            tugas_uh = data.get('TUGAS', []) + data.get('UH', [])
+            avg_tugas = sum(tugas_uh) / len(tugas_uh) if tugas_uh else 0
+            avg_uts = sum(data.get('UTS', [])) / len(data.get('UTS', [])) if data.get('UTS') else 0
+            avg_uas = sum(data.get('UAS', [])) / len(data.get('UAS', [])) if data.get('UAS') else 0
+            final_score = round((avg_tugas * 0.3) + (avg_uts * 0.3) + (avg_uas * 0.4), 2)
+            predikat = 'A' if final_score >= 85 else 'B' if final_score >= 75 else 'C' if final_score >= 65 else 'D'
+            final_report.append({'subject': sub.name, 'kkm': sub.kkm or 70, 'final': final_score, 'predikat': predikat})
+
+    attendance_stats = {'sakit': 0, 'izin': 0, 'alpa': 0}
+    if active_year:
+        attendances = Attendance.query.filter_by(student_id=student.id, academic_year_id=active_year.id).all()
+        for a in attendances:
+            if a.status.name == 'SAKIT':
+                attendance_stats['sakit'] += 1
+            elif a.status.name == 'IZIN':
+                attendance_stats['izin'] += 1
+            elif a.status.name == 'ALPHA':
+                attendance_stats['alpa'] += 1
+
+    return render_template('teacher/print_report.html',
+                          student=student,
+                          teacher=teacher,
+                          academic_year=active_year,
+                          final_report=final_report,
+                          attendance_stats=attendance_stats)
 
 
 @teacher_bp.route('/cetak-lampiran/<int:student_id>')

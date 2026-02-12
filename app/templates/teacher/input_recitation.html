@@ -40,7 +40,10 @@
                             <select name="student_id" class="form-select select2" required>
                                 <option value="">-- Pilih Santri --</option>
                                 {% for student in students %}
-                                <option value="{{ student.id }}">{{ student.full_name }} ({{ student.nis }})</option>
+                                <option value="S-{{ student.id }}">{{ student.full_name }} (Santri - {{ student.nis }})</option>
+                                {% endfor %}
+                                {% for participant in majlis_participants %}
+                                <option value="M-{{ participant.id }}">{{ participant.full_name }} (Majlis Ta'lim)</option>
                                 {% endfor %}
                             </select>
                         </div>

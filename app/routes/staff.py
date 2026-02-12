@@ -9,7 +9,7 @@ from app.forms import PaymentForm, StudentForm  # Pastikan import ini ada
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType,
-    StudentCandidate, RegistrationStatus, ProgramType, MajlisParticipant
+    StudentCandidate, RegistrationStatus, ProgramType, MajlisParticipant, ClassType
 )
 from app.utils.nis import generate_nis
 
@@ -158,9 +158,40 @@ def generate_invoices(fee_id):
 @login_required
 @role_required(UserRole.TU)
 def list_students():
-    students = Student.query.order_by(Student.id.desc()).all()
-    # Kita reuse template admin agar hemat, atau buat folder staff/students
-    return render_template('student/list_students.html', students=students)
+    students = Student.query.filter_by(is_deleted=False).order_by(Student.id.desc()).all()
+    majlis_participants = MajlisParticipant.query.filter_by(is_deleted=False).order_by(MajlisParticipant.id.desc()).all()
+    return render_template('student/list_students.html', students=students, majlis_participants=majlis_participants)
+
+
+@staff_bp.route('/majlis/penempatan-kelas', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.TU)
+def assign_majlis_classes():
+    majlis_participants = MajlisParticipant.query.filter_by(is_deleted=False).order_by(MajlisParticipant.full_name).all()
+    majlis_classes = ClassRoom.query.filter_by(is_deleted=False, class_type=ClassType.MAJLIS_TALIM).order_by(ClassRoom.name).all()
+
+    # Fallback: jika belum ada class_type khusus, tetap izinkan pilih semua kelas agar operasional tidak terblokir
+    if not majlis_classes:
+        majlis_classes = ClassRoom.query.filter_by(is_deleted=False).order_by(ClassRoom.name).all()
+
+    if request.method == 'POST':
+        updated = 0
+        for participant in majlis_participants:
+            class_id_raw = request.form.get(f'class_{participant.id}', '').strip()
+            new_class_id = int(class_id_raw) if class_id_raw else None
+            if participant.majlis_class_id != new_class_id:
+                participant.majlis_class_id = new_class_id
+                updated += 1
+
+        db.session.commit()
+        flash(f'Penempatan kelas peserta Majlis berhasil diperbarui ({updated} perubahan).', 'success')
+        return redirect(url_for('staff.assign_majlis_classes'))
+
+    return render_template(
+        'staff/majlis_class_assignment.html',
+        majlis_participants=majlis_participants,
+        majlis_classes=majlis_classes
+    )
 
 
 @staff_bp.route('/siswa/edit/<int:student_id>', methods=['GET', 'POST'])
@@ -279,7 +310,7 @@ def accept_candidate(candidate_id):
 
         # User Siswa
         user_siswa = User(username=nis_baru, email=f"{nis_baru}@sekolah.id",
-                          password_hash=generate_password_hash(nis_baru), role=UserRole.SISWA,
+                          password_hash=generate_password_hash("123456"), role=UserRole.SISWA,
                           must_change_password=True)
         db.session.add(user_siswa)
         db.session.flush()
