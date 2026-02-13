@@ -158,9 +158,41 @@ def generate_invoices(fee_id):
 @login_required
 @role_required(UserRole.TU)
 def list_students():
-    students = Student.query.filter_by(is_deleted=False).order_by(Student.id.desc()).all()
-    majlis_participants = MajlisParticipant.query.filter_by(is_deleted=False).order_by(MajlisParticipant.id.desc()).all()
-    return render_template('student/list_students.html', students=students, majlis_participants=majlis_participants)
+    query = (request.args.get('q') or '').strip()
+
+    students_query = Student.query.filter_by(is_deleted=False)
+    majlis_query = MajlisParticipant.query.filter_by(is_deleted=False)
+
+    if query:
+        students_query = students_query.outerjoin(Parent, Student.parent_id == Parent.id).outerjoin(
+            ClassRoom, Student.current_class_id == ClassRoom.id
+        ).filter(
+            db.or_(
+                Student.full_name.ilike(f'%{query}%'),
+                Student.nis.ilike(f'%{query}%'),
+                Parent.full_name.ilike(f'%{query}%'),
+                Parent.phone.ilike(f'%{query}%'),
+                ClassRoom.name.ilike(f'%{query}%')
+            )
+        )
+
+        majlis_query = majlis_query.outerjoin(ClassRoom, MajlisParticipant.majlis_class_id == ClassRoom.id).filter(
+            db.or_(
+                MajlisParticipant.full_name.ilike(f'%{query}%'),
+                MajlisParticipant.phone.ilike(f'%{query}%'),
+                ClassRoom.name.ilike(f'%{query}%')
+            )
+        )
+
+    students = students_query.order_by(Student.id.desc()).all()
+    majlis_participants = majlis_query.order_by(MajlisParticipant.id.desc()).all()
+
+    return render_template(
+        'student/list_students.html',
+        students=students,
+        majlis_participants=majlis_participants,
+        query=query
+    )
 
 
 @staff_bp.route('/majlis/penempatan-kelas', methods=['GET', 'POST'])
