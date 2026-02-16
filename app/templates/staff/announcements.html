@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Pengumuman Staf</h1>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-5">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-info text-white">
+                    <h6 class="m-0 fw-bold"><i class="fas fa-bullhorn me-2"></i>Buat Pengumuman</h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Tujuan</label>
+                            <select class="form-select" id="targetScope" name="target_scope" required>
+                                <option value="ALL">Semua</option>
+                                <option value="ROLE">Per Role</option>
+                                <option value="PROGRAM">Per Program</option>
+                                <option value="CLASS">Per Kelas</option>
+                                <option value="USER">Per Orang</option>
+                            </select>
+                        </div>
+                        <div class="mb-3 d-none" id="roleTargetWrap">
+                            <label class="form-label fw-bold">Pilih Role</label>
+                            <select class="form-select" name="target_role">
+                                <option value="">-- Pilih role --</option>
+                                {% for role in targetable_roles %}
+                                <option value="{{ role }}">{{ role_labels.get(role, role|replace('_', ' ')|title) }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3 d-none" id="programTargetWrap">
+                            <label class="form-label fw-bold">Pilih Program</label>
+                            <select class="form-select" name="target_program_type">
+                                <option value="">-- Pilih program --</option>
+                                {% for program_key, program_label in program_labels.items() %}
+                                <option value="{{ program_key }}">{{ program_label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3 d-none" id="classTargetWrap">
+                            <label class="form-label fw-bold">Pilih Kelas</label>
+                            <select class="form-select" name="target_class_id">
+                                <option value="">-- Pilih kelas --</option>
+                                {% for cls in classes %}
+                                <option value="{{ cls.id }}">{{ cls.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3 d-none" id="userTargetWrap">
+                            <label class="form-label fw-bold">Filter Role Pengguna</label>
+                            <select class="form-select mb-2" id="userRoleFilter">
+                                <option value="">Semua Role</option>
+                                {% for role in available_roles %}
+                                <option value="{{ role }}">{{ role_labels.get(role, role|replace('_', ' ')|title) }}</option>
+                                {% endfor %}
+                            </select>
+                            <label class="form-label fw-bold">Pilih Pengguna</label>
+                            <select class="form-select" name="target_user_id" id="targetUserSelect">
+                                <option value="">-- Pilih pengguna --</option>
+                                {% for u in users %}
+                                <option value="{{ u.id }}" data-role="{{ u.role.value }}">
+                                    {{ u.username }} ({{ role_labels.get(u.role.value, u.role.value|replace('_', ' ')|title) }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Judul</label>
+                            <input type="text" class="form-control" name="title" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Isi Pengumuman</label>
+                            <textarea class="form-control" rows="4" name="content" required></textarea>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="isActive" checked>
+                            <label class="form-check-label" for="isActive">Aktif</label>
+                        </div>
+                        <button type="submit" class="btn btn-info text-white w-100 fw-bold">
+                            <i class="fas fa-paper-plane me-1"></i>Kirim Pengumuman
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 fw-bold text-primary">Riwayat Pengumuman Anda</h6>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Tanggal</th>
+                                    <th>Target</th>
+                                    <th>Judul</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for a in recent_announcements %}
+                                <tr>
+                                    <td>{{ a.created_at.strftime('%d/%m/%Y %H:%M') if a.created_at else '-' }}</td>
+                                    <td>
+                                        {% if a.target_scope == 'CLASS' %}
+                                            Kelas: {{ a.target_class.name if a.target_class else '-' }}
+                                        {% elif a.target_scope == 'USER' %}
+                                            User: {{ a.target_user.username if a.target_user else '-' }}
+                                        {% elif a.target_scope == 'ROLE' %}
+                                            Role: {{ role_labels.get(a.target_role, a.target_role or '-') }}
+                                        {% elif a.target_scope == 'PROGRAM' %}
+                                            Program: {{ program_labels.get(a.target_program_type, a.target_program_type or '-') }}
+                                        {% else %}
+                                            Semua
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="fw-bold">{{ a.title }}</div>
+                                        <small class="text-muted">{{ a.content|truncate(90) }}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge {% if a.is_active %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {{ 'Aktif' if a.is_active else 'Nonaktif' }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-center text-muted py-4">Belum ada pengumuman.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const scope = document.getElementById('targetScope');
+    const classWrap = document.getElementById('classTargetWrap');
+    const userWrap = document.getElementById('userTargetWrap');
+    const roleWrap = document.getElementById('roleTargetWrap');
+    const programWrap = document.getElementById('programTargetWrap');
+    const roleFilter = document.getElementById('userRoleFilter');
+    const userSelect = document.getElementById('targetUserSelect');
+
+    function toggleTarget() {
+        roleWrap.classList.toggle('d-none', scope.value !== 'ROLE');
+        programWrap.classList.toggle('d-none', scope.value !== 'PROGRAM');
+        classWrap.classList.toggle('d-none', scope.value !== 'CLASS');
+        userWrap.classList.toggle('d-none', scope.value !== 'USER');
+        if (scope.value !== 'USER') {
+            roleFilter.value = '';
+            applyUserRoleFilter();
+        }
+    }
+
+    function applyUserRoleFilter() {
+        const selectedRole = roleFilter.value;
+        Array.from(userSelect.options).forEach((option, index) => {
+            if (index === 0) {
+                option.hidden = false;
+                return;
+            }
+            const role = option.getAttribute('data-role') || '';
+            const isVisible = !selectedRole || role === selectedRole;
+            option.hidden = !isVisible;
+            if (!isVisible && option.selected) {
+                option.selected = false;
+            }
+        });
+    }
+
+    scope.addEventListener('change', toggleTarget);
+    roleFilter.addEventListener('change', applyUserRoleFilter);
+    applyUserRoleFilter();
+    toggleTarget();
+});
+</script>
+{% endblock %}

@@ -2,14 +2,15 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
-from sqlalchemy import func
+from sqlalchemy import func, or_, and_
 from app.extensions import db
 from app.decorators import role_required
 from app.forms import PaymentForm, StudentForm  # Pastikan import ini ada
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType,
-    StudentCandidate, RegistrationStatus, ProgramType, MajlisParticipant, ClassType
+    StudentCandidate, RegistrationStatus, ProgramType, EducationLevel,
+    MajlisParticipant, ClassType, Announcement
 )
 from app.utils.nis import generate_nis
 
@@ -113,9 +114,14 @@ def generate_invoices(fee_id):
 
     try:
         for student in students:
+            candidate = getattr(student, "student_candidate", None)
+
             # Filter Jurusan (RQDF vs Formal)
-            if "RQDF" in fee.name.upper() and student.student_candidate.program_type.name != 'RQDF_SORE': continue
-            if "RQDF" not in fee.name.upper() and student.student_candidate.program_type.name == 'RQDF_SORE': continue
+            if candidate:
+                if "RQDF" in fee.name.upper() and candidate.program_type.name != 'RQDF_SORE':
+                    continue
+                if "RQDF" not in fee.name.upper() and candidate.program_type.name == 'RQDF_SORE':
+                    continue
 
             # Cek Duplikat
             if Invoice.query.filter_by(student_id=student.id, fee_type_id=fee.id).first():
@@ -125,7 +131,7 @@ def generate_invoices(fee_id):
             nominal_final = fee.amount
             if is_monthly_fee and student.custom_spp_fee is not None:
                 nominal_final = student.custom_spp_fee
-            elif student.student_candidate.scholarship_category.name != 'NON_BEASISWA':
+            elif candidate and candidate.scholarship_category.name != 'NON_BEASISWA':
                 nominal_final = fee.amount * 0.5
 
             # Buat Invoice
@@ -146,8 +152,111 @@ def generate_invoices(fee_id):
         db.session.rollback()
         flash(f'Error: {str(e)}', 'danger')
 
-    # Kembali ke halaman list biaya (yang bisa diakses TU juga nanti)
-    return redirect(url_for('staff.manage_fee_types'))
+    return redirect(url_for('staff.send_invoices'))
+
+
+@staff_bp.route('/tagihan/kirim', methods=['GET'])
+@login_required
+@role_required(UserRole.TU)
+def send_invoices():
+    query = (request.args.get('q') or '').strip()
+    fees_query = FeeType.query
+    if query:
+        fees_query = fees_query.filter(FeeType.name.ilike(f'%{query}%'))
+    fees = fees_query.order_by(FeeType.id.desc()).all()
+    return render_template('staff/send_invoices.html', fees=fees, query=query)
+
+
+@staff_bp.route('/pengumuman', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.TU)
+def manage_announcements():
+    classes = ClassRoom.query.filter_by(is_deleted=False).order_by(ClassRoom.name.asc()).all()
+    users = User.query.filter(User.role != UserRole.ADMIN).order_by(User.username.asc()).limit(500).all()
+    available_roles = sorted({u.role.value for u in users})
+    role_labels = {
+        UserRole.WALI_MURID.value: 'Wali Murid',
+        UserRole.SISWA.value: 'Santri',
+        UserRole.GURU.value: 'Guru',
+        UserRole.TU.value: 'Staf TU',
+        UserRole.MAJLIS_PARTICIPANT.value: 'Peserta Majlis',
+    }
+    targetable_roles = [
+        UserRole.GURU.value,
+        UserRole.SISWA.value,
+        UserRole.WALI_MURID.value,
+        UserRole.MAJLIS_PARTICIPANT.value,
+    ]
+    program_labels = {
+        ProgramType.SEKOLAH_FULLDAY.name: "SBQ (Sekolah Bina Qur'an)",
+        ProgramType.RQDF_SORE.name: 'Reguler (RQDF Sore)',
+        ProgramType.TAKHOSUS_TAHFIDZ.name: 'Takhosus Tahfidz',
+        ProgramType.MAJLIS_TALIM.name: "Majlis Ta'lim",
+    }
+
+    if request.method == 'POST':
+        target_scope = (request.form.get('target_scope') or 'ALL').upper()
+        title = (request.form.get('title') or '').strip()
+        content = (request.form.get('content') or '').strip()
+        class_id = request.form.get('target_class_id', type=int)
+        target_user_id = request.form.get('target_user_id', type=int)
+        target_role = (request.form.get('target_role') or '').strip()
+        target_program_type = (request.form.get('target_program_type') or '').strip()
+        is_active = request.form.get('is_active') == 'on'
+
+        if not title or not content:
+            flash("Judul dan isi pengumuman wajib diisi.", "warning")
+            return redirect(url_for('staff.manage_announcements'))
+
+        if target_scope not in {'ALL', 'CLASS', 'USER', 'ROLE', 'PROGRAM'}:
+            flash("Target pengumuman tidak valid.", "danger")
+            return redirect(url_for('staff.manage_announcements'))
+
+        if target_scope == 'CLASS' and not class_id:
+            flash("Pilih kelas tujuan terlebih dahulu.", "warning")
+            return redirect(url_for('staff.manage_announcements'))
+
+        if target_scope == 'USER' and not target_user_id:
+            flash("Pilih pengguna tujuan terlebih dahulu.", "warning")
+            return redirect(url_for('staff.manage_announcements'))
+
+        if target_scope == 'ROLE' and target_role not in targetable_roles:
+            flash("Pilih role tujuan terlebih dahulu.", "warning")
+            return redirect(url_for('staff.manage_announcements'))
+
+        if target_scope == 'PROGRAM' and target_program_type not in program_labels.keys():
+            flash("Pilih program tujuan terlebih dahulu.", "warning")
+            return redirect(url_for('staff.manage_announcements'))
+
+        announcement = Announcement(
+            title=title,
+            content=content,
+            is_active=is_active,
+            target_scope=target_scope,
+            target_class_id=class_id if target_scope == 'CLASS' else None,
+            target_user_id=target_user_id if target_scope == 'USER' else None,
+            target_role=target_role if target_scope == 'ROLE' else None,
+            target_program_type=target_program_type if target_scope == 'PROGRAM' else None,
+            user_id=current_user.id
+        )
+        db.session.add(announcement)
+        db.session.commit()
+        flash("Pengumuman berhasil dikirim.", "success")
+        return redirect(url_for('staff.manage_announcements'))
+
+    recent_announcements = Announcement.query.filter_by(user_id=current_user.id).order_by(
+        Announcement.created_at.desc()
+    ).limit(30).all()
+    return render_template(
+        'staff/announcements.html',
+        classes=classes,
+        users=users,
+        available_roles=available_roles,
+        role_labels=role_labels,
+        targetable_roles=targetable_roles,
+        program_labels=program_labels,
+        recent_announcements=recent_announcements
+    )
 
 
 # =========================================================
@@ -159,14 +268,14 @@ def generate_invoices(fee_id):
 @role_required(UserRole.TU)
 def list_students():
     query = (request.args.get('q') or '').strip()
+    query_majlis = (request.args.get('q_majlis') or '').strip()
+    active_category = (request.args.get('category') or 'all').strip().lower()
 
-    students_query = Student.query.filter_by(is_deleted=False)
+    students_query = Student.query.filter_by(is_deleted=False).outerjoin(ClassRoom, Student.current_class_id == ClassRoom.id)
     majlis_query = MajlisParticipant.query.filter_by(is_deleted=False)
 
     if query:
-        students_query = students_query.outerjoin(Parent, Student.parent_id == Parent.id).outerjoin(
-            ClassRoom, Student.current_class_id == ClassRoom.id
-        ).filter(
+        students_query = students_query.outerjoin(Parent, Student.parent_id == Parent.id).filter(
             db.or_(
                 Student.full_name.ilike(f'%{query}%'),
                 Student.nis.ilike(f'%{query}%'),
@@ -176,11 +285,84 @@ def list_students():
             )
         )
 
+    if query_majlis:
         majlis_query = majlis_query.outerjoin(ClassRoom, MajlisParticipant.majlis_class_id == ClassRoom.id).filter(
             db.or_(
-                MajlisParticipant.full_name.ilike(f'%{query}%'),
-                MajlisParticipant.phone.ilike(f'%{query}%'),
-                ClassRoom.name.ilike(f'%{query}%')
+                MajlisParticipant.full_name.ilike(f'%{query_majlis}%'),
+                MajlisParticipant.phone.ilike(f'%{query_majlis}%'),
+                ClassRoom.name.ilike(f'%{query_majlis}%')
+            )
+        )
+
+    if active_category == 'sbq_sd':
+        students_query = students_query.filter(
+            or_(
+                and_(
+                    ClassRoom.program_type == ProgramType.SEKOLAH_FULLDAY,
+                    ClassRoom.education_level == EducationLevel.SD
+                ),
+                and_(
+                    ClassRoom.program_type.is_(None),
+                    or_(
+                        ClassRoom.name.ilike('%sd%'),
+                        ClassRoom.grade_level.in_([1, 2, 3, 4, 5, 6])
+                    )
+                )
+            )
+        )
+    elif active_category == 'sbq_smp':
+        students_query = students_query.filter(
+            or_(
+                and_(
+                    ClassRoom.program_type == ProgramType.SEKOLAH_FULLDAY,
+                    ClassRoom.education_level == EducationLevel.SMP
+                ),
+                and_(
+                    ClassRoom.program_type.is_(None),
+                    or_(
+                        ClassRoom.name.ilike('%smp%'),
+                        ClassRoom.grade_level.in_([7, 8, 9])
+                    )
+                )
+            )
+        )
+    elif active_category == 'sbq_sma':
+        students_query = students_query.filter(
+            or_(
+                and_(
+                    ClassRoom.program_type == ProgramType.SEKOLAH_FULLDAY,
+                    ClassRoom.education_level == EducationLevel.SMA
+                ),
+                and_(
+                    ClassRoom.program_type.is_(None),
+                    or_(
+                        ClassRoom.name.ilike('%sma%'),
+                        ClassRoom.grade_level.in_([10, 11, 12])
+                    )
+                )
+            )
+        )
+    elif active_category == 'reguler':
+        students_query = students_query.filter(
+            or_(
+                ClassRoom.program_type == ProgramType.RQDF_SORE,
+                and_(
+                    ClassRoom.program_type.is_(None),
+                    or_(
+                        ClassRoom.name.ilike('%reguler%'),
+                        ClassRoom.name.ilike('%rqdf%')
+                    )
+                )
+            )
+        )
+    elif active_category == 'takhosus':
+        students_query = students_query.filter(
+            or_(
+                ClassRoom.program_type == ProgramType.TAKHOSUS_TAHFIDZ,
+                and_(
+                    ClassRoom.program_type.is_(None),
+                    ClassRoom.name.ilike('%takhosus%')
+                )
             )
         )
 
@@ -191,7 +373,9 @@ def list_students():
         'student/list_students.html',
         students=students,
         majlis_participants=majlis_participants,
-        query=query
+        query=query,
+        query_majlis=query_majlis,
+        active_category=active_category
     )
 
 
@@ -199,7 +383,17 @@ def list_students():
 @login_required
 @role_required(UserRole.TU)
 def assign_majlis_classes():
-    majlis_participants = MajlisParticipant.query.filter_by(is_deleted=False).order_by(MajlisParticipant.full_name).all()
+    query = (request.args.get('q') or '').strip()
+    participants_query = MajlisParticipant.query.filter_by(is_deleted=False)
+    if query:
+        participants_query = participants_query.filter(
+            or_(
+                MajlisParticipant.full_name.ilike(f'%{query}%'),
+                MajlisParticipant.phone.ilike(f'%{query}%')
+            )
+        )
+
+    majlis_participants = participants_query.order_by(MajlisParticipant.full_name).all()
     majlis_classes = ClassRoom.query.filter_by(is_deleted=False, class_type=ClassType.MAJLIS_TALIM).order_by(ClassRoom.name).all()
 
     # Fallback: jika belum ada class_type khusus, tetap izinkan pilih semua kelas agar operasional tidak terblokir
@@ -222,7 +416,8 @@ def assign_majlis_classes():
     return render_template(
         'staff/majlis_class_assignment.html',
         majlis_participants=majlis_participants,
-        majlis_classes=majlis_classes
+        majlis_classes=majlis_classes,
+        query=query
     )
 
 
@@ -266,8 +461,20 @@ def edit_student(student_id):
 @login_required
 @role_required(UserRole.TU)
 def ppdb_list():
-    candidates = StudentCandidate.query.order_by(StudentCandidate.created_at.desc()).all()
-    return render_template('staff/ppdb/list.html', candidates=candidates)
+    query = (request.args.get('q') or '').strip()
+    candidates_query = StudentCandidate.query
+    if query:
+        candidates_query = candidates_query.filter(
+            or_(
+                StudentCandidate.registration_no.ilike(f'%{query}%'),
+                StudentCandidate.full_name.ilike(f'%{query}%'),
+                StudentCandidate.parent_phone.ilike(f'%{query}%'),
+                StudentCandidate.personal_phone.ilike(f'%{query}%')
+            )
+        )
+
+    candidates = candidates_query.order_by(StudentCandidate.created_at.desc()).all()
+    return render_template('staff/ppdb/list.html', candidates=candidates, query=query)
 
 
 @staff_bp.route('/ppdb/detail/<int:candidate_id>')

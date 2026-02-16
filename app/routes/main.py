@@ -6,11 +6,13 @@ from flask import (
     url_for,
     flash,
     current_app,
+    request,
 )
 from flask_login import (
     login_required,
     current_user,
 )
+from sqlalchemy import and_, or_
 
 from app.extensions import db
 from app.forms import PPDBForm
@@ -34,9 +36,25 @@ from app.models import (
     TahfidzSummary,
     TahfidzEvaluation,
     Schedule,
+    Announcement,
 )
+from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
 
 main_bp = Blueprint('main', __name__)
+
+
+def _get_majlis_announcements(limit=None):
+    profile = current_user.majlis_profile
+    class_id = profile.majlis_class_id if profile else None
+
+    announcements, _ = get_announcements_for_dashboard(
+        current_user,
+        class_ids=[class_id],
+        user_ids=[current_user.id],
+        program_types=[ProgramType.MAJLIS_TALIM.name],
+        show_all=(limit is None)
+    )
+    return announcements
 
 
 @main_bp.route('/')
@@ -82,32 +100,71 @@ def dashboard():
 
 @main_bp.route('/majlis/dashboard')
 @login_required
-@role_required(UserRole.MAJLIS_PARTICIPANT)
+@role_required(UserRole.MAJLIS_PARTICIPANT, UserRole.WALI_MURID)
 def majlis_dashboard():
     profile = current_user.majlis_profile
+    parent_profile = current_user.parent_profile if current_user.role == UserRole.WALI_MURID else None
     if not profile:
         flash("Profil peserta Majelis tidak ditemukan.", "danger")
+        if current_user.role == UserRole.WALI_MURID:
+            return redirect(url_for('parent.join_majlis'))
         return redirect(url_for('auth.logout'))
 
-    summary = TahfidzSummary.query.filter_by(
-        majlis_participant_id=profile.id,
-        participant_type=ParticipantType.EXTERNAL_MAJLIS
-    ).first()
+    summary_filters = [
+        and_(
+            TahfidzSummary.majlis_participant_id == profile.id,
+            TahfidzSummary.participant_type == ParticipantType.EXTERNAL_MAJLIS
+        )
+    ]
+    tahfidz_filters = [
+        and_(
+            TahfidzRecord.majlis_participant_id == profile.id,
+            TahfidzRecord.participant_type == ParticipantType.EXTERNAL_MAJLIS
+        )
+    ]
+    recitation_filters = [
+        and_(
+            RecitationRecord.majlis_participant_id == profile.id,
+            RecitationRecord.participant_type == ParticipantType.EXTERNAL_MAJLIS
+        )
+    ]
+    evaluation_filters = [
+        and_(
+            TahfidzEvaluation.majlis_participant_id == profile.id,
+            TahfidzEvaluation.participant_type == ParticipantType.EXTERNAL_MAJLIS
+        )
+    ]
 
-    recent_tahfidz = TahfidzRecord.query.filter_by(
-        majlis_participant_id=profile.id,
-        participant_type=ParticipantType.EXTERNAL_MAJLIS
-    ).order_by(TahfidzRecord.date.desc()).limit(10).all()
+    if parent_profile:
+        summary_filters.append(
+            and_(
+                TahfidzSummary.parent_id == parent_profile.id,
+                TahfidzSummary.participant_type == ParticipantType.PARENT_MAJLIS
+            )
+        )
+        tahfidz_filters.append(
+            and_(
+                TahfidzRecord.parent_id == parent_profile.id,
+                TahfidzRecord.participant_type == ParticipantType.PARENT_MAJLIS
+            )
+        )
+        recitation_filters.append(
+            and_(
+                RecitationRecord.parent_id == parent_profile.id,
+                RecitationRecord.participant_type == ParticipantType.PARENT_MAJLIS
+            )
+        )
+        evaluation_filters.append(
+            and_(
+                TahfidzEvaluation.parent_id == parent_profile.id,
+                TahfidzEvaluation.participant_type == ParticipantType.PARENT_MAJLIS
+            )
+        )
 
-    recent_recitation = RecitationRecord.query.filter_by(
-        majlis_participant_id=profile.id,
-        participant_type=ParticipantType.EXTERNAL_MAJLIS
-    ).order_by(RecitationRecord.date.desc()).limit(10).all()
-
-    recent_evaluations = TahfidzEvaluation.query.filter_by(
-        majlis_participant_id=profile.id,
-        participant_type=ParticipantType.EXTERNAL_MAJLIS
-    ).order_by(TahfidzEvaluation.date.desc()).limit(10).all()
+    summary = TahfidzSummary.query.filter(or_(*summary_filters)).order_by(TahfidzSummary.updated_at.desc()).first()
+    recent_tahfidz = TahfidzRecord.query.filter(or_(*tahfidz_filters)).order_by(TahfidzRecord.date.desc()).limit(10).all()
+    recent_recitation = RecitationRecord.query.filter(or_(*recitation_filters)).order_by(RecitationRecord.date.desc()).limit(10).all()
+    recent_evaluations = TahfidzEvaluation.query.filter(or_(*evaluation_filters)).order_by(TahfidzEvaluation.date.desc()).limit(10).all()
 
     weekly_schedule = {day: [] for day in ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']}
     if profile.majlis_class_id:
@@ -115,6 +172,21 @@ def majlis_dashboard():
         for sch in schedules:
             if sch.day in weekly_schedule:
                 weekly_schedule[sch.day].append(sch)
+
+    top_tab = (request.args.get('top_tab') or 'main').strip().lower()
+    show_all_announcements = (request.args.get('ann') or '').strip().lower() == 'all'
+    majlis_announcements = _get_majlis_announcements(limit=None if show_all_announcements else 3)
+    unread_announcements_count = 0
+    _, unread_announcements_count = get_announcements_for_dashboard(
+        current_user,
+        class_ids=[profile.majlis_class_id if profile else None],
+        user_ids=[current_user.id],
+        program_types=[ProgramType.MAJLIS_TALIM.name],
+        show_all=False
+    )
+    if top_tab == 'ann':
+        mark_announcements_as_read(current_user, majlis_announcements)
+        unread_announcements_count = 0
 
     return render_template(
         'majlis/dashboard.html',
@@ -124,7 +196,11 @@ def majlis_dashboard():
         recent_recitation=recent_recitation,
         recent_evaluations=recent_evaluations,
         majlis_class=profile.majlis_class,
-        weekly_schedule=weekly_schedule
+        weekly_schedule=weekly_schedule,
+        majlis_announcements=majlis_announcements,
+        show_all_announcements=show_all_announcements,
+        top_tab=top_tab,
+        unread_announcements_count=unread_announcements_count
     )
 
 

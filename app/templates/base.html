@@ -123,6 +123,8 @@
                     <li><a href="{{ url_for('teacher.input_tahfidz') }}"><i class="fas fa-quran me-2"></i> Input Tahfidz</a></li>
                     <li><a href="{{ url_for('teacher.input_recitation') }}"><i class="fas fa-book-reader me-2"></i> Input Bacaan</a></li>
                     <li><a href="{{ url_for('teacher.input_tahfidz_evaluation') }}"><i class="fas fa-clipboard-check me-2"></i> Evaluasi Tahfidz</a></li>
+                    <li><a href="{{ url_for('teacher.input_behavior_report') }}"><i class="fas fa-user-shield me-2"></i> Laporan Perilaku</a></li>
+                    <li><a href="{{ url_for('teacher.class_announcements') }}"><i class="fas fa-bullhorn me-2"></i> Pengumuman Kelas</a></li>
                 {% endif %}
 
                 {% if current_user.role.value == 'tata_usaha' %}
@@ -131,7 +133,8 @@
                     <li><a href="{{ url_for('staff.ppdb_list') }}"><i class="fas fa-user-plus me-2"></i> Verifikasi PPDB</a></li>
                     <li><a href="{{ url_for('staff.list_students') }}"><i class="fas fa-users me-2"></i> Data Santri</a></li>
                     <li><a href="{{ url_for('staff.assign_majlis_classes') }}"><i class="fas fa-school me-2"></i> Kelas Majlis Ta'lim</a></li>
-                    <li><a href="{{ url_for('admin.manage_fee_types') }}"><i class="fas fa-file-invoice-dollar me-2"></i> Terbitkan Tagihan</a></li>
+                    <li><a href="{{ url_for('staff.send_invoices') }}"><i class="fas fa-file-invoice-dollar me-2"></i> Kirim Tagihan</a></li>
+                    <li><a href="{{ url_for('staff.manage_announcements') }}"><i class="fas fa-bullhorn me-2"></i> Pengumuman</a></li>
                 {% endif %}
 
             </ul>

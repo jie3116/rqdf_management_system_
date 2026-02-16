@@ -9,6 +9,50 @@
         </div>
     </div>
 
+    <ul class="nav nav-tabs mb-4">
+        <li class="nav-item">
+            <a class="nav-link {% if top_tab == 'ann' %}active{% endif %}" href="{{ url_for('main.majlis_dashboard', top_tab='ann', ann='all' if show_all_announcements else None) }}">
+                Pengumuman
+                {% if unread_announcements_count > 0 %}
+                <span class="badge bg-danger ms-1">{{ unread_announcements_count }}</span>
+                {% endif %}
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if top_tab != 'ann' %}active{% endif %}" href="{{ url_for('main.majlis_dashboard', top_tab='main') }}">Dashboard</a>
+        </li>
+    </ul>
+
+    {% if top_tab == 'ann' %}
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-success">Info & Kegiatan Majelis</h6>
+            {% if show_all_announcements %}
+            <a href="{{ url_for('main.majlis_dashboard', top_tab='ann') }}" class="btn btn-sm btn-outline-secondary">Terbaru Saja</a>
+            {% else %}
+            <a href="{{ url_for('main.majlis_dashboard', top_tab='ann', ann='all') }}" class="btn btn-sm btn-outline-success">Lihat Semua</a>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            {% if majlis_announcements %}
+                <div class="list-group list-group-flush">
+                    {% for item in majlis_announcements %}
+                    <div class="list-group-item px-0">
+                        <div class="d-flex justify-content-between">
+                            <h6 class="mb-1">{{ item.title }}</h6>
+                            <small class="text-muted">{{ item.created_at.strftime('%d/%m/%Y') if item.created_at else '-' }}</small>
+                        </div>
+                        <small class="text-muted d-block mb-1">Dari: {{ item.author_label }}</small>
+                        <p class="mb-0 text-muted">{{ item.content if show_all_announcements else item.content|truncate(140) }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-muted mb-0">Belum ada pengumuman kegiatan majelis.</p>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
     <div class="row">
         <div class="col-xl-4 col-md-6 mb-4">
             <div class="card border-left-success shadow h-100 py-2">
@@ -39,6 +83,34 @@
                     <small class="text-muted">Wali Kelas: {{ majlis_class.homeroom_teacher.full_name if majlis_class and majlis_class.homeroom_teacher else '-' }}</small>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-success">Info & Kegiatan Majelis</h6>
+            {% if show_all_announcements %}
+            <a href="{{ url_for('main.majlis_dashboard') }}" class="btn btn-sm btn-outline-secondary">Mode Ringkas</a>
+            {% else %}
+            <a href="{{ url_for('main.majlis_dashboard', ann='all') }}" class="btn btn-sm btn-outline-success">Lihat Semua</a>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            {% if majlis_announcements %}
+                <div class="list-group list-group-flush">
+                    {% for item in majlis_announcements %}
+                    <div class="list-group-item px-0">
+                        <div class="d-flex justify-content-between">
+                            <h6 class="mb-1">{{ item.title }}</h6>
+                            <small class="text-muted">{{ item.created_at.strftime('%d/%m/%Y') if item.created_at else '-' }}</small>
+                        </div>
+                        <p class="mb-0 text-muted">{{ item.content if show_all_announcements else item.content|truncate(140) }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-muted mb-0">Belum ada pengumuman kegiatan majelis.</p>
+            {% endif %}
         </div>
     </div>
 
@@ -222,5 +294,6 @@
             </div>
         </div>
     </div>
+    {% endif %}
 </div>
 {% endblock %}

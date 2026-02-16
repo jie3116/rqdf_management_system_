@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Kirim Tagihan</h1>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-danger text-white">
+            <h6 class="m-0 fw-bold"><i class="fas fa-paper-plane me-2"></i>Terbitkan Tagihan Berdasarkan Master Biaya</h6>
+        </div>
+        <div class="card-body">
+            <form method="GET" class="mb-3">
+                <div class="input-group">
+                    <input type="text" name="q" class="form-control" placeholder="Cari nama biaya..." value="{{ query or '' }}">
+                    <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i>Cari</button>
+                    {% if query %}
+                    <a href="{{ url_for('staff.send_invoices') }}" class="btn btn-outline-secondary">Reset</a>
+                    {% endif %}
+                </div>
+            </form>
+
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped">
+                    <thead>
+                        <tr>
+                            <th>Nama Biaya</th>
+                            <th>Nominal Standar</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for fee in fees %}
+                        <tr>
+                            <td class="fw-bold">{{ fee.name }}</td>
+                            <td>Rp {{ "{:,.0f}".format(fee.amount or 0) }}</td>
+                            <td style="width: 170px;">
+                                <form method="POST" action="{{ url_for('staff.generate_invoices', fee_id=fee.id) }}" onsubmit="return confirm('Terbitkan tagihan untuk biaya ini ke siswa yang sesuai?')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    <button type="submit" class="btn btn-danger btn-sm w-100">
+                                        <i class="fas fa-paper-plane me-1"></i>Kirim Tagihan
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-center text-muted py-4">Belum ada master biaya.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

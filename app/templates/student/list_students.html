@@ -49,18 +49,44 @@
         <h6 class="m-0 fw-bold"><i class="fas fa-users me-2"></i>Daftar Santri Aktif</h6>
     </div>
     <div class="card-body">
+        {% set base_route = url_for('admin.list_students') if current_user.role.value == 'admin' else url_for('staff.list_students') %}
+        {% set current_category = active_category or 'all' %}
+        {% set majlis_query = query_majlis or '' %}
+
+        <ul class="nav nav-tabs mb-3">
+            <li class="nav-item">
+                <a class="nav-link {% if current_category == 'all' %}active{% endif %}" href="{{ base_route }}?category=all{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Semua</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if current_category == 'sbq_sd' %}active{% endif %}" href="{{ base_route }}?category=sbq_sd{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">SBQ SD</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if current_category == 'sbq_smp' %}active{% endif %}" href="{{ base_route }}?category=sbq_smp{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">SBQ SMP</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if current_category == 'sbq_sma' %}active{% endif %}" href="{{ base_route }}?category=sbq_sma{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">SBQ SMA</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if current_category == 'reguler' %}active{% endif %}" href="{{ base_route }}?category=reguler{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Reguler</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if current_category == 'takhosus' %}active{% endif %}" href="{{ base_route }}?category=takhosus{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Takhosus</a>
+            </li>
+        </ul>
         
-        <form method="GET" action="{{ url_for('admin.list_students') if current_user.role.value == 'admin' else url_for('staff.list_students') }}" class="mb-3">
+        <form method="GET" action="{{ base_route }}" class="mb-3">
+            <input type="hidden" name="category" value="{{ current_category }}">
+            <input type="hidden" name="q_majlis" value="{{ majlis_query }}">
             <div class="row g-2 justify-content-end">
                 <div class="col-md-4">
-                    <input type="text" name="q" class="form-control form-control-sm" placeholder="Cari santri/majlis (nama, NIS, wali, kelas, no WA)..." value="{{ query or '' }}">
+                    <input type="text" name="q" class="form-control form-control-sm" placeholder="Cari santri (nama, NIS, wali, kelas, no WA)..." value="{{ query or '' }}">
                 </div>
                 <div class="col-auto">
                     <button type="submit" class="btn btn-sm btn-primary">
                         <i class="fas fa-search me-1"></i>Cari
                     </button>
                     {% if query %}
-                    <a href="{{ url_for('admin.list_students') if current_user.role.value == 'admin' else url_for('staff.list_students') }}" class="btn btn-sm btn-outline-secondary">
+                    <a href="{{ base_route }}?category={{ current_category }}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}" class="btn btn-sm btn-outline-secondary">
                         Reset
                     </a>
                     {% endif %}
@@ -143,6 +169,25 @@
         <h6 class="m-0 fw-bold"><i class="fas fa-mosque me-2"></i>Peserta Majlis Ta'lim Aktif</h6>
     </div>
     <div class="card-body">
+        <form method="GET" action="{{ base_route }}" class="mb-3">
+            <input type="hidden" name="category" value="{{ current_category }}">
+            <input type="hidden" name="q" value="{{ query or '' }}">
+            <div class="row g-2 justify-content-end">
+                <div class="col-md-4">
+                    <input type="text" name="q_majlis" class="form-control form-control-sm" placeholder="Cari peserta majlis (nama, no WA, kelas)..." value="{{ majlis_query }}">
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-sm btn-success">
+                        <i class="fas fa-search me-1"></i>Cari Peserta
+                    </button>
+                    {% if majlis_query %}
+                    <a href="{{ base_route }}?category={{ current_category }}{% if query %}&q={{ query }}{% endif %}" class="btn btn-sm btn-outline-secondary">
+                        Reset
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
         <div class="table-responsive">
             <table class="table table-bordered table-hover">
                 <thead class="table-light"><tr><th>Nama</th><th>No WA</th><th>Kelas Majlis</th><th>Alamat</th></tr></thead>
@@ -161,17 +206,5 @@
     </div>
 </div>
 {% endif %}
-
-<script>
-document.getElementById('searchBox').addEventListener('keyup', function() {
-    let searchValue = this.value.toLowerCase();
-    let rows = document.querySelectorAll('#dataTable tbody tr');
-    
-    rows.forEach(row => {
-        let text = row.innerText.toLowerCase();
-        row.style.display = text.includes(searchValue) ? '' : 'none';
-    });
-});
-</script>
 
 {% endblock %}
