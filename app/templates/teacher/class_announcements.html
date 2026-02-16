@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Pengumuman Kelas</h1>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-5">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-info text-white">
+                    <h6 class="m-0 fw-bold">Buat Pengumuman</h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Kelas Tujuan</label>
+                            <select class="form-select" name="class_id" required>
+                                <option value="">-- Pilih kelas --</option>
+                                {% for cls in my_classes %}
+                                <option value="{{ cls.id }}" {% if selected_class_id == cls.id %}selected{% endif %}>{{ cls.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Judul</label>
+                            <input type="text" class="form-control" name="title" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Isi Pengumuman</label>
+                            <textarea class="form-control" name="content" rows="4" required></textarea>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="isActive" checked>
+                            <label class="form-check-label" for="isActive">Aktif</label>
+                        </div>
+                        <button type="submit" class="btn btn-info w-100 text-white fw-bold">
+                            <i class="fas fa-paper-plane me-1"></i>Kirim Pengumuman
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 fw-bold text-primary">Riwayat Pengumuman Anda</h6>
+                </div>
+                <div class="card-body">
+                    <form method="GET" class="mb-3">
+                        <div class="input-group">
+                            <select class="form-select" name="class_id">
+                                <option value="">Semua Kelas</option>
+                                {% for cls in my_classes %}
+                                <option value="{{ cls.id }}" {% if selected_class_id == cls.id %}selected{% endif %}>{{ cls.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <button class="btn btn-outline-primary" type="submit">Filter</button>
+                        </div>
+                    </form>
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Tanggal</th>
+                                    <th>Kelas</th>
+                                    <th>Judul</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for a in announcements %}
+                                <tr>
+                                    <td>{{ a.created_at.strftime('%d/%m/%Y %H:%M') if a.created_at else '-' }}</td>
+                                    <td>{{ a.target_class.name if a.target_class else '-' }}</td>
+                                    <td>
+                                        <div class="fw-bold">{{ a.title }}</div>
+                                        <small class="text-muted">{{ a.content|truncate(90) }}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge {% if a.is_active %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {{ 'Aktif' if a.is_active else 'Nonaktif' }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-center text-muted">Belum ada pengumuman.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

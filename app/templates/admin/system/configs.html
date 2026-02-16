@@ -37,6 +37,15 @@
                 <h6 class="m-0 fw-bold text-primary">Daftar Konfigurasi Sistem</h6>
             </div>
             <div class="card-body">
+                <form method="GET" action="{{ url_for('admin.manage_app_config') }}" class="mb-3">
+                    <div class="input-group">
+                        <input type="text" name="q" class="form-control" placeholder="Cari key, value, atau keterangan..." value="{{ query or '' }}">
+                        <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i>Cari</button>
+                        {% if query %}
+                        <a href="{{ url_for('admin.manage_app_config') }}" class="btn btn-outline-secondary">Reset</a>
+                        {% endif %}
+                    </div>
+                </form>
                 <table class="table table-bordered table-hover">
                     <thead class="table-light">
                         <tr>

@@ -26,6 +26,26 @@
                         </select>
                     </div>
                     <div class="mb-3">
+                        <label>Program Kelas</label>
+                        <select name="program_type" class="form-select">
+                            <option value="">-- Pilih Program --</option>
+                            <option value="SEKOLAH_FULLDAY">SBQ (Sekolah Bina Qur'an)</option>
+                            <option value="RQDF_SORE">Reguler (RQDF Sore)</option>
+                            <option value="TAKHOSUS_TAHFIDZ">Takhosus Tahfidz</option>
+                            <option value="MAJLIS_TALIM">Majlis Ta'lim</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label>Jenjang</label>
+                        <select name="education_level" class="form-select">
+                            <option value="">-- Pilih Jenjang --</option>
+                            <option value="SD">SD</option>
+                            <option value="SMP">SMP</option>
+                            <option value="SMA">SMA</option>
+                            <option value="NON_FORMAL">Non Formal</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
                         <label>Wali Kelas</label>
                         <select name="homeroom_teacher_id" class="form-select">
                             <option value="">-- Pilih Guru --</option>
@@ -47,10 +67,20 @@
                 <h6 class="m-0 fw-bold text-primary">Daftar Kelas</h6>
             </div>
             <div class="card-body">
+                <form method="GET" action="{{ url_for('admin.manage_classes') }}" class="mb-3">
+                    <div class="input-group">
+                        <input type="text" name="q" class="form-control" placeholder="Cari nama kelas atau wali kelas..." value="{{ query or '' }}">
+                        <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i>Cari</button>
+                        {% if query %}
+                        <a href="{{ url_for('admin.manage_classes') }}" class="btn btn-outline-secondary">Reset</a>
+                        {% endif %}
+                    </div>
+                </form>
                 <table class="table table-striped">
                     <thead>
                         <tr>
                             <th>Nama Kelas</th>
+                            <th>Program</th>
                             <th>Wali Kelas</th>
                             <th>Jml Santri</th>
                             <th>Aksi</th>
@@ -60,6 +90,12 @@
                         {% for c in classes %}
                         <tr>
                             <td class="fw-bold">{{ c.name }}</td>
+                            <td>
+                                <div class="small">
+                                    <span class="badge bg-primary">{{ c.program_type.value if c.program_type else '-' }}</span>
+                                </div>
+                                <div class="text-muted small">{{ c.education_level.value if c.education_level else '-' }}</div>
+                            </td>
                             <td>{{ c.homeroom_teacher.full_name if c.homeroom_teacher else '-' }}</td>
                             <td>
                                 <span class="badge bg-secondary">{{ c.students|length }} Siswa</span>
@@ -69,7 +105,7 @@
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="4" class="text-center">Belum ada kelas.</td></tr>
+                        <tr><td colspan="5" class="text-center">Belum ada kelas.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

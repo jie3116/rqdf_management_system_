@@ -1,16 +1,17 @@
 # app/routes/student.py
 
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request
 from flask_login import login_required, current_user
 from datetime import datetime
 from sqlalchemy.orm import joinedload  # Wajib diimport untuk optimasi N+1
 from app import db
 
 from app.models import (
-    UserRole, Student, TahfidzRecord, TahfidzSummary, Announcement, TahfidzEvaluation,
-    RecitationRecord,Schedule, Grade, Violation, AcademicYear
+    UserRole, Student, TahfidzRecord, TahfidzSummary, TahfidzEvaluation,
+    RecitationRecord,Schedule, Grade, Violation, AcademicYear, BehaviorReport
 )
 from app.decorators import role_required
+from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
 
 student_bp = Blueprint('student', __name__)
 
@@ -45,10 +46,21 @@ def dashboard():
         .order_by(RecitationRecord.date.desc()) \
         .limit(5).all()
 
-    announcements = Announcement.query \
-        .filter_by(is_active=True) \
-        .order_by(Announcement.created_at.desc()) \
-        .limit(3).all()
+    top_tab = (request.args.get('top_tab') or 'main').strip().lower()
+    show_all_announcements = (request.args.get('ann') or '').strip().lower() == 'all'
+    class_program = student.current_class.program_type.name if student.current_class and student.current_class.program_type else None
+    program_types = [class_program] if class_program else []
+
+    announcements, unread_announcements_count = get_announcements_for_dashboard(
+        current_user,
+        class_ids=[student.current_class_id],
+        user_ids=[current_user.id],
+        program_types=program_types,
+        show_all=show_all_announcements
+    )
+    if top_tab == 'ann':
+        mark_announcements_as_read(current_user, announcements)
+        unread_announcements_count = 0
 
     # --- BAGIAN 2: JADWAL PELAJARAN (OPTIMIZED N+1) ---
     today_name_map = {0: 'Senin', 1: 'Selasa', 2: 'Rabu', 3: 'Kamis', 4: 'Jumat', 5: 'Sabtu', 6: 'Minggu'}
@@ -127,6 +139,9 @@ def dashboard():
         .all()
 
     total_points = sum(v.points for v in violations)
+    behavior_reports = student.behavior_reports \
+        .order_by(BehaviorReport.report_date.desc(), BehaviorReport.created_at.desc()) \
+        .limit(30).all()
 
     return render_template('student/dashboard.html',
                            student=student,
@@ -135,10 +150,14 @@ def dashboard():
                            recent_tahfidz_evaluations=recent_tahfidz_evaluations,
                            recent_recitations=recent_recitations,
                            announcements=announcements,
+                           top_tab=top_tab,
+                           show_all_announcements=show_all_announcements,
+                           unread_announcements_count=unread_announcements_count,
                            today_name=today_name,
                            todays_schedules=todays_schedules,
                            weekly_schedule=weekly_schedule,
                            grades=grades,
                            academic_recap=academic_recap,
                            violations=violations,
+                           behavior_reports=behavior_reports,
                            total_points=total_points)

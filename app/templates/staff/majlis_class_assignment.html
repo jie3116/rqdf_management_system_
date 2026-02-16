@@ -15,6 +15,16 @@
             Penempatan ini dipakai sebagai dasar pengelompokan pembelajaran/penilaian majlis.
         </div>
 
+        <form method="GET" action="{{ url_for('staff.assign_majlis_classes') }}" class="mb-3">
+            <div class="input-group">
+                <input type="text" name="q" class="form-control" placeholder="Cari nama peserta atau no WA..." value="{{ query or '' }}">
+                <button class="btn btn-outline-success" type="submit"><i class="fas fa-search me-1"></i>Cari</button>
+                {% if query %}
+                <a href="{{ url_for('staff.assign_majlis_classes') }}" class="btn btn-outline-secondary">Reset</a>
+                {% endif %}
+            </div>
+        </form>
+
         <form method="POST">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="table-responsive">

@@ -8,6 +8,7 @@
             </div>
             <div class="card-body">
                 <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <div class="mb-3">
                         <label>Nama Biaya</label>
                         <input type="text" name="name" class="form-control" placeholder="Cth: SPP 2026, Gedung" required>
@@ -37,6 +38,15 @@
                 <h6 class="m-0 fw-bold text-primary">Daftar Master Biaya</h6>
             </div>
             <div class="card-body">
+                <form method="GET" action="{{ url_for('admin.manage_fee_types') }}" class="mb-3">
+                    <div class="input-group">
+                        <input type="text" name="q" class="form-control" placeholder="Cari nama biaya atau tahun ajaran..." value="{{ query or '' }}">
+                        <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i>Cari</button>
+                        {% if query %}
+                        <a href="{{ url_for('admin.manage_fee_types') }}" class="btn btn-outline-secondary">Reset</a>
+                        {% endif %}
+                    </div>
+                </form>
                 <table class="table table-bordered">
                     <thead>
                         <tr>

@@ -106,6 +106,12 @@ class EvaluationPeriod(enum.Enum):
     SEMESTER = "Semester"
 
 
+class BehaviorReportType(enum.Enum):
+    POSITIVE = "Apresiasi"
+    DEVELOPMENT = "Pembinaan"
+    CONCERN = "Perlu Perhatian"
+
+
 class ProgramType(enum.Enum):
     RQDF_SORE = "RQDF Reguler (Sore)"
     SEKOLAH_FULLDAY = "Sekolah Bina Qur'an"
@@ -203,9 +209,30 @@ class Announcement(BaseModel):
 
     # Target spesifik (opsional)
     target_class_id = db.Column(db.Integer, db.ForeignKey('class_rooms.id'), nullable=True)
+    target_scope = db.Column(db.String(20), default='ALL', nullable=False)  # ALL / CLASS / USER
+    target_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    target_role = db.Column(db.String(30), nullable=True)
+    target_program_type = db.Column(db.String(50), nullable=True)
 
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    author = db.relationship('User', backref='announcements')
+    author = db.relationship('User', foreign_keys=[user_id], backref='announcements')
+    target_class = db.relationship('ClassRoom', foreign_keys=[target_class_id], backref='targeted_announcements')
+    target_user = db.relationship('User', foreign_keys=[target_user_id], backref='targeted_announcements')
+
+
+class AnnouncementRead(BaseModel):
+    __tablename__ = 'announcement_reads'
+    id = db.Column(db.Integer, primary_key=True)
+    announcement_id = db.Column(db.Integer, db.ForeignKey('announcements.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    read_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    announcement = db.relationship('Announcement', backref='read_logs')
+    user = db.relationship('User', backref='announcement_reads')
+
+    __table_args__ = (
+        db.UniqueConstraint('announcement_id', 'user_id', name='uq_announcement_read_user'),
+    )
 
 
 class SchoolDocument(BaseModel):
@@ -299,6 +326,7 @@ class Teacher(BaseModel):
 
     homeroom_class = db.relationship('ClassRoom', backref='homeroom_teacher', uselist=False)
     supervised_extracurriculars = db.relationship('Extracurricular', backref='supervisor', lazy=True)
+    behavior_reports = db.relationship('BehaviorReport', backref='teacher', lazy='dynamic')
 
 
 class Staff(BaseModel):
@@ -341,6 +369,7 @@ class Student(BaseModel):
     tahfidz_evaluations = db.relationship('TahfidzEvaluation', foreign_keys='TahfidzEvaluation.student_id',
                                           backref='student', lazy='dynamic')
     extracurriculars = db.relationship('Extracurricular', secondary=student_extracurriculars, back_populates='students')
+    behavior_reports = db.relationship('BehaviorReport', backref='student', lazy='dynamic')
 
     __table_args__ = (
         db.Index('idx_student_class_academic', 'current_class_id', 'created_at'),
@@ -367,6 +396,8 @@ class ClassRoom(BaseModel):
 
     # BARU: Tipe kelas
     class_type = db.Column(db.Enum(ClassType, name='classtype'), default=ClassType.REGULAR)
+    program_type = db.Column(db.Enum(ProgramType, name='programtype'), nullable=True)
+    education_level = db.Column(db.Enum(EducationLevel, name='educationlevel'), nullable=True)
 
     # Menambahkan Tahun Ajaran agar History Kelas Rapi
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'), nullable=True)
@@ -543,6 +574,20 @@ class Violation(BaseModel):
     description = db.Column(db.Text)
     points = db.Column(db.Integer)
     sanction = db.Column(db.String(100))
+
+
+class BehaviorReport(BaseModel):
+    __tablename__ = 'behavior_reports'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False, index=True)
+    report_date = db.Column(db.Date, default=datetime.utcnow, nullable=False, index=True)
+    report_type = db.Column(db.Enum(BehaviorReportType, name='behaviorreporttype'), nullable=False)
+    title = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    action_plan = db.Column(db.Text, nullable=True)
+    follow_up_date = db.Column(db.Date, nullable=True)
+    is_resolved = db.Column(db.Boolean, default=False)
 
 
 class Extracurricular(BaseModel):

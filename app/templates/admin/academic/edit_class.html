@@ -25,6 +25,26 @@
                             {% endfor %}
                         </select>
                     </div>
+                    <div class="mb-3">
+                        <label>Program Kelas</label>
+                        <select name="program_type" class="form-select">
+                            <option value="">-- Pilih Program --</option>
+                            <option value="SEKOLAH_FULLDAY" {% if class_room.program_type and class_room.program_type.name == 'SEKOLAH_FULLDAY' %}selected{% endif %}>SBQ (Sekolah Bina Qur'an)</option>
+                            <option value="RQDF_SORE" {% if class_room.program_type and class_room.program_type.name == 'RQDF_SORE' %}selected{% endif %}>Reguler (RQDF Sore)</option>
+                            <option value="TAKHOSUS_TAHFIDZ" {% if class_room.program_type and class_room.program_type.name == 'TAKHOSUS_TAHFIDZ' %}selected{% endif %}>Takhosus Tahfidz</option>
+                            <option value="MAJLIS_TALIM" {% if class_room.program_type and class_room.program_type.name == 'MAJLIS_TALIM' %}selected{% endif %}>Majlis Ta'lim</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label>Jenjang</label>
+                        <select name="education_level" class="form-select">
+                            <option value="">-- Pilih Jenjang --</option>
+                            <option value="SD" {% if class_room.education_level and class_room.education_level.name == 'SD' %}selected{% endif %}>SD</option>
+                            <option value="SMP" {% if class_room.education_level and class_room.education_level.name == 'SMP' %}selected{% endif %}>SMP</option>
+                            <option value="SMA" {% if class_room.education_level and class_room.education_level.name == 'SMA' %}selected{% endif %}>SMA</option>
+                            <option value="NON_FORMAL" {% if class_room.education_level and class_room.education_level.name == 'NON_FORMAL' %}selected{% endif %}>Non Formal</option>
+                        </select>
+                    </div>
                     
                     <div class="mb-3">
                         <label>Wali Kelas</label>

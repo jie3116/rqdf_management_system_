@@ -4,14 +4,14 @@ from io import TextIOWrapper
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from werkzeug.security import generate_password_hash
-from sqlalchemy import func
+from sqlalchemy import func, or_, and_
 from openpyxl import load_workbook
 from app.extensions import db
 from app.decorators import role_required
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
     # Base & Enums
-    UserRole, Gender, PaymentStatus, RegistrationStatus, ProgramType,
+    UserRole, Gender, PaymentStatus, RegistrationStatus, ProgramType, EducationLevel,
     # Users
     User, Student, Parent, Teacher, Staff, MajlisParticipant,
     # Academic
@@ -117,8 +117,19 @@ def manage_app_config():
         flash('Konfigurasi tersimpan.', 'success')
         return redirect(url_for('admin.manage_app_config'))
 
-    configs = AppConfig.query.all()
-    return render_template('admin/system/configs.html', configs=configs)
+    query = (request.args.get('q') or '').strip()
+    configs_query = AppConfig.query
+    if query:
+        configs_query = configs_query.filter(
+            or_(
+                AppConfig.key.ilike(f'%{query}%'),
+                AppConfig.value.ilike(f'%{query}%'),
+                AppConfig.description.ilike(f'%{query}%')
+            )
+        )
+
+    configs = configs_query.order_by(AppConfig.key.asc()).all()
+    return render_template('admin/system/configs.html', configs=configs, query=query)
 
 
 # =========================================================
@@ -144,8 +155,18 @@ def manage_academic_years():
         flash('Tahun ajaran berhasil dibuat.', 'success')
         return redirect(url_for('admin.manage_academic_years'))
 
-    years = AcademicYear.query.order_by(AcademicYear.id.desc()).all()
-    return render_template('admin/academic/years.html', years=years)
+    query = (request.args.get('q') or '').strip()
+    years_query = AcademicYear.query
+    if query:
+        years_query = years_query.filter(
+            or_(
+                AcademicYear.name.ilike(f'%{query}%'),
+                AcademicYear.semester.ilike(f'%{query}%')
+            )
+        )
+
+    years = years_query.order_by(AcademicYear.id.desc()).all()
+    return render_template('admin/academic/years.html', years=years, query=query)
 
 
 @admin_bp.route('/akademik/aktifkan-tahun/<int:id>')
@@ -177,8 +198,18 @@ def manage_subjects():
         flash('Mata Pelajaran ditambahkan.', 'success')
         return redirect(url_for('admin.manage_subjects'))
 
-    subjects = Subject.query.filter_by(is_deleted=False).all()
-    return render_template('admin/academic/subjects.html', subjects=subjects)
+    query = (request.args.get('q') or '').strip()
+    subjects_query = Subject.query.filter_by(is_deleted=False)
+    if query:
+        subjects_query = subjects_query.filter(
+            or_(
+                Subject.code.ilike(f'%{query}%'),
+                Subject.name.ilike(f'%{query}%')
+            )
+        )
+
+    subjects = subjects_query.order_by(Subject.name.asc()).all()
+    return render_template('admin/academic/subjects.html', subjects=subjects, query=query)
 
 
 @admin_bp.route('/akademik/mapel/edit/<int:subject_id>', methods=['GET', 'POST'])
@@ -247,8 +278,20 @@ def manage_teachers():
 
         return redirect(url_for('admin.manage_teachers'))
 
-    teachers = Teacher.query.filter_by(is_deleted=False).all()
-    return render_template('admin/hr/teachers.html', teachers=teachers)
+    query = (request.args.get('q') or '').strip()
+    teachers_query = Teacher.query.filter_by(is_deleted=False)
+    if query:
+        teachers_query = teachers_query.filter(
+            or_(
+                Teacher.full_name.ilike(f'%{query}%'),
+                Teacher.nip.ilike(f'%{query}%'),
+                Teacher.phone.ilike(f'%{query}%'),
+                Teacher.specialty.ilike(f'%{query}%')
+            )
+        )
+
+    teachers = teachers_query.order_by(Teacher.full_name.asc()).all()
+    return render_template('admin/hr/teachers.html', teachers=teachers, query=query)
 
 
 @admin_bp.route('/sdm/guru/hapus/<int:id>', methods=['POST'])
@@ -411,8 +454,19 @@ def manage_staff():
                 flash(f'Error: {e}', 'danger')
         return redirect(url_for('admin.manage_staff'))
 
-    staff_list = Staff.query.filter_by(is_deleted=False).all()
-    return render_template('admin/hr/staff.html', staff_list=staff_list)
+    query = (request.args.get('q') or '').strip()
+    staff_query = Staff.query.filter_by(is_deleted=False).outerjoin(User, Staff.user_id == User.id)
+    if query:
+        staff_query = staff_query.filter(
+            or_(
+                Staff.full_name.ilike(f'%{query}%'),
+                Staff.position.ilike(f'%{query}%'),
+                User.username.ilike(f'%{query}%')
+            )
+        )
+
+    staff_list = staff_query.order_by(Staff.full_name.asc()).all()
+    return render_template('admin/hr/staff.html', staff_list=staff_list, query=query)
 
 
 @admin_bp.route('/sdm/staff/hapus/<int:id>', methods=['POST'])
@@ -468,20 +522,44 @@ def manage_classes():
         name = request.form.get('name')
         grade_level = request.form.get('grade_level')
         homeroom_id = request.form.get('homeroom_teacher_id')  # ID Guru
+        program_type_raw = request.form.get('program_type')
+        education_level_raw = request.form.get('education_level')
+
+        program_type = ProgramType[program_type_raw] if program_type_raw else None
+        education_level = EducationLevel[education_level_raw] if education_level_raw else None
 
         new_class = ClassRoom(
             name=name,
             grade_level=grade_level,
-            homeroom_teacher_id=homeroom_id if homeroom_id else None
+            homeroom_teacher_id=homeroom_id if homeroom_id else None,
+            program_type=program_type,
+            education_level=education_level
         )
         db.session.add(new_class)
         db.session.commit()
         flash('Kelas berhasil dibuat.', 'success')
         return redirect(url_for('admin.manage_classes'))
 
-    classes = ClassRoom.query.filter_by(is_deleted=False).all()
+    query = (request.args.get('q') or '').strip()
+    classes_query = ClassRoom.query.filter_by(is_deleted=False).outerjoin(Teacher, ClassRoom.homeroom_teacher_id == Teacher.id)
+    if query:
+        classes_query = classes_query.filter(
+            or_(
+                ClassRoom.name.ilike(f'%{query}%'),
+                Teacher.full_name.ilike(f'%{query}%')
+            )
+        )
+
+    classes = classes_query.order_by(ClassRoom.name.asc()).all()
     teachers = Teacher.query.filter_by(is_deleted=False).all()  # Untuk dropdown
-    return render_template('admin/academic/classes.html', classes=classes, teachers=teachers)
+    return render_template(
+        'admin/academic/classes.html',
+        classes=classes,
+        teachers=teachers,
+        query=query,
+        ProgramType=ProgramType,
+        EducationLevel=EducationLevel
+    )
 
 
 @admin_bp.route('/sekolah/kelas/edit/<int:class_id>', methods=['GET', 'POST'])
@@ -495,6 +573,10 @@ def edit_class(class_id):
     if request.method == 'POST':
         class_room.name = request.form.get('name')
         class_room.grade_level = request.form.get('grade_level')
+        program_type_raw = request.form.get('program_type')
+        education_level_raw = request.form.get('education_level')
+        class_room.program_type = ProgramType[program_type_raw] if program_type_raw else None
+        class_room.education_level = EducationLevel[education_level_raw] if education_level_raw else None
 
         # Handle Wali Kelas (Bisa Kosong/None)
         homeroom_id = request.form.get('homeroom_teacher_id')
@@ -508,7 +590,13 @@ def edit_class(class_id):
             db.session.rollback()
             flash(f'Gagal update: {e}', 'danger')
 
-    return render_template('admin/academic/edit_class.html', class_room=class_room, teachers=teachers)
+    return render_template(
+        'admin/academic/edit_class.html',
+        class_room=class_room,
+        teachers=teachers,
+        ProgramType=ProgramType,
+        EducationLevel=EducationLevel
+    )
 
 # =========================================================
 # 5. MASTER KESISWAAN (EKSKUL)
@@ -666,14 +754,14 @@ def edit_student(student_id):
 @role_required(UserRole.ADMIN)
 def list_students():
     query = (request.args.get('q') or '').strip()
+    query_majlis = (request.args.get('q_majlis') or '').strip()
+    active_category = (request.args.get('category') or 'all').strip().lower()
 
-    students_query = Student.query.filter_by(is_deleted=False)
+    students_query = Student.query.filter_by(is_deleted=False).outerjoin(ClassRoom, Student.current_class_id == ClassRoom.id)
     majlis_query = MajlisParticipant.query.filter_by(is_deleted=False)
 
     if query:
-        students_query = students_query.outerjoin(Parent, Student.parent_id == Parent.id).outerjoin(
-            ClassRoom, Student.current_class_id == ClassRoom.id
-        ).filter(
+        students_query = students_query.outerjoin(Parent, Student.parent_id == Parent.id).filter(
             db.or_(
                 Student.full_name.ilike(f'%{query}%'),
                 Student.nis.ilike(f'%{query}%'),
@@ -683,11 +771,84 @@ def list_students():
             )
         )
 
+    if query_majlis:
         majlis_query = majlis_query.outerjoin(ClassRoom, MajlisParticipant.majlis_class_id == ClassRoom.id).filter(
             db.or_(
-                MajlisParticipant.full_name.ilike(f'%{query}%'),
-                MajlisParticipant.phone.ilike(f'%{query}%'),
-                ClassRoom.name.ilike(f'%{query}%')
+                MajlisParticipant.full_name.ilike(f'%{query_majlis}%'),
+                MajlisParticipant.phone.ilike(f'%{query_majlis}%'),
+                ClassRoom.name.ilike(f'%{query_majlis}%')
+            )
+        )
+
+    if active_category == 'sbq_sd':
+        students_query = students_query.filter(
+            or_(
+                and_(
+                    ClassRoom.program_type == ProgramType.SEKOLAH_FULLDAY,
+                    ClassRoom.education_level == EducationLevel.SD
+                ),
+                and_(
+                    ClassRoom.program_type.is_(None),
+                    or_(
+                        ClassRoom.name.ilike('%sd%'),
+                        ClassRoom.grade_level.in_([1, 2, 3, 4, 5, 6])
+                    )
+                )
+            )
+        )
+    elif active_category == 'sbq_smp':
+        students_query = students_query.filter(
+            or_(
+                and_(
+                    ClassRoom.program_type == ProgramType.SEKOLAH_FULLDAY,
+                    ClassRoom.education_level == EducationLevel.SMP
+                ),
+                and_(
+                    ClassRoom.program_type.is_(None),
+                    or_(
+                        ClassRoom.name.ilike('%smp%'),
+                        ClassRoom.grade_level.in_([7, 8, 9])
+                    )
+                )
+            )
+        )
+    elif active_category == 'sbq_sma':
+        students_query = students_query.filter(
+            or_(
+                and_(
+                    ClassRoom.program_type == ProgramType.SEKOLAH_FULLDAY,
+                    ClassRoom.education_level == EducationLevel.SMA
+                ),
+                and_(
+                    ClassRoom.program_type.is_(None),
+                    or_(
+                        ClassRoom.name.ilike('%sma%'),
+                        ClassRoom.grade_level.in_([10, 11, 12])
+                    )
+                )
+            )
+        )
+    elif active_category == 'reguler':
+        students_query = students_query.filter(
+            or_(
+                ClassRoom.program_type == ProgramType.RQDF_SORE,
+                and_(
+                    ClassRoom.program_type.is_(None),
+                    or_(
+                        ClassRoom.name.ilike('%reguler%'),
+                        ClassRoom.name.ilike('%rqdf%')
+                    )
+                )
+            )
+        )
+    elif active_category == 'takhosus':
+        students_query = students_query.filter(
+            or_(
+                ClassRoom.program_type == ProgramType.TAKHOSUS_TAHFIDZ,
+                and_(
+                    ClassRoom.program_type.is_(None),
+                    ClassRoom.name.ilike('%takhosus%')
+                )
             )
         )
 
@@ -698,7 +859,9 @@ def list_students():
         'student/list_students.html',
         students=students,
         majlis_participants=majlis_participants,
-        query=query
+        query=query,
+        query_majlis=query_majlis,
+        active_category=active_category
     )
 
 
@@ -859,7 +1022,7 @@ def manage_fee_types():
     if request.method == 'POST':
         name = request.form.get('name')
         amount = request.form.get('amount')
-        academic_year_id = request.form.get('academic_year_id')
+        academic_year_id = request.form.get('academic_year_id', type=int)
 
         try:
             new_fee = FeeType(
@@ -876,9 +1039,20 @@ def manage_fee_types():
 
         return redirect(url_for('admin.manage_fee_types'))
 
-    fees = FeeType.query.order_by(FeeType.id.desc()).all()
+    query = (request.args.get('q') or '').strip()
+    fees_query = FeeType.query.outerjoin(AcademicYear, FeeType.academic_year_id == AcademicYear.id)
+    if query:
+        fees_query = fees_query.filter(
+            or_(
+                FeeType.name.ilike(f'%{query}%'),
+                AcademicYear.name.ilike(f'%{query}%'),
+                AcademicYear.semester.ilike(f'%{query}%')
+            )
+        )
+
+    fees = fees_query.order_by(FeeType.id.desc()).all()
     years = AcademicYear.query.filter_by(is_active=True).all()
-    return render_template('admin/finance/fee_types.html', fees=fees, years=years)
+    return render_template('admin/finance/fee_types.html', fees=fees, years=years, query=query)
 
 
 @admin_bp.route('/keuangan/biaya/edit/<int:fee_id>', methods=['GET', 'POST'])
@@ -973,8 +1147,20 @@ def generate_invoices(fee_id):
 @login_required
 @role_required(UserRole.ADMIN)
 def ppdb_list():
-    candidates = StudentCandidate.query.filter_by(is_deleted=False).order_by(StudentCandidate.created_at.desc()).all()
-    return render_template('admin/ppdb/list.html', candidates=candidates)
+    query = (request.args.get('q') or '').strip()
+    candidates_query = StudentCandidate.query.filter_by(is_deleted=False)
+    if query:
+        candidates_query = candidates_query.filter(
+            or_(
+                StudentCandidate.registration_no.ilike(f'%{query}%'),
+                StudentCandidate.full_name.ilike(f'%{query}%'),
+                StudentCandidate.parent_phone.ilike(f'%{query}%'),
+                StudentCandidate.personal_phone.ilike(f'%{query}%')
+            )
+        )
+
+    candidates = candidates_query.order_by(StudentCandidate.created_at.desc()).all()
+    return render_template('admin/ppdb/list.html', candidates=candidates, query=query)
 
 
 @admin_bp.route('/ppdb/terima/<int:candidate_id>', methods=['POST'])
@@ -1393,9 +1579,55 @@ def delete_schedule(id):
 @role_required(UserRole.ADMIN)
 def manage_users():
     """Halaman untuk melihat semua user dan reset password"""
+    query = (request.args.get('q') or '').strip()
+    role_filter = (request.args.get('role') or 'all').strip().lower()
+
     # Ambil semua user KECUALI Admin (untuk keamanan)
-    users = User.query.filter(User.role != UserRole.ADMIN).order_by(User.role, User.username).all()
-    return render_template('admin/users/manage.html', users=users)
+    users_query = User.query.filter(User.role != UserRole.ADMIN)
+
+    role_mapping = {
+        'santri': UserRole.SISWA,
+        'wali': UserRole.WALI_MURID,
+        'guru': UserRole.GURU,
+        'peserta_majlis': UserRole.MAJLIS_PARTICIPANT,
+        'staff': UserRole.TU,
+    }
+    selected_role = role_mapping.get(role_filter)
+    if selected_role:
+        users_query = users_query.filter(User.role == selected_role)
+
+    users = users_query.order_by(User.role, User.username).all()
+
+    if query:
+        keyword = query.lower()
+        filtered_users = []
+        for u in users:
+            owner_name = ''
+            if u.student_profile:
+                owner_name = u.student_profile.full_name or ''
+            elif u.parent_profile:
+                owner_name = u.parent_profile.full_name or ''
+            elif u.teacher_profile:
+                owner_name = u.teacher_profile.full_name or ''
+            elif u.majlis_profile:
+                owner_name = u.majlis_profile.full_name or ''
+            elif u.staff_profile:
+                owner_name = u.staff_profile.full_name or ''
+
+            if (
+                keyword in (u.username or '').lower() or
+                keyword in (u.role.value or '').lower() or
+                keyword in owner_name.lower()
+            ):
+                filtered_users.append(u)
+        users = filtered_users
+
+    return render_template(
+        'admin/users/manage.html',
+        users=users,
+        query=query,
+        role_filter=role_filter
+    )
 
 
 @admin_bp.route('/users/reset-password-generic', methods=['POST'])

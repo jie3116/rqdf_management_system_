@@ -11,38 +11,43 @@
                 <div class="card-body">
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle me-2"></i>
-                        Selamat datang <strong>{{ current_user.parent_profile.full_name }}</strong>! 
-                        Anda dapat mendaftar Majelis Ta'lim dengan data yang sudah ada.
+                        Akun login Anda tetap sebagai <strong>Wali Murid</strong>, tetapi peserta Majelis bisa memakai nama berbeda.
                     </div>
 
                     <form method="POST">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Nama Lengkap</label>
-                            <input type="text" class="form-control" value="{{ current_user.parent_profile.full_name }}" readonly>
+                            <label class="form-label fw-bold">Nama Peserta Majelis <span class="text-danger">*</span></label>
+                            <input type="text" name="participant_name" class="form-control"
+                                   value="{{ participant_profile.full_name if participant_profile else current_user.parent_profile.full_name }}"
+                                   placeholder="Contoh: Siti Aminah" required>
+                            <small class="text-muted">Boleh berbeda dengan nama wali di data santri.</small>
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Nomor WhatsApp</label>
-                            <input type="text" class="form-control" value="{{ current_user.parent_profile.phone }}" readonly>
+                            <label class="form-label fw-bold">Nomor WhatsApp Peserta <span class="text-danger">*</span></label>
+                            <input type="text" name="participant_phone" class="form-control"
+                                   value="{{ participant_profile.phone if participant_profile else current_user.parent_profile.phone }}"
+                                   placeholder="08xxxxxxxxxx" required>
+                            <small class="text-muted">Nomor ini dipakai untuk data peserta Majelis.</small>
                         </div>
 
                         <div class="mb-3">
                             <label class="form-label fw-bold">Alamat</label>
-                            <textarea class="form-control" readonly>{{ current_user.parent_profile.address }}</textarea>
+                            <textarea class="form-control" name="address" rows="3">{{ participant_profile.address if participant_profile else current_user.parent_profile.address }}</textarea>
                         </div>
 
                         <div class="mb-3">
                             <label class="form-label fw-bold">Pekerjaan <span class="text-danger">*</span></label>
                             <input type="text" name="job" class="form-control" 
-                                   value="{{ current_user.parent_profile.job or '' }}" 
+                                   value="{{ participant_profile.job if participant_profile else (current_user.parent_profile.job or '') }}"
                                    placeholder="Contoh: Ibu Rumah Tangga" required>
                         </div>
 
                         <div class="alert alert-success">
                             <i class="fas fa-gift me-2"></i>
-                            <strong>GRATIS!</strong> Tidak ada biaya pendaftaran maupun SPP untuk Majelis Ta'lim
+                            <strong>Program</strong> Talaqqi Qur'an, Kajian Fiqih, Akhlaq & Tafsir Al-Qur'an
                         </div>
 
                         <div class="form-check mb-3">

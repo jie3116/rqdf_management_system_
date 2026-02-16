@@ -6,9 +6,11 @@ from app.models import (
     Teacher, Student, ClassRoom, TahfidzRecord, TahfidzSummary, RecitationRecord,
     TahfidzEvaluation, TahfidzType, RecitationSource, ParticipantType, Grade,
     EvaluationPeriod,
-    GradeType, Subject, Attendance, AttendanceStatus, AcademicYear, Schedule, db, UserRole, MajlisParticipant
+    GradeType, Subject, Attendance, AttendanceStatus, AcademicYear, Schedule, db, UserRole, MajlisParticipant,
+    BehaviorReport, BehaviorReportType, Announcement
 )
 from app.decorators import role_required
+from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
 
 teacher_bp = Blueprint('teacher', __name__)
 
@@ -21,12 +23,17 @@ def _get_teacher_classes(teacher):
     if teacher.homeroom_class:
         classes.add(teacher.homeroom_class)
     
-    # 2. Kelas dari Jadwal Mengajar (jika ada relasi schedule)
-    # classes.update(teacher.teaching_schedules) 
-    
-    # 3. Semua kelas untuk sementara (bisa dibatasi nanti)
-    all_classes = ClassRoom.query.filter_by(is_deleted=False).all()
-    classes.update(all_classes)
+    # 2. Kelas dari jadwal mengajar guru
+    teaching_class_ids = db.session.query(Schedule.class_id).filter(
+        Schedule.teacher_id == teacher.id,
+        Schedule.is_deleted == False,
+        Schedule.class_id.isnot(None)
+    ).distinct().all()
+    for row in teaching_class_ids:
+        class_id = row[0]
+        target_class = ClassRoom.query.get(class_id)
+        if target_class and not target_class.is_deleted:
+            classes.add(target_class)
     
     return list(classes)
 
@@ -103,6 +110,8 @@ def dashboard():
         teaching_assignments.append((sch.class_id, sch.class_room.name, sch.subject_id, sch.subject.name))
 
     homeroom_class = teacher.homeroom_class
+    top_tab = (request.args.get('top_tab') or 'main').strip().lower()
+    show_all_announcements = (request.args.get('ann') or '').strip().lower() == 'all'
 
     today_tahfidz = TahfidzRecord.query.filter(
         TahfidzRecord.teacher_id == teacher.id,
@@ -118,6 +127,21 @@ def dashboard():
 
     recent_recitation = RecitationRecord.query.filter_by(teacher_id=teacher.id)        .order_by(RecitationRecord.date.desc()).limit(5).all()
 
+    class_programs = []
+    for c in my_classes:
+        if c and c.program_type:
+            class_programs.append(c.program_type.name)
+    announcements, unread_announcements_count = get_announcements_for_dashboard(
+        current_user,
+        class_ids=class_ids,
+        user_ids=[current_user.id],
+        program_types=class_programs,
+        show_all=show_all_announcements
+    )
+    if top_tab == 'ann':
+        mark_announcements_as_read(current_user, announcements)
+        unread_announcements_count = 0
+
     return render_template('teacher/dashboard.html',
                          teacher=teacher,
                          my_classes=my_classes,
@@ -126,6 +150,10 @@ def dashboard():
                          today_recitation=today_recitation,
                          recent_tahfidz=recent_tahfidz,
                          recent_recitation=recent_recitation,
+                         announcements=announcements,
+                         top_tab=top_tab,
+                         show_all_announcements=show_all_announcements,
+                         unread_announcements_count=unread_announcements_count,
                          todays_schedules=todays_schedules,
                          homeroom_class=homeroom_class,
                          teaching_assignments=teaching_assignments)
@@ -552,6 +580,150 @@ def input_tahfidz_evaluation():
                            majlis_participants=majlis_participants,
                            selected_class=selected_class,
                            EvaluationPeriod=EvaluationPeriod)
+
+
+@teacher_bp.route('/input-perilaku', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.GURU)
+def input_behavior_report():
+    teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
+    my_classes = _get_teacher_classes(teacher)
+    selected_class_id = request.args.get('class_id', type=int)
+    query = (request.args.get('q') or '').strip()
+
+    selected_class = None
+    students = []
+    recent_reports = []
+
+    if selected_class_id:
+        selected_class = ClassRoom.query.get(selected_class_id)
+        if selected_class in my_classes:
+            students_query = Student.query.filter_by(current_class_id=selected_class_id, is_deleted=False)
+            if query:
+                students_query = students_query.filter(
+                    db.or_(
+                        Student.full_name.ilike(f'%{query}%'),
+                        Student.nis.ilike(f'%{query}%')
+                    )
+                )
+            students = students_query.order_by(Student.full_name).all()
+
+            recent_reports = BehaviorReport.query.filter(BehaviorReport.student_id.in_([s.id for s in students])) \
+                .order_by(BehaviorReport.report_date.desc(), BehaviorReport.created_at.desc()).limit(30).all() if students else []
+        else:
+            flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
+            selected_class = None
+
+    if request.method == 'POST':
+        class_id = request.form.get('class_id', type=int)
+        student_id = request.form.get('student_id', type=int)
+        report_type = request.form.get('report_type')
+        report_date_str = request.form.get('report_date')
+        title = (request.form.get('title') or '').strip()
+        description = (request.form.get('description') or '').strip()
+        action_plan = (request.form.get('action_plan') or '').strip()
+        follow_up_date_str = (request.form.get('follow_up_date') or '').strip()
+        is_resolved = request.form.get('is_resolved') == 'on'
+
+        if not class_id or not student_id or not report_type or not title or not description:
+            flash("Data laporan belum lengkap.", "warning")
+            return redirect(url_for('teacher.input_behavior_report', class_id=class_id))
+
+        class_room = ClassRoom.query.get(class_id)
+        if class_room not in my_classes:
+            flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
+            return redirect(url_for('teacher.input_behavior_report'))
+
+        student = Student.query.filter_by(id=student_id, current_class_id=class_id, is_deleted=False).first()
+        if not student:
+            flash("Siswa tidak ditemukan pada kelas yang dipilih.", "danger")
+            return redirect(url_for('teacher.input_behavior_report', class_id=class_id))
+
+        try:
+            report_date = datetime.strptime(report_date_str, '%Y-%m-%d').date() if report_date_str else datetime.now().date()
+            follow_up_date = datetime.strptime(follow_up_date_str, '%Y-%m-%d').date() if follow_up_date_str else None
+        except ValueError:
+            flash("Format tanggal tidak valid.", "warning")
+            return redirect(url_for('teacher.input_behavior_report', class_id=class_id))
+
+        if report_type not in [item.name for item in BehaviorReportType]:
+            flash("Tipe laporan perilaku tidak valid.", "danger")
+            return redirect(url_for('teacher.input_behavior_report', class_id=class_id))
+
+        new_report = BehaviorReport(
+            student_id=student.id,
+            teacher_id=teacher.id,
+            report_date=report_date,
+            report_type=BehaviorReportType[report_type],
+            title=title,
+            description=description,
+            action_plan=action_plan or None,
+            follow_up_date=follow_up_date,
+            is_resolved=is_resolved
+        )
+        db.session.add(new_report)
+        db.session.commit()
+        flash("Laporan perilaku berhasil disimpan.", "success")
+        return redirect(url_for('teacher.input_behavior_report', class_id=class_id))
+
+    return render_template(
+        'teacher/input_behavior.html',
+        my_classes=my_classes,
+        selected_class=selected_class,
+        students=students,
+        recent_reports=recent_reports,
+        behavior_types=BehaviorReportType,
+        query=query
+    )
+
+
+@teacher_bp.route('/pengumuman-kelas', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.GURU)
+def class_announcements():
+    teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
+    my_classes = _get_teacher_classes(teacher)
+    my_class_ids = {c.id for c in my_classes}
+    selected_class_id = request.args.get('class_id', type=int)
+
+    if request.method == 'POST':
+        class_id = request.form.get('class_id', type=int)
+        title = (request.form.get('title') or '').strip()
+        content = (request.form.get('content') or '').strip()
+        is_active = request.form.get('is_active') == 'on'
+
+        target_class = ClassRoom.query.get(class_id) if class_id else None
+        if not target_class or class_id not in my_class_ids:
+            flash("Kelas target tidak valid.", "danger")
+            return redirect(url_for('teacher.class_announcements'))
+        if not title or not content:
+            flash("Judul dan isi pengumuman wajib diisi.", "warning")
+            return redirect(url_for('teacher.class_announcements', class_id=class_id))
+
+        announcement = Announcement(
+            title=title,
+            content=content,
+            is_active=is_active,
+            target_scope='CLASS',
+            target_class_id=class_id,
+            user_id=current_user.id
+        )
+        db.session.add(announcement)
+        db.session.commit()
+        flash("Pengumuman kelas berhasil dibuat.", "success")
+        return redirect(url_for('teacher.class_announcements', class_id=class_id))
+
+    announcements_query = Announcement.query.filter_by(user_id=current_user.id).order_by(Announcement.created_at.desc())
+    if selected_class_id:
+        announcements_query = announcements_query.filter_by(target_class_id=selected_class_id)
+    announcements = announcements_query.limit(30).all()
+
+    return render_template(
+        'teacher/class_announcements.html',
+        my_classes=my_classes,
+        selected_class_id=selected_class_id,
+        announcements=announcements
+    )
 
 
 @teacher_bp.route('/siswa-wali-kelas')
