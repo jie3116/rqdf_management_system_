@@ -109,8 +109,8 @@ def join_majlis():
 def dashboard():
     parent = current_user.parent_profile
     if not parent:
-        flash("Profil Wali Murid tidak ditemukan. Hubungi Admin.", "danger")
-        return render_template('index.html')
+        flash("Profil Wali Murid tidak ditemukan atau belum lengkap. Hubungi Admin.", "danger")
+        return render_template('parent/empty_state.html')
 
     children = parent.children
     if not children:

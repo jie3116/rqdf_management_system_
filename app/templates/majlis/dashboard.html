@@ -86,34 +86,6 @@
         </div>
     </div>
 
-    <div class="card shadow mb-4">
-        <div class="card-header py-3 d-flex justify-content-between align-items-center">
-            <h6 class="m-0 font-weight-bold text-success">Info & Kegiatan Majelis</h6>
-            {% if show_all_announcements %}
-            <a href="{{ url_for('main.majlis_dashboard') }}" class="btn btn-sm btn-outline-secondary">Mode Ringkas</a>
-            {% else %}
-            <a href="{{ url_for('main.majlis_dashboard', ann='all') }}" class="btn btn-sm btn-outline-success">Lihat Semua</a>
-            {% endif %}
-        </div>
-        <div class="card-body">
-            {% if majlis_announcements %}
-                <div class="list-group list-group-flush">
-                    {% for item in majlis_announcements %}
-                    <div class="list-group-item px-0">
-                        <div class="d-flex justify-content-between">
-                            <h6 class="mb-1">{{ item.title }}</h6>
-                            <small class="text-muted">{{ item.created_at.strftime('%d/%m/%Y') if item.created_at else '-' }}</small>
-                        </div>
-                        <p class="mb-0 text-muted">{{ item.content if show_all_announcements else item.content|truncate(140) }}</p>
-                    </div>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <p class="text-muted mb-0">Belum ada pengumuman kegiatan majelis.</p>
-            {% endif %}
-        </div>
-    </div>
-
     <ul class="nav nav-pills mb-3" id="majlis-dashboard-tabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="pills-tahfidz-tab" data-bs-toggle="pill" data-bs-target="#pills-tahfidz" type="button" role="tab" aria-controls="pills-tahfidz" aria-selected="true">

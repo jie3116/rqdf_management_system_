@@ -68,6 +68,7 @@
                                     <th>Kelas</th>
                                     <th>Judul</th>
                                     <th>Status</th>
+                                    <th>Aksi</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -84,9 +85,18 @@
                                             {{ 'Aktif' if a.is_active else 'Nonaktif' }}
                                         </span>
                                     </td>
+                                    <td style="width: 120px;">
+                                        <form method="POST" action="{{ url_for('teacher.delete_class_announcement', announcement_id=a.id) }}" onsubmit="return confirm('Hapus pengumuman ini?')">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <input type="hidden" name="class_id" value="{{ selected_class_id or '' }}">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+                                                <i class="fas fa-trash-alt me-1"></i>Hapus
+                                            </button>
+                                        </form>
+                                    </td>
                                 </tr>
                                 {% else %}
-                                <tr><td colspan="4" class="text-center text-muted">Belum ada pengumuman.</td></tr>
+                                <tr><td colspan="5" class="text-center text-muted">Belum ada pengumuman.</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>

@@ -416,6 +416,26 @@ def manage_announcements():
     )
 
 
+@staff_bp.route('/pengumuman/hapus/<int:announcement_id>', methods=['POST'])
+@login_required
+@role_required(UserRole.TU)
+def delete_announcement(announcement_id):
+    announcement = Announcement.query.filter_by(id=announcement_id, user_id=current_user.id).first()
+    if not announcement:
+        flash("Pengumuman tidak ditemukan atau bukan milik Anda.", "danger")
+        return redirect(url_for('staff.manage_announcements'))
+
+    try:
+        announcement.is_deleted = True
+        db.session.commit()
+        flash("Pengumuman berhasil dihapus.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("Gagal menghapus pengumuman.", "danger")
+
+    return redirect(url_for('staff.manage_announcements'))
+
+
 # =========================================================
 # 2. MODUL KESISWAAN (DATA SISWA & PENEMPATAN KELAS)
 # =========================================================

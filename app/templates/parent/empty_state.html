@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-4">
+            <h4 class="mb-3">Dashboard Orang Tua Belum Siap</h4>
+            <p class="mb-2">
+                Akun Anda sudah terdaftar sebagai <strong>Wali Murid</strong>, tetapi belum ada data anak yang terhubung.
+            </p>
+            <p class="text-muted mb-4">
+                Silakan hubungi admin untuk mengaitkan data anak ke akun ini. Jika Anda juga peserta Majlis, Anda tetap bisa menggunakan dashboard Majlis.
+            </p>
+
+            <div class="d-flex flex-wrap gap-2">
+                {% if current_user.majlis_profile %}
+                <a href="{{ url_for('main.majlis_dashboard') }}" class="btn btn-primary">
+                    Ke Dashboard Majlis
+                </a>
+                {% endif %}
+                <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline-secondary">
+                    Kembali ke Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -4,6 +4,25 @@ from app.extensions import db
 from app.models import Announcement, AnnouncementRead, UserRole
 
 
+def _author_display_name(author):
+    if not author:
+        return ""
+
+    candidates = [
+        getattr(getattr(author, 'staff_profile', None), 'full_name', None),
+        getattr(getattr(author, 'teacher_profile', None), 'full_name', None),
+        getattr(getattr(author, 'parent_profile', None), 'full_name', None),
+        getattr(getattr(author, 'student_profile', None), 'full_name', None),
+        getattr(getattr(author, 'majlis_profile', None), 'full_name', None),
+        getattr(getattr(author, 'boarding_guardian_profile', None), 'full_name', None),
+        getattr(author, 'username', None),
+    ]
+    for value in candidates:
+        if value and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
 def visible_announcements_query(user, class_ids=None, user_ids=None, program_types=None):
     class_ids = [cid for cid in (class_ids or []) if cid]
     user_ids = [uid for uid in (user_ids or []) if uid]
@@ -36,23 +55,24 @@ def announcement_author_label(announcement):
     if not author:
         return "Sistem"
 
+    author_name = _author_display_name(author) or "Pengguna"
     role = author.role.value if author.role else ""
     if role == UserRole.TU.value:
-        return "Staf TU"
+        return f"Staf TU - {author_name}"
     if role == UserRole.GURU.value:
         if announcement.target_class and announcement.target_class.homeroom_teacher and \
                 announcement.target_class.homeroom_teacher.user_id == author.id:
-            return f"Wali Kelas {announcement.target_class.name}"
-        return "Guru"
+            return f"Wali Kelas {announcement.target_class.name} - {author_name}"
+        return f"Guru - {author_name}"
     if role == UserRole.ADMIN.value:
-        return "Admin"
+        return f"Admin - {author_name}"
     if role == UserRole.WALI_MURID.value:
-        return "Wali Murid"
+        return f"Wali Murid - {author_name}"
     if role == UserRole.SISWA.value:
-        return "Santri"
+        return f"Santri - {author_name}"
     if role == UserRole.MAJLIS_PARTICIPANT.value:
-        return "Peserta Majlis"
-    return author.username
+        return f"Peserta Majlis - {author_name}"
+    return f"Pengguna - {author_name}"
 
 
 def get_announcements_for_dashboard(user, class_ids=None, user_ids=None, program_types=None, show_all=False):
