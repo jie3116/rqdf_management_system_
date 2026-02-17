@@ -161,30 +161,34 @@ def dashboard():
         elif att.status == AttendanceStatus.ALPA:
             attendance_recap['alpa'] += 1
 
-    today = datetime.now().date()
-    boarding_attendances = BoardingAttendance.query.join(
-        BoardingActivitySchedule,
-        BoardingAttendance.schedule_id == BoardingActivitySchedule.id
-    ).filter(
-        BoardingAttendance.student_id == student.id,
-        BoardingAttendance.date >= today.replace(day=1)
-    ).order_by(
-        BoardingAttendance.date.desc(),
-        BoardingActivitySchedule.start_time.asc()
-    ).limit(100).all()
-
-    boarding_today = [item for item in boarding_attendances if item.date == today]
-
+    is_boarding_student = bool(student.boarding_dormitory_id)
+    boarding_attendances = []
+    boarding_today = []
     boarding_recap = {'hadir': 0, 'sakit': 0, 'izin': 0, 'alpa': 0}
-    for record in boarding_attendances:
-        if record.status == AttendanceStatus.HADIR:
-            boarding_recap['hadir'] += 1
-        elif record.status == AttendanceStatus.SAKIT:
-            boarding_recap['sakit'] += 1
-        elif record.status == AttendanceStatus.IZIN:
-            boarding_recap['izin'] += 1
-        elif record.status == AttendanceStatus.ALPA:
-            boarding_recap['alpa'] += 1
+    if is_boarding_student:
+        today = datetime.now().date()
+        boarding_attendances = BoardingAttendance.query.join(
+            BoardingActivitySchedule,
+            BoardingAttendance.schedule_id == BoardingActivitySchedule.id
+        ).filter(
+            BoardingAttendance.student_id == student.id,
+            BoardingAttendance.date >= today.replace(day=1)
+        ).order_by(
+            BoardingAttendance.date.desc(),
+            BoardingActivitySchedule.start_time.asc()
+        ).limit(100).all()
+
+        boarding_today = [item for item in boarding_attendances if item.date == today]
+
+        for record in boarding_attendances:
+            if record.status == AttendanceStatus.HADIR:
+                boarding_recap['hadir'] += 1
+            elif record.status == AttendanceStatus.SAKIT:
+                boarding_recap['sakit'] += 1
+            elif record.status == AttendanceStatus.IZIN:
+                boarding_recap['izin'] += 1
+            elif record.status == AttendanceStatus.ALPA:
+                boarding_recap['alpa'] += 1
 
     return render_template('student/dashboard.html',
                            student=student,
@@ -205,6 +209,7 @@ def dashboard():
                            behavior_reports=behavior_reports,
                            attendances=attendances,
                            attendance_recap=attendance_recap,
+                           is_boarding_student=is_boarding_student,
                            boarding_attendances=boarding_attendances,
                            boarding_today=boarding_today,
                            boarding_recap=boarding_recap,
