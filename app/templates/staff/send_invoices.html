@@ -6,19 +6,82 @@
     </div>
 
     <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-primary text-white">
+            <h6 class="m-0 fw-bold"><i class="fas fa-bullseye me-2"></i>Target Pengiriman / Penghapusan</h6>
+        </div>
+        <div class="card-body">
+            <form method="GET" class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Cakupan Target</label>
+                    <select name="target_scope" id="target_scope" class="form-select">
+                        <option value="ALL" {% if target_scope == 'ALL' %}selected{% endif %}>Semua siswa</option>
+                        <option value="PROGRAM" {% if target_scope == 'PROGRAM' %}selected{% endif %}>Per program</option>
+                        <option value="CLASS" {% if target_scope == 'CLASS' %}selected{% endif %}>Per kelas</option>
+                        <option value="STUDENT" {% if target_scope == 'STUDENT' %}selected{% endif %}>Siswa tertentu</option>
+                    </select>
+                </div>
+                <div class="col-md-3 js-target-program">
+                    <label class="form-label">Program</label>
+                    <select name="target_program_type" class="form-select">
+                        <option value="">Pilih program</option>
+                        {% for program_key, program_label in program_labels.items() %}
+                            <option value="{{ program_key }}" {% if target_program_type == program_key %}selected{% endif %}>{{ program_label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 js-target-class">
+                    <label class="form-label">Kelas</label>
+                    <select name="target_class_id" class="form-select">
+                        <option value="">Pilih kelas</option>
+                        {% for class_room in classes %}
+                            <option value="{{ class_room.id }}" {% if target_class_id == class_room.id %}selected{% endif %}>{{ class_room.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 js-target-student">
+                    <label class="form-label">Siswa</label>
+                    <select name="target_student_id" class="form-select">
+                        <option value="">Pilih siswa</option>
+                        {% for student in students %}
+                            <option value="{{ student.id }}" {% if target_student_id == student.id %}selected{% endif %}>{{ student.full_name }} ({{ student.nis }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Jenis Biaya</label>
+                    <select name="selected_fee_id" class="form-select">
+                        <option value="">Semua jenis biaya</option>
+                        {% for fee_opt in fee_options %}
+                            <option value="{{ fee_opt.id }}" {% if selected_fee_id == fee_opt.id %}selected{% endif %}>{{ fee_opt.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-grid">
+                    <button class="btn btn-primary" type="submit"><i class="fas fa-filter me-1"></i>Terapkan Filter</button>
+                </div>
+                <div class="col-md-2 d-grid">
+                    <a href="{{ url_for('staff.send_invoices') }}" class="btn btn-outline-secondary">Reset</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
         <div class="card-header py-3 bg-danger text-white">
             <h6 class="m-0 fw-bold"><i class="fas fa-paper-plane me-2"></i>Terbitkan Tagihan Berdasarkan Master Biaya</h6>
         </div>
         <div class="card-body">
-            <form method="GET" class="mb-3">
-                <div class="input-group">
-                    <input type="text" name="q" class="form-control" placeholder="Cari nama biaya..." value="{{ query or '' }}">
-                    <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-1"></i>Cari</button>
-                    {% if query %}
-                    <a href="{{ url_for('staff.send_invoices') }}" class="btn btn-outline-secondary">Reset</a>
-                    {% endif %}
-                </div>
-            </form>
+            <div class="alert alert-info py-2">
+                Target aktif:
+                <strong>{{ target_scope }}</strong>
+                {% if target_scope == 'PROGRAM' and target_program_type %}
+                    - {{ program_labels.get(target_program_type, target_program_type) }}
+                {% elif target_scope == 'CLASS' and target_class_id %}
+                    - Kelas ID {{ target_class_id }}
+                {% elif target_scope == 'STUDENT' and target_student_id %}
+                    - Siswa ID {{ target_student_id }}
+                {% endif %}
+            </div>
 
             <div class="table-responsive">
                 <table class="table table-bordered table-striped">
@@ -26,7 +89,7 @@
                         <tr>
                             <th>Nama Biaya</th>
                             <th>Nominal Standar</th>
-                            <th>Aksi</th>
+                            <th style="width: 260px;">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -34,11 +97,27 @@
                         <tr>
                             <td class="fw-bold">{{ fee.name }}</td>
                             <td>Rp {{ "{:,.0f}".format(fee.amount or 0) }}</td>
-                            <td style="width: 170px;">
-                                <form method="POST" action="{{ url_for('staff.generate_invoices', fee_id=fee.id) }}" onsubmit="return confirm('Terbitkan tagihan untuk biaya ini ke siswa yang sesuai?')">
+                            <td>
+                                <form method="POST" action="{{ url_for('staff.generate_invoices', fee_id=fee.id) }}" class="mb-2" onsubmit="return confirm('Terbitkan tagihan untuk target aktif?')">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    <input type="hidden" name="selected_fee_id" value="{{ selected_fee_id or '' }}">
+                                    <input type="hidden" name="target_scope" value="{{ target_scope }}">
+                                    <input type="hidden" name="target_program_type" value="{{ target_program_type or '' }}">
+                                    <input type="hidden" name="target_class_id" value="{{ target_class_id or '' }}">
+                                    <input type="hidden" name="target_student_id" value="{{ target_student_id or '' }}">
                                     <button type="submit" class="btn btn-danger btn-sm w-100">
                                         <i class="fas fa-paper-plane me-1"></i>Kirim Tagihan
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ url_for('staff.delete_generated_invoices', fee_id=fee.id) }}" onsubmit="return confirm('Hapus invoice (hanya yang belum dibayar dan tanpa transaksi) untuk target aktif?')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    <input type="hidden" name="selected_fee_id" value="{{ selected_fee_id or '' }}">
+                                    <input type="hidden" name="target_scope" value="{{ target_scope }}">
+                                    <input type="hidden" name="target_program_type" value="{{ target_program_type or '' }}">
+                                    <input type="hidden" name="target_class_id" value="{{ target_class_id or '' }}">
+                                    <input type="hidden" name="target_student_id" value="{{ target_student_id or '' }}">
+                                    <button type="submit" class="btn btn-outline-warning btn-sm w-100">
+                                        <i class="fas fa-trash-alt me-1"></i>Hapus Tagihan Salah Kirim
                                     </button>
                                 </form>
                             </td>
@@ -52,4 +131,24 @@
         </div>
     </div>
 </div>
+<script>
+    (function () {
+        const scopeEl = document.getElementById('target_scope');
+        const programWrap = document.querySelector('.js-target-program');
+        const classWrap = document.querySelector('.js-target-class');
+        const studentWrap = document.querySelector('.js-target-student');
+
+        function syncTargetFields() {
+            const scope = scopeEl ? scopeEl.value : 'ALL';
+            programWrap.style.display = (scope === 'PROGRAM') ? '' : 'none';
+            classWrap.style.display = (scope === 'CLASS') ? '' : 'none';
+            studentWrap.style.display = (scope === 'STUDENT') ? '' : 'none';
+        }
+
+        if (scopeEl) {
+            scopeEl.addEventListener('change', syncTargetFields);
+            syncTargetFields();
+        }
+    })();
+</script>
 {% endblock %}

@@ -1137,7 +1137,7 @@ def generate_invoices(fee_id):
                 if "RQDF" not in fee.name.upper() and candidate.program_type.name == 'RQDF_SORE':
                     continue
 
-            if Invoice.query.filter_by(student_id=student.id, fee_type_id=fee.id).first():
+            if Invoice.query.filter_by(student_id=student.id, fee_type_id=fee.id, is_deleted=False).first():
                 continue
 
             nominal_final = fee.amount
