@@ -305,6 +305,86 @@ def manage_schedules():
             flash('Template jadwal kegiatan boarding berhasil ditambahkan.', 'success')
             return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
 
+        if action == 'update_schedule':
+            schedule_id = request.form.get('schedule_id', type=int)
+            schedule = BoardingActivitySchedule.query.get_or_404(schedule_id)
+
+            activity_name = (request.form.get('activity_name') or '').strip()
+            start_time_str = (request.form.get('start_time') or '').strip()
+            end_time_str = (request.form.get('end_time') or '').strip()
+            applies_all_dormitories = request.form.get('applies_all_dormitories') == 'on'
+            applies_all_days = request.form.get('applies_all_days') == 'on'
+            selected_dormitory_ids = request.form.getlist('selected_dormitories')
+            selected_days = request.form.getlist('selected_days')
+            exclude_national_holidays = request.form.get('exclude_national_holidays') == 'on'
+
+            if not activity_name or not start_time_str or not end_time_str:
+                flash('Nama kegiatan dan jam wajib diisi saat update.', 'warning')
+                return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
+
+            if not applies_all_dormitories and not selected_dormitory_ids:
+                flash('Pilih minimal satu asrama jika tidak berlaku untuk semua asrama.', 'warning')
+                return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
+
+            if not applies_all_days and not selected_days:
+                flash('Pilih minimal satu hari jika tidak berlaku untuk semua hari.', 'warning')
+                return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
+
+            try:
+                start_time = datetime.strptime(start_time_str, '%H:%M').time()
+                end_time = datetime.strptime(end_time_str, '%H:%M').time()
+            except ValueError:
+                flash('Format waktu tidak valid.', 'warning')
+                return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
+
+            if start_time >= end_time:
+                flash('Jam mulai harus lebih awal dari jam selesai.', 'warning')
+                return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
+
+            schedule.activity_name = activity_name
+            schedule.start_time = start_time
+            schedule.end_time = end_time
+            schedule.applies_all_dormitories = applies_all_dormitories
+            schedule.applies_all_days = applies_all_days
+            schedule.selected_days = None if applies_all_days else ','.join(selected_days)
+            schedule.exclude_national_holidays = exclude_national_holidays
+
+            if not applies_all_dormitories:
+                dormitories = BoardingDormitory.query.filter(BoardingDormitory.id.in_(selected_dormitory_ids)).all()
+                schedule.selected_dormitories = dormitories
+                schedule.dormitory_id = dormitories[0].id if dormitories else None
+            else:
+                schedule.selected_dormitories = []
+                schedule.dormitory_id = None
+
+            if not applies_all_days and selected_days:
+                schedule.day = selected_days[0]
+            else:
+                schedule.day = None
+
+            db.session.commit()
+            flash('Template jadwal berhasil diperbarui.', 'success')
+            return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
+
+        if action == 'toggle_schedule':
+            schedule_id = request.form.get('schedule_id', type=int)
+            schedule = BoardingActivitySchedule.query.get_or_404(schedule_id)
+            schedule.is_active = not schedule.is_active
+            db.session.commit()
+            flash(
+                f"Template '{schedule.activity_name}' {'diaktifkan' if schedule.is_active else 'dinonaktifkan'}.",
+                'success'
+            )
+            return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
+
+        if action == 'delete_schedule':
+            schedule_id = request.form.get('schedule_id', type=int)
+            schedule = BoardingActivitySchedule.query.get_or_404(schedule_id)
+            schedule.is_deleted = True
+            db.session.commit()
+            flash(f"Template '{schedule.activity_name}' dihapus.", 'success')
+            return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
+
         if action == 'add_holiday':
             holiday_date_raw = (request.form.get('holiday_date') or '').strip()
             holiday_name = (request.form.get('holiday_name') or '').strip()

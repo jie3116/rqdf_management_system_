@@ -93,10 +93,13 @@
                         <th>Cakupan Asrama</th>
                         <th>Cakupan Hari</th>
                         <th>Libur Nasional</th>
+                        <th>Status</th>
+                        <th>Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for schedule in schedules %}
+                    {% set schedule_days = selected_days(schedule) %}
                     <tr>
                         <td>{{ schedule.activity_name }}</td>
                         <td>{{ schedule.start_time.strftime('%H:%M') }} - {{ schedule.end_time.strftime('%H:%M') }}</td>
@@ -112,11 +115,10 @@
                             {% endif %}
                         </td>
                         <td>
-                            {% set days = selected_days(schedule) %}
                             {% if schedule.applies_all_days %}
                             <span class="badge bg-primary">Semua Hari</span>
                             {% else %}
-                                {% for day in days %}
+                                {% for day in schedule_days %}
                                 <span class="badge bg-secondary">{{ day }}</span>
                                 {% endfor %}
                             {% endif %}
@@ -128,9 +130,106 @@
                             <span class="badge bg-light text-dark border">Tetap Berlaku</span>
                             {% endif %}
                         </td>
+                        <td>
+                            {% if schedule.is_active %}
+                            <span class="badge bg-success">Aktif</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Nonaktif</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#editSchedule{{ schedule.id }}">
+                                    Edit
+                                </button>
+                                <form method="POST" onsubmit="return confirm('Ubah status template ini?')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    <input type="hidden" name="action" value="toggle_schedule">
+                                    <input type="hidden" name="schedule_id" value="{{ schedule.id }}">
+                                    {% if selected_dormitory %}
+                                    <input type="hidden" name="dormitory_id" value="{{ selected_dormitory.id }}">
+                                    {% endif %}
+                                    <button class="btn btn-sm {% if schedule.is_active %}btn-outline-warning{% else %}btn-outline-success{% endif %}" type="submit">
+                                        {% if schedule.is_active %}Nonaktifkan{% else %}Aktifkan{% endif %}
+                                    </button>
+                                </form>
+                                <form method="POST" onsubmit="return confirm('Hapus template jadwal ini?')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    <input type="hidden" name="action" value="delete_schedule">
+                                    <input type="hidden" name="schedule_id" value="{{ schedule.id }}">
+                                    {% if selected_dormitory %}
+                                    <input type="hidden" name="dormitory_id" value="{{ selected_dormitory.id }}">
+                                    {% endif %}
+                                    <button class="btn btn-sm btn-outline-danger" type="submit">Hapus</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr class="collapse" id="editSchedule{{ schedule.id }}">
+                        <td colspan="7" class="bg-light">
+                            <form method="POST" class="row g-2">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <input type="hidden" name="action" value="update_schedule">
+                                <input type="hidden" name="schedule_id" value="{{ schedule.id }}">
+                                {% if selected_dormitory %}
+                                <input type="hidden" name="dormitory_id" value="{{ selected_dormitory.id }}">
+                                {% endif %}
+
+                                <div class="col-md-3">
+                                    <label class="form-label small">Nama Kegiatan</label>
+                                    <input type="text" class="form-control form-control-sm" name="activity_name" value="{{ schedule.activity_name }}" required>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label small">Jam Mulai</label>
+                                    <input type="time" class="form-control form-control-sm" name="start_time" value="{{ schedule.start_time.strftime('%H:%M') }}" required>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label small">Jam Selesai</label>
+                                    <input type="time" class="form-control form-control-sm" name="end_time" value="{{ schedule.end_time.strftime('%H:%M') }}" required>
+                                </div>
+                                <div class="col-md-5">
+                                    <label class="form-label small d-block">Cakupan Asrama</label>
+                                    <div class="form-check mb-1">
+                                        <input class="form-check-input edit-all-dorms" type="checkbox" id="editAllDorms{{ schedule.id }}" name="applies_all_dormitories" {% if schedule.applies_all_dormitories %}checked{% endif %}>
+                                        <label class="form-check-label small" for="editAllDorms{{ schedule.id }}">Semua asrama</label>
+                                    </div>
+                                    <select class="form-select form-select-sm edit-selected-dorms" name="selected_dormitories" id="editSelectedDorms{{ schedule.id }}" multiple {% if schedule.applies_all_dormitories %}disabled{% endif %}>
+                                        {% set selected_dorm_ids = schedule.selected_dormitories | map(attribute='id') | list %}
+                                        {% for dorm in dormitories %}
+                                        <option value="{{ dorm.id }}" {% if dorm.id in selected_dorm_ids %}selected{% endif %}>{{ dorm.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-8">
+                                    <label class="form-label small d-block">Cakupan Hari</label>
+                                    <div class="form-check mb-1">
+                                        <input class="form-check-input edit-all-days" type="checkbox" id="editAllDays{{ schedule.id }}" name="applies_all_days" {% if schedule.applies_all_days %}checked{% endif %}>
+                                        <label class="form-check-label small" for="editAllDays{{ schedule.id }}">Semua hari</label>
+                                    </div>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        {% for day in DAYS %}
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input edit-day-box-{{ schedule.id }}" type="checkbox" name="selected_days" value="{{ day }}" id="editDay{{ schedule.id }}_{{ loop.index }}" {% if day in schedule_days %}checked{% endif %} {% if schedule.applies_all_days %}disabled{% endif %}>
+                                            <label class="form-check-label small" for="editDay{{ schedule.id }}_{{ loop.index }}">{{ day }}</label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small d-block">Libur</label>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="exclude_national_holidays" id="editHoliday{{ schedule.id }}" {% if schedule.exclude_national_holidays %}checked{% endif %}>
+                                        <label class="form-check-label small" for="editHoliday{{ schedule.id }}">Skip saat hari libur</label>
+                                    </div>
+                                </div>
+                                <div class="col-12 text-end">
+                                    <button class="btn btn-sm btn-primary" type="submit">Simpan Perubahan</button>
+                                </div>
+                            </form>
+                        </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="5" class="text-center text-muted">Belum ada template jadwal.</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted">Belum ada template jadwal.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -211,6 +310,31 @@
         allDays.addEventListener('change', syncDays);
         syncDays();
     }
+
+    const editAllDorms = document.querySelectorAll('.edit-all-dorms');
+    editAllDorms.forEach((checkbox) => {
+        checkbox.addEventListener('change', function () {
+            const scheduleId = this.id.replace('editAllDorms', '');
+            const target = document.getElementById('editSelectedDorms' + scheduleId);
+            if (target) {
+                target.disabled = this.checked;
+            }
+        });
+    });
+
+    const editAllDays = document.querySelectorAll('.edit-all-days');
+    editAllDays.forEach((checkbox) => {
+        checkbox.addEventListener('change', function () {
+            const scheduleId = this.id.replace('editAllDays', '');
+            const boxes = document.querySelectorAll('.edit-day-box-' + scheduleId);
+            boxes.forEach((box) => {
+                box.disabled = this.checked;
+                if (this.checked) {
+                    box.checked = false;
+                }
+            });
+        });
+    });
 })();
 </script>
 {% endblock %}
