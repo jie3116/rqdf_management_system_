@@ -8,7 +8,7 @@
             <h1 class="h3 mb-0 text-gray-800">Input Nilai Akademik</h1>
             <p class="mb-0 text-muted">
                 Kelas: <strong class="text-primary">{{ target_class.name if target_class else '-' }}</strong> &bull;
-                Mapel: <strong class="text-primary">{{ subject.name if subject else '-' }}</strong>
+                Mapel: <strong class="text-primary">{{ subject.name if subject else (majlis_subject.name if majlis_subject else '-') }}</strong>
             </p>
         </div>
         <a href="{{ url_for('teacher.dashboard') }}" class="btn btn-sm btn-secondary shadow-sm">
@@ -50,6 +50,7 @@
                 
                 <input type="hidden" name="grade_type" value="{{ type_name }}">
                 <input type="hidden" name="subject_id" value="{{ subject.id if subject else "" }}">
+                <input type="hidden" name="majlis_subject_id" value="{{ majlis_subject.id if majlis_subject else "" }}">
 
                 <div class="alert alert-info border-left-info py-2 small">
                     <i class="fas fa-info-circle me-1"></i> 
@@ -61,22 +62,22 @@
                         <thead class="table-light text-center">
                             <tr>
                                 <th style="width: 5%">No</th>
-                                <th style="width: 15%">NIS</th>
-                                <th style="width: 35%" class="text-start">Nama Siswa</th>
+                                <th style="width: 15%">Identitas</th>
+                                <th style="width: 35%" class="text-start">Nama Peserta</th>
                                 <th style="width: 25%">Nilai (Angka)</th>
                                 <th style="width: 20%">Status</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for student in students %}
-                                {% set current_val = existing_grades.get(student.id, {}).get(type_name, '') %}
+                            {% for participant in participants %}
+                                {% set current_val = existing_grades.get(participant.key, {}).get(type_name, '') %}
                             <tr>
                                 <td class="text-center">{{ loop.index }}</td>
-                                <td class="text-center">{{ student.nis }}</td>
-                                <td class="fw-bold">{{ student.full_name }}</td>
+                                <td class="text-center">{{ participant.identifier_label }}: {{ participant.identifier }}</td>
+                                <td class="fw-bold">{{ participant.display_name }}</td>
                                 <td>
                                     <input type="number" step="0.01" min="0" max="100" 
-                                           name="score_{{ student.id }}" 
+                                           name="score_{{ participant.key }}" 
                                            class="form-control text-center fw-bold text-primary"
                                            value="{{ current_val }}"
                                            placeholder="-">

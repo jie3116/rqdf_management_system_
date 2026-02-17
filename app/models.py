@@ -500,8 +500,11 @@ class Grade(BaseModel):
     """
     __tablename__ = 'grades'
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
-    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'))
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
+    majlis_participant_id = db.Column(db.Integer, db.ForeignKey('majlis_participants.id'), nullable=True)
+    participant_type = db.Column(db.Enum(ParticipantType, name='participanttype'), default=ParticipantType.STUDENT, nullable=False)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=True)
+    majlis_subject_id = db.Column(db.Integer, db.ForeignKey('majlis_subjects.id'), nullable=True)
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'))
 
@@ -510,8 +513,10 @@ class Grade(BaseModel):
     notes = db.Column(db.String(100))
 
     subject = db.relationship('Subject', backref='grades')
+    majlis_subject = db.relationship('MajlisSubject', backref='grades')
     teacher = db.relationship('Teacher', backref='input_grades')
     academic_year = db.relationship('AcademicYear', backref='grades')
+    majlis_participant = db.relationship('MajlisParticipant', backref='grades')
 
 
 class GradeWeight(BaseModel):
