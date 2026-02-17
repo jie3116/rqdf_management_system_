@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0">Absensi Harian Boarding</h1>
+    <div class="badge bg-primary fs-6">{{ selected_dormitory.name if selected_dormitory else '-' }}</div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header bg-white">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small fw-bold">Asrama</label>
+                <select name="dormitory_id" class="form-select" onchange="this.form.submit()">
+                    <option value="">Pilih Asrama</option>
+                    {% for dorm in my_dormitories %}
+                    <option value="{{ dorm.id }}" {% if selected_dormitory_id == dorm.id %}selected{% endif %}>{{ dorm.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-bold">Tanggal</label>
+                <input type="date" name="date" class="form-control" value="{{ selected_date }}" onchange="this.form.submit()">
+            </div>
+            <div class="col-md-5">
+                <label class="form-label small fw-bold">Kegiatan ({{ selected_day }})</label>
+                <select name="schedule_id" class="form-select" onchange="this.form.submit()">
+                    {% if not schedules %}
+                    <option value="">Belum ada jadwal kegiatan</option>
+                    {% else %}
+                        {% for schedule in schedules %}
+                        <option value="{{ schedule.id }}" {% if selected_schedule and selected_schedule.id == schedule.id %}selected{% endif %}>
+                            {{ schedule.activity_name }} ({{ schedule.start_time.strftime('%H:%M') }} - {{ schedule.end_time.strftime('%H:%M') }})
+                        </option>
+                        {% endfor %}
+                    {% endif %}
+                </select>
+            </div>
+        </form>
+    </div>
+    <div class="card-body">
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="dormitory_id" value="{{ selected_dormitory_id or '' }}">
+            <input type="hidden" name="attendance_date" value="{{ selected_date }}">
+            <input type="hidden" name="schedule_id" value="{{ selected_schedule.id if selected_schedule else '' }}">
+
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover align-middle">
+                    <thead class="table-light text-center">
+                        <tr>
+                            <th style="width: 5%">No</th>
+                            <th style="width: 15%">NIS</th>
+                            <th class="text-start">Nama Siswa</th>
+                            <th style="width: 35%">Status</th>
+                            <th style="width: 25%">Catatan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for student in students %}
+                            {% set current = existing_attendance.get(student.id, {}) %}
+                            {% set status = current.get('status', 'HADIR') %}
+                        <tr>
+                            <td class="text-center">{{ loop.index }}</td>
+                            <td class="text-center">{{ student.nis }}</td>
+                            <td>{{ student.full_name }}</td>
+                            <td>
+                                <div class="btn-group w-100" role="group">
+                                    {% for st in AttendanceStatus %}
+                                    <input type="radio" class="btn-check" name="status_{{ student.id }}" id="{{ st.name }}_{{ student.id }}" value="{{ st.name }}" {% if status == st.name %}checked{% endif %}>
+                                    <label class="btn btn-outline-secondary btn-sm" for="{{ st.name }}_{{ student.id }}">{{ st.value }}</label>
+                                    {% endfor %}
+                                </div>
+                            </td>
+                            <td>
+                                <input type="text" name="notes_{{ student.id }}" class="form-control form-control-sm" value="{{ current.get('notes', '') }}" placeholder="Catatan...">
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted">Belum ada siswa pada asrama ini.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="text-end mt-3">
+                <button type="submit" class="btn btn-success" {% if not selected_schedule %}disabled{% endif %}>
+                    <i class="fas fa-save me-1"></i>Simpan Absensi
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

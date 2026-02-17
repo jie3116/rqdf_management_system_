@@ -20,12 +20,20 @@ def create_app(config_class=Config):
     def inject_helpers():
         from datetime import datetime
         import locale
+        from flask_login import current_user
+        from app.utils.roles import get_active_role, role_label
         try:
             # Opsional: Set bahasa tanggal ke Indonesia
             locale.setlocale(locale.LC_TIME, 'id_ID.utf8')
         except:
             pass
-        return {'datetime': datetime}
+        active_role = get_active_role(current_user) if current_user.is_authenticated else None
+        return {
+            'datetime': datetime,
+            'active_role': active_role,
+            'active_role_value': active_role.value if active_role else None,
+            'active_role_label': role_label(active_role) if active_role else '-',
+        }
 
     # 3. Import Models (Penting agar db.create_all mendeteksi tabel)
     from app import models
@@ -59,6 +67,7 @@ def create_app(config_class=Config):
     from app.routes.student import student_bp
     from app.routes.parent import parent_bp
     from app.routes.teacher import teacher_bp
+    from app.routes.boarding import boarding_bp
 
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
@@ -68,5 +77,6 @@ def create_app(config_class=Config):
     app.register_blueprint(student_bp, url_prefix='/student')
     app.register_blueprint(parent_bp, url_prefix='/parent')
     app.register_blueprint(teacher_bp, url_prefix='/teacher')
+    app.register_blueprint(boarding_bp)
 
     return app

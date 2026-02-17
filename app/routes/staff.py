@@ -172,10 +172,14 @@ def send_invoices():
 @role_required(UserRole.TU)
 def manage_announcements():
     classes = ClassRoom.query.filter_by(is_deleted=False).order_by(ClassRoom.name.asc()).all()
-    users = User.query.filter(User.role != UserRole.ADMIN).order_by(User.username.asc()).limit(500).all()
-    available_roles = sorted({u.role.value for u in users})
+    users = User.query.filter(
+        User.role != UserRole.ADMIN,
+        ~User.role_assignments.any(role=UserRole.ADMIN)
+    ).order_by(User.username.asc()).limit(500).all()
+    available_roles = sorted({role_value for u in users for role_value in u.all_role_values()})
     role_labels = {
         UserRole.WALI_MURID.value: 'Wali Murid',
+        UserRole.WALI_ASRAMA.value: 'Wali Asrama',
         UserRole.SISWA.value: 'Santri',
         UserRole.GURU.value: 'Guru',
         UserRole.TU.value: 'Staf TU',
@@ -185,6 +189,7 @@ def manage_announcements():
         UserRole.GURU.value,
         UserRole.SISWA.value,
         UserRole.WALI_MURID.value,
+        UserRole.WALI_ASRAMA.value,
         UserRole.MAJLIS_PARTICIPANT.value,
     ]
     program_labels = {

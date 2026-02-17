@@ -54,7 +54,7 @@
     </div>
     {% else %}
     <div class="row">
-        <div class="col-xl-4 col-md-6 mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
             <div class="card border-left-primary shadow h-100 py-2">
                 <div class="card-body">
                     <div class="row no-gutters align-items-center">
@@ -73,7 +73,7 @@
             </div>
         </div>
 
-        <div class="col-xl-4 col-md-6 mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
             <div class="card border-left-success shadow h-100 py-2">
                 <div class="card-body">
                     <div class="row no-gutters align-items-center">
@@ -92,7 +92,7 @@
             </div>
         </div>
 
-        <div class="col-xl-4 col-md-6 mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
             <div class="card border-left-info shadow h-100 py-2">
                 <div class="card-body">
                     <div class="row no-gutters align-items-center">
@@ -105,6 +105,26 @@
                         </div>
                         <div class="col-auto">
                             <i class="fas fa-book-open fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                Boarding Hari Ini</div>
+                            <div class="h6 mb-1 font-weight-bold text-gray-800">
+                                Hadir {{ boarding_attendance_stats.hadir }} | S/I/A {{ boarding_attendance_stats.sakit }}/{{ boarding_attendance_stats.izin }}/{{ boarding_attendance_stats.alpa }}
+                            </div>
+                            <div class="small text-muted">Belum diinput: {{ boarding_attendance_stats.belum_input }} santri</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-bed fa-2x text-gray-300"></i>
                         </div>
                     </div>
                 </div>
@@ -206,6 +226,48 @@
                         <div class="alert alert-warning">
                             <i class="fas fa-exclamation-triangle me-2"></i>
                             Anda belum terdaftar di jadwal pelajaran manapun. Hubungi Admin Akademik.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 fw-bold text-dark"><i class="fas fa-user-check me-2"></i>Input Absensi Peserta</h6>
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted mb-3">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Pilih kelas untuk input absensi siswa dan peserta majlis ta'lim.
+                    </p>
+
+                    {% if my_classes %}
+                        <div class="row">
+                            {% for class_room in my_classes %}
+                            <div class="col-md-6 mb-3">
+                                <a href="{{ url_for('teacher.input_attendance', class_id=class_room.id) }}" class="text-decoration-none">
+                                    <div class="card border-left-success h-100 py-2 shadow-sm hover-scale transition">
+                                        <div class="card-body">
+                                            <div class="row no-gutters align-items-center">
+                                                <div class="col mr-2">
+                                                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                                        Kelas</div>
+                                                    <div class="h6 mb-0 font-weight-bold text-gray-800">{{ class_room.name }}</div>
+                                                </div>
+                                                <div class="col-auto">
+                                                    <i class="fas fa-chevron-right text-gray-400"></i>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </a>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Anda belum terhubung dengan kelas manapun.
                         </div>
                     {% endif %}
                 </div>

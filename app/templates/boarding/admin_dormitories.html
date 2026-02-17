@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Data Asrama & Penempatan Siswa</h1>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header bg-primary text-white"><strong>Tambah Asrama</strong></div>
+    <div class="card-body">
+        <form method="POST" class="row g-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="create_dormitory">
+            <div class="col-md-3">
+                <label class="form-label">Nama Asrama</label>
+                <input type="text" name="name" class="form-control" required>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Gender</label>
+                <select name="gender" class="form-select">
+                    <option value="">Campuran/Umum</option>
+                    {% for g in Gender %}
+                    <option value="{{ g.name }}">{{ g.value }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Kapasitas</label>
+                <input type="number" min="1" name="capacity" class="form-control">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Wali Asrama</label>
+                <select name="guardian_user_id" class="form-select" required>
+                    <option value="">Pilih Wali</option>
+                    {% for guardian in guardians %}
+                    <option value="{{ guardian.user_id }}">{{ guardian.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Deskripsi</label>
+                <input type="text" name="description" class="form-control" placeholder="Opsional">
+            </div>
+            <div class="col-12 text-end">
+                <button type="submit" class="btn btn-primary">Tambah Asrama</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header bg-light"><strong>Daftar Asrama</strong></div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Nama</th>
+                        <th>Gender</th>
+                        <th>Kapasitas</th>
+                        <th>Wali</th>
+                        <th>Jumlah Siswa</th>
+                        <th>Update</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for dorm in dormitories %}
+                    <tr>
+                        <form method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                            <input type="hidden" name="action" value="update_dormitory">
+                            <input type="hidden" name="dormitory_id" value="{{ dorm.id }}">
+                            <td>{{ dorm.name }}</td>
+                            <td>
+                                <select name="gender" class="form-select form-select-sm">
+                                    <option value="" {% if not dorm.gender %}selected{% endif %}>Umum</option>
+                                    {% for g in Gender %}
+                                    <option value="{{ g.name }}" {% if dorm.gender and dorm.gender.name == g.name %}selected{% endif %}>{{ g.value }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td><input type="number" min="1" name="capacity" class="form-control form-control-sm" value="{{ dorm.capacity or '' }}"></td>
+                            <td>
+                                <select name="guardian_user_id" class="form-select form-select-sm">
+                                    <option value="">-</option>
+                                    {% for guardian in guardians %}
+                                    <option value="{{ guardian.user_id }}" {% if dorm.guardian_user_id == guardian.user_id %}selected{% endif %}>{{ guardian.full_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>{{ dorm.students|length }}</td>
+                            <td>
+                                <input type="text" name="description" class="form-control form-control-sm mb-2" value="{{ dorm.description or '' }}" placeholder="Deskripsi">
+                                <button class="btn btn-sm btn-outline-primary w-100" type="submit">Simpan</button>
+                            </td>
+                        </form>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center text-muted">Belum ada data asrama.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow">
+    <div class="card-header bg-success text-white"><strong>Penempatan Siswa ke Asrama</strong></div>
+    <div class="card-body">
+        <form method="GET" class="mb-3">
+            <div class="row g-2 justify-content-end">
+                <div class="col-md-4">
+                    <input type="text" name="q" class="form-control form-control-sm" value="{{ query or '' }}" placeholder="Cari siswa (nama/NIS)...">
+                </div>
+                <div class="col-auto"><button class="btn btn-sm btn-outline-success" type="submit">Cari</button></div>
+            </div>
+        </form>
+
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="assign_students">
+            <div class="table-responsive">
+                <table class="table table-hover table-bordered align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>NIS</th>
+                            <th>Nama Siswa</th>
+                            <th>Kelas</th>
+                            <th>Asrama</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for student in students %}
+                        <tr>
+                            <td class="fw-bold">{{ student.nis }}</td>
+                            <td>{{ student.full_name }}</td>
+                            <td>{{ student.current_class.name if student.current_class else '-' }}</td>
+                            <td>
+                                <select class="form-select form-select-sm" name="dormitory_{{ student.id }}">
+                                    <option value="">Belum ditempatkan</option>
+                                    {% for dorm in dormitories %}
+                                    <option value="{{ dorm.id }}" {% if student.boarding_dormitory_id == dorm.id %}selected{% endif %}>{{ dorm.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted">Data siswa tidak ditemukan.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="text-end">
+                <button class="btn btn-success" type="submit"><i class="fas fa-save me-1"></i>Simpan Penempatan</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

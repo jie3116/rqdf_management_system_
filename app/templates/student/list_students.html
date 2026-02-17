@@ -4,7 +4,7 @@
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
     <h1 class="h3 mb-0 text-gray-800">Data Santri</h1>
     
-    {% if current_user.role.value == 'admin' %}
+    {% if current_user.has_role('admin') %}
         <div class="d-flex gap-2">
             <a href="{{ url_for('admin.add_student') }}" class="btn btn-sm btn-primary shadow-sm">
                 <i class="fas fa-user-plus fa-sm text-white-50 me-1"></i> Input Santri Manual
@@ -16,7 +16,7 @@
     {% endif %}
 </div>
 
-{% if current_user.role.value == 'admin' %}
+{% if current_user.has_role('admin') %}
 <div class="collapse mb-3" id="uploadSiswa">
     <div class="card shadow-sm">
         <div class="card-body">
@@ -49,7 +49,7 @@
         <h6 class="m-0 fw-bold"><i class="fas fa-users me-2"></i>Daftar Santri Aktif</h6>
     </div>
     <div class="card-body">
-        {% set base_route = url_for('admin.list_students') if current_user.role.value == 'admin' else url_for('staff.list_students') %}
+        {% set base_route = url_for('admin.list_students') if current_user.has_role('admin') else url_for('staff.list_students') %}
         {% set current_category = active_category or 'all' %}
         {% set majlis_query = query_majlis or '' %}
 
@@ -132,7 +132,7 @@
                             </div>
                         </td>
                         <td>
-    {% if current_user.role.value == 'admin' %}
+    {% if current_user.has_role('admin') %}
         <a href="{{ url_for('admin.edit_student', student_id=student.id) }}" class="btn btn-warning btn-sm">
             <i class="fas fa-edit"></i>
         </a>
@@ -142,7 +142,7 @@
         </a>
     {% endif %}
 
-    {% if current_user.role.value == 'admin' %}
+    {% if current_user.has_role('admin') %}
         <a href="{{ url_for('admin.delete_student', id=student.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('Hapus?')">
             <i class="fas fa-trash"></i>
         </a>

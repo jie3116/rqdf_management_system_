@@ -39,6 +39,7 @@ from app.models import (
     Announcement,
 )
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
+from app.utils.roles import get_active_role
 
 main_bp = Blueprint('main', __name__)
 
@@ -70,28 +71,34 @@ def dashboard():
     Fungsi Dispatcher: Hanya mengarahkan user ke dashboard spesifik berdasarkan Role.
     """
 
+    active_role = get_active_role(current_user)
+
     # 1. Admin
-    if current_user.role == UserRole.ADMIN:
+    if active_role == UserRole.ADMIN:
         return redirect(url_for('admin.dashboard'))
 
     # 2. Guru
-    elif current_user.role == UserRole.GURU:
+    elif active_role == UserRole.GURU:
         return redirect(url_for('teacher.dashboard'))
 
     # 3. Staff TU
-    elif current_user.role == UserRole.TU:
+    elif active_role == UserRole.TU:
         return redirect(url_for('staff.dashboard'))
 
     # 4. SISWA
-    elif current_user.role == UserRole.SISWA:
+    elif active_role == UserRole.SISWA:
         return redirect(url_for('student.dashboard'))
 
     # 5. Wali Murid
-    elif current_user.role == UserRole.WALI_MURID:
+    elif active_role == UserRole.WALI_MURID:
         return redirect(url_for('parent.dashboard'))
 
-    # 6. Peserta Majelis Ta'lim (external)
-    elif current_user.role == UserRole.MAJLIS_PARTICIPANT:
+    # 6. Wali Asrama
+    elif active_role == UserRole.WALI_ASRAMA:
+        return redirect(url_for('boarding.dashboard'))
+
+    # 7. Peserta Majelis Ta'lim (external)
+    elif active_role == UserRole.MAJLIS_PARTICIPANT:
         return redirect(url_for('main.majlis_dashboard'))
 
     # Fallback jika role tidak dikenali
@@ -103,10 +110,10 @@ def dashboard():
 @role_required(UserRole.MAJLIS_PARTICIPANT, UserRole.WALI_MURID)
 def majlis_dashboard():
     profile = current_user.majlis_profile
-    parent_profile = current_user.parent_profile if current_user.role == UserRole.WALI_MURID else None
+    parent_profile = current_user.parent_profile if current_user.has_role(UserRole.WALI_MURID) else None
     if not profile:
         flash("Profil peserta Majelis tidak ditemukan.", "danger")
-        if current_user.role == UserRole.WALI_MURID:
+        if current_user.has_role(UserRole.WALI_MURID):
             return redirect(url_for('parent.join_majlis'))
         return redirect(url_for('auth.logout'))
 
