@@ -6,7 +6,7 @@ from app.models import (
     Teacher, Student, ClassRoom, TahfidzRecord, TahfidzSummary, RecitationRecord,
     TahfidzEvaluation, TahfidzType, RecitationSource, ParticipantType, Grade,
     EvaluationPeriod,
-    GradeType, Subject, Attendance, AttendanceStatus, AcademicYear, Schedule, db, UserRole, MajlisParticipant,
+    GradeType, Subject, MajlisSubject, Attendance, AttendanceStatus, AcademicYear, Schedule, db, UserRole, MajlisParticipant,
     BehaviorReport, BehaviorReportType, Announcement
 )
 from app.decorators import role_required
@@ -73,6 +73,31 @@ def _parse_participant_key(participant_key):
     except (TypeError, ValueError):
         return None, None
 
+
+def _build_participant_rows(students, majlis_participants):
+    rows = []
+    for student in students:
+        rows.append({
+            'key': f'S-{student.id}',
+            'participant_type': ParticipantType.STUDENT,
+            'student_id': student.id,
+            'majlis_participant_id': None,
+            'display_name': student.full_name,
+            'identifier': student.nis or '-',
+            'identifier_label': 'NIS'
+        })
+    for participant in majlis_participants:
+        rows.append({
+            'key': f'M-{participant.id}',
+            'participant_type': ParticipantType.EXTERNAL_MAJLIS,
+            'student_id': None,
+            'majlis_participant_id': participant.id,
+            'display_name': participant.full_name,
+            'identifier': participant.phone or '-',
+            'identifier_label': 'Kontak'
+        })
+    return rows
+
 @teacher_bp.route('/dashboard')
 @login_required
 @role_required(UserRole.GURU)
@@ -101,13 +126,25 @@ def dashboard():
     seen_assignments = set()
     all_teacher_schedules = Schedule.query.filter_by(teacher_id=teacher.id, is_deleted=False).all()
     for sch in all_teacher_schedules:
-        if not sch.class_room or not sch.subject:
+        if not sch.class_room:
             continue
-        key = (sch.class_id, sch.subject_id)
+        if not sch.subject and not sch.majlis_subject:
+            continue
+
+        assignment_type = 'SUBJECT' if sch.subject_id else 'MAJLIS_SUBJECT'
+        assignment_id = sch.subject_id if sch.subject_id else sch.majlis_subject_id
+        assignment_name = sch.subject.name if sch.subject else sch.majlis_subject.name
+        key = (sch.class_id, assignment_type, assignment_id)
         if key in seen_assignments:
             continue
         seen_assignments.add(key)
-        teaching_assignments.append((sch.class_id, sch.class_room.name, sch.subject_id, sch.subject.name))
+        teaching_assignments.append((
+            sch.class_id,
+            sch.class_room.name,
+            sch.subject_id,
+            sch.majlis_subject_id,
+            assignment_name
+        ))
 
     homeroom_class = teacher.homeroom_class
     top_tab = (request.args.get('top_tab') or 'main').strip().lower()
@@ -168,33 +205,99 @@ def input_grades():
 
     selected_class_id = request.args.get('class_id', type=int)
     selected_subject_id = request.args.get('subject_id', type=int)
+    selected_majlis_subject_id = request.args.get('majlis_subject_id', type=int)
     students = []
+    majlis_participants = []
+    participants = []
     target_class = None
     subject = Subject.query.get(selected_subject_id) if selected_subject_id else None
+    majlis_subject = MajlisSubject.query.get(selected_majlis_subject_id) if selected_majlis_subject_id else None
 
     if selected_class_id:
         target_class = ClassRoom.query.get(selected_class_id)
         if target_class in my_classes:
-            students = Student.query.filter_by(current_class_id=selected_class_id, is_deleted=False).order_by(Student.full_name).all()
+            students, majlis_participants = _get_class_participants(selected_class_id)
+            participants = _build_participant_rows(students, majlis_participants)
+        else:
+            flash('Anda tidak memiliki akses ke kelas tersebut.', 'danger')
 
     active_year = AcademicYear.query.filter_by(is_active=True).first()
     existing_grades = {}
-    if active_year and selected_subject_id and students:
-        for g in Grade.query.filter_by(subject_id=selected_subject_id, academic_year_id=active_year.id).filter(Grade.student_id.in_([s.id for s in students])).all():
-            existing_grades.setdefault(g.student_id, {})[g.type.name] = g.score
+    if active_year and participants and (selected_subject_id or selected_majlis_subject_id):
+        student_ids = [p['student_id'] for p in participants if p['participant_type'] == ParticipantType.STUDENT]
+        majlis_ids = [p['majlis_participant_id'] for p in participants if p['participant_type'] == ParticipantType.EXTERNAL_MAJLIS]
+        grade_query = Grade.query.filter_by(academic_year_id=active_year.id, teacher_id=teacher.id)
+
+        if selected_subject_id:
+            grade_query = grade_query.filter(Grade.subject_id == selected_subject_id)
+        else:
+            grade_query = grade_query.filter(Grade.majlis_subject_id == selected_majlis_subject_id)
+
+        participant_filters = []
+        if student_ids:
+            participant_filters.append(
+                db.and_(Grade.participant_type == ParticipantType.STUDENT, Grade.student_id.in_(student_ids))
+            )
+        if majlis_ids:
+            participant_filters.append(
+                db.and_(Grade.participant_type == ParticipantType.EXTERNAL_MAJLIS, Grade.majlis_participant_id.in_(majlis_ids))
+            )
+        if participant_filters:
+            grade_query = grade_query.filter(db.or_(*participant_filters))
+        else:
+            grade_query = grade_query.filter(False)
+
+        for g in grade_query.all():
+            if g.participant_type == ParticipantType.EXTERNAL_MAJLIS and g.majlis_participant_id:
+                key = f'M-{g.majlis_participant_id}'
+            elif g.student_id:
+                key = f'S-{g.student_id}'
+            else:
+                continue
+            existing_grades.setdefault(key, {})[g.type.name] = g.score
     
     if request.method == 'POST':
         if not active_year:
             flash('Tahun ajaran aktif belum diatur.', 'warning')
-            return redirect(url_for('teacher.input_grades', class_id=selected_class_id, subject_id=selected_subject_id))
+            return redirect(url_for(
+                'teacher.input_grades',
+                class_id=selected_class_id,
+                subject_id=selected_subject_id,
+                majlis_subject_id=selected_majlis_subject_id
+            ))
 
         grade_type = request.form.get('grade_type')
         notes = request.form.get('notes', '')
         subject_id = selected_subject_id or request.form.get('subject_id', type=int)
+        majlis_subject_id = selected_majlis_subject_id or request.form.get('majlis_subject_id', type=int)
+        if grade_type not in [t.name for t in GradeType]:
+            flash('Tipe nilai tidak valid.', 'warning')
+            return redirect(url_for(
+                'teacher.input_grades',
+                class_id=selected_class_id,
+                subject_id=selected_subject_id,
+                majlis_subject_id=selected_majlis_subject_id
+            ))
+        if not subject_id and not majlis_subject_id:
+            flash('Mata pelajaran belum dipilih.', 'warning')
+            return redirect(url_for(
+                'teacher.input_grades',
+                class_id=selected_class_id,
+                subject_id=selected_subject_id,
+                majlis_subject_id=selected_majlis_subject_id
+            ))
+        if not participants:
+            flash('Belum ada peserta pada kelas ini.', 'warning')
+            return redirect(url_for(
+                'teacher.input_grades',
+                class_id=selected_class_id,
+                subject_id=selected_subject_id,
+                majlis_subject_id=selected_majlis_subject_id
+            ))
         
         success_count = 0
-        for student in students:
-            score = request.form.get(f'score_{student.id}')
+        for participant in participants:
+            score = request.form.get(f"score_{participant['key']}")
             if not score or not score.strip():
                 continue
             try:
@@ -203,8 +306,11 @@ def input_grades():
                 continue
 
             existing = Grade.query.filter_by(
-                student_id=student.id,
+                student_id=participant['student_id'],
+                majlis_participant_id=participant['majlis_participant_id'],
+                participant_type=participant['participant_type'],
                 subject_id=subject_id,
+                majlis_subject_id=majlis_subject_id,
                 academic_year_id=active_year.id,
                 type=GradeType[grade_type],
                 teacher_id=teacher.id
@@ -214,8 +320,11 @@ def input_grades():
                 existing.notes = notes
             else:
                 db.session.add(Grade(
-                    student_id=student.id,
+                    student_id=participant['student_id'],
+                    majlis_participant_id=participant['majlis_participant_id'],
+                    participant_type=participant['participant_type'],
                     subject_id=subject_id,
+                    majlis_subject_id=majlis_subject_id,
                     academic_year_id=active_year.id,
                     teacher_id=teacher.id,
                     type=GradeType[grade_type],
@@ -230,13 +339,19 @@ def input_grades():
         else:
             flash('Tidak ada nilai yang berhasil disimpan.', 'warning')
 
-        return redirect(url_for('teacher.input_grades', class_id=selected_class_id, subject_id=selected_subject_id))
+        return redirect(url_for(
+            'teacher.input_grades',
+            class_id=selected_class_id,
+            subject_id=selected_subject_id,
+            majlis_subject_id=selected_majlis_subject_id
+        ))
     
     return render_template('teacher/input_grades.html',
                            my_classes=my_classes,
-                           students=students,
+                           participants=participants,
                            target_class=target_class,
                            subject=subject,
+                           majlis_subject=majlis_subject,
                            existing_grades=existing_grades)
 
 
@@ -897,50 +1012,67 @@ def input_attendance():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
     my_classes = _get_teacher_classes(teacher)
     
-    selected_class_id = request.args.get('class_id')
+    selected_class_id = request.args.get('class_id', type=int)
     selected_date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
     
     students = []
+    majlis_participants = []
+    participants = []
     selected_class = None
     existing_attendance = {}
     
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
         if selected_class in my_classes:
-            students = Student.query.filter_by(
-                current_class_id=selected_class_id,
-                is_deleted=False
-            ).order_by(Student.full_name).all()
+            students, majlis_participants = _get_class_participants(selected_class_id)
+            participants = _build_participant_rows(students, majlis_participants)
             
             # Cek absensi yang sudah ada
             date_obj = datetime.strptime(selected_date, '%Y-%m-%d').date()
-            attendances = Attendance.query.filter_by(
-                class_id=selected_class_id,
-                date=date_obj,
-                participant_type=ParticipantType.STUDENT
+            attendances = Attendance.query.filter(
+                Attendance.class_id == selected_class_id,
+                Attendance.date == date_obj,
+                Attendance.participant_type.in_([ParticipantType.STUDENT, ParticipantType.EXTERNAL_MAJLIS])
             ).all()
-            
-            existing_attendance = {att.student_id: att.status for att in attendances}
+
+            for att in attendances:
+                if att.participant_type == ParticipantType.EXTERNAL_MAJLIS and att.majlis_participant_id:
+                    key = f"M-{att.majlis_participant_id}"
+                elif att.student_id:
+                    key = f"S-{att.student_id}"
+                else:
+                    continue
+                existing_attendance[key] = {
+                    'status': att.status.name,
+                    'notes': att.notes or ''
+                }
+        else:
+            flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
     
     if request.method == 'POST':
-        date_str = request.form.get('attendance_date')
-        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        date_str = request.form.get('attendance_date') or selected_date
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            flash('Format tanggal absensi tidak valid.', 'warning')
+            return redirect(url_for('teacher.input_attendance', class_id=selected_class_id, date=selected_date))
         
         active_year = AcademicYear.query.filter_by(is_active=True).first()
         
-        for student in students:
-            status_key = f'status_{student.id}'
+        for participant in participants:
+            status_key = f"status_{participant['key']}"
             status = request.form.get(status_key)
-            notes_key = f'notes_{student.id}'
+            notes_key = f"notes_{participant['key']}"
             notes = request.form.get(notes_key, '')
             
             if status:
                 # Cek apakah sudah ada record
                 existing = Attendance.query.filter_by(
-                    student_id=student.id,
+                    student_id=participant['student_id'],
+                    majlis_participant_id=participant['majlis_participant_id'],
+                    participant_type=participant['participant_type'],
                     class_id=selected_class_id,
                     date=date_obj,
-                    participant_type=ParticipantType.STUDENT
                 ).first()
                 
                 if existing:
@@ -948,8 +1080,9 @@ def input_attendance():
                     existing.notes = notes
                 else:
                     new_attendance = Attendance(
-                        student_id=student.id,
-                        participant_type=ParticipantType.STUDENT,
+                        student_id=participant['student_id'],
+                        majlis_participant_id=participant['majlis_participant_id'],
+                        participant_type=participant['participant_type'],
                         class_id=selected_class_id,
                         teacher_id=teacher.id,
                         academic_year_id=active_year.id if active_year else None,
@@ -967,8 +1100,9 @@ def input_attendance():
     
     return render_template('teacher/input_attendance.html',
                          my_classes=my_classes,
-                         students=students,
+                         participants=participants,
                          selected_class=selected_class,
+                         selected_class_id=selected_class_id,
                          selected_date=selected_date,
                          existing_attendance=existing_attendance,
                          attendance_statuses=AttendanceStatus)

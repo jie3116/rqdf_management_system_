@@ -4,14 +4,15 @@
 <div class="container-fluid">
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
         <h1 class="h3 mb-0 text-gray-800">Input Absensi</h1>
-        <div class="badge bg-primary fs-5">{{ target_class.name }}</div>
+        <div class="badge bg-primary fs-5">{{ selected_class.name if selected_class else '-' }}</div>
     </div>
 
     <div class="card shadow mb-4">
         <div class="card-header py-3 bg-white d-flex flex-row align-items-center justify-content-between">
-            <h6 class="m-0 fw-bold text-primary">Daftar Kehadiran Siswa</h6>
+            <h6 class="m-0 fw-bold text-primary">Daftar Kehadiran Peserta</h6>
             
             <form method="GET" class="d-flex align-items-center">
+                <input type="hidden" name="class_id" value="{{ selected_class_id if selected_class_id else '' }}">
                 <label class="me-2 fw-bold small">Tanggal:</label>
                 <input type="date" name="date" class="form-control form-control-sm" 
                        value="{{ selected_date }}" onchange="this.form.submit()">
@@ -21,48 +22,52 @@
         <div class="card-body">
             <form method="POST">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="attendance_date" value="{{ selected_date }}">
 
                 <div class="table-responsive">
                     <table class="table table-hover align-middle table-bordered">
                         <thead class="bg-light text-center">
                             <tr>
                                 <th width="5%">No</th>
-                                <th class="text-start">Nama Siswa</th>
+                                <th width="20%">Identitas</th>
+                                <th class="text-start">Nama Peserta</th>
                                 <th width="35%">Status (H/S/I/A)</th>
                                 <th width="25%">Keterangan</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for student in students %}
-                                {% set current = existing_data.get(student.id, {}) %}
-                                {% set status = current.get('status', 'HADIR') %} <tr>
+                            {% for participant in participants %}
+                                {% set current = existing_attendance.get(participant.key, {}) %}
+                                {% set status = current.get('status', 'HADIR') %}
+                            <tr>
                                 <td class="text-center">{{ loop.index }}</td>
-                                <td class="fw-bold">{{ student.full_name }}</td>
+                                <td class="text-center">{{ participant.identifier_label }}: {{ participant.identifier }}</td>
+                                <td class="fw-bold">{{ participant.display_name }}</td>
                                 <td class="text-center">
                                     <div class="btn-group w-100" role="group">
-                                        <input type="radio" class="btn-check" name="status_{{ student.id }}" 
-                                               id="h_{{ student.id }}" value="HADIR" 
+                                        <input type="radio" class="btn-check" name="status_{{ participant.key }}" 
+                                               id="h_{{ participant.key }}" value="HADIR" 
                                                {{ 'checked' if status == 'HADIR' else '' }}>
-                                        <label class="btn btn-outline-success btn-sm" for="h_{{ student.id }}">Hadir</label>
+                                        <label class="btn btn-outline-success btn-sm" for="h_{{ participant.key }}">Hadir</label>
 
-                                        <input type="radio" class="btn-check" name="status_{{ student.id }}" 
-                                               id="s_{{ student.id }}" value="SAKIT" 
+                                        <input type="radio" class="btn-check" name="status_{{ participant.key }}" 
+                                               id="s_{{ participant.key }}" value="SAKIT" 
                                                {{ 'checked' if status == 'SAKIT' else '' }}>
-                                        <label class="btn btn-outline-warning btn-sm" for="s_{{ student.id }}">Sakit</label>
+                                        <label class="btn btn-outline-warning btn-sm" for="s_{{ participant.key }}">Sakit</label>
 
-                                        <input type="radio" class="btn-check" name="status_{{ student.id }}" 
-                                               id="i_{{ student.id }}" value="IZIN" 
+                                        <input type="radio" class="btn-check" name="status_{{ participant.key }}" 
+                                               id="i_{{ participant.key }}" value="IZIN" 
                                                {{ 'checked' if status == 'IZIN' else '' }}>
-                                        <label class="btn btn-outline-info btn-sm" for="i_{{ student.id }}">Izin</label>
+                                        <label class="btn btn-outline-info btn-sm" for="i_{{ participant.key }}">Izin</label>
 
-                                        <input type="radio" class="btn-check" name="status_{{ student.id }}" 
-                                               id="a_{{ student.id }}" value="ALPA" 
+                                        <input type="radio" class="btn-check" name="status_{{ participant.key }}" 
+                                               id="a_{{ participant.key }}" value="ALPA" 
                                                {{ 'checked' if status == 'ALPA' else '' }}>
-                                        <label class="btn btn-outline-danger btn-sm" for="a_{{ student.id }}">Alpa</label>
+                                        <label class="btn btn-outline-danger btn-sm" for="a_{{ participant.key }}">Alpa</label>
                                     </div>
                                 </td>
                                 <td>
-                                    <input type="text" name="note_{{ student.id }}" class="form-control form-control-sm" 
+                                    <input type="text" name="notes_{{ participant.key }}" class="form-control form-control-sm" 
                                            placeholder="Ket..." value="{{ current.get('notes', '') }}">
                                 </td>
                             </tr>

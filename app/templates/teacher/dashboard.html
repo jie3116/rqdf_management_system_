@@ -141,10 +141,10 @@
                                             </span>
                                         </td>
                                         <td class="fw-bold">{{ sch.class_room.name }}</td>
-                                        <td>{{ sch.subject.name }}</td>
+                                        <td>{{ sch.subject.name if sch.subject else (sch.majlis_subject.name if sch.majlis_subject else '-') }}</td>
 
                                         <td class="text-center">
-                                            <a href="{{ url_for('teacher.input_grades', class_id=sch.class_id, subject_id=sch.subject_id) }}"
+                                            <a href="{{ url_for('teacher.input_grades', class_id=sch.class_id, subject_id=sch.subject_id, majlis_subject_id=sch.majlis_subject_id) }}"
                                                class="btn btn-sm btn-primary" title="Input Nilai">
                                                 <i class="fas fa-edit"></i>
                                             </a>
@@ -181,9 +181,9 @@
 
                     {% if teaching_assignments %}
                         <div class="row">
-                            {% for class_id, class_name, subject_id, subject_name in teaching_assignments %}
+                            {% for class_id, class_name, subject_id, majlis_subject_id, subject_name in teaching_assignments %}
                             <div class="col-md-6 mb-3">
-                                <a href="{{ url_for('teacher.input_grades', class_id=class_id, subject_id=subject_id) }}" class="text-decoration-none">
+                                <a href="{{ url_for('teacher.input_grades', class_id=class_id, subject_id=subject_id, majlis_subject_id=majlis_subject_id) }}" class="text-decoration-none">
                                     <div class="card border-left-primary h-100 py-2 shadow-sm hover-scale transition">
                                         <div class="card-body">
                                             <div class="row no-gutters align-items-center">
