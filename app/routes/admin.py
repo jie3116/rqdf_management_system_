@@ -13,7 +13,7 @@ from app.models import (
     # Base & Enums
     UserRole, Gender, PaymentStatus, RegistrationStatus, ProgramType, EducationLevel,
     # Users
-    User, Student, Parent, Teacher, Staff, MajlisParticipant,
+    User, UserRoleAssignment, Student, Parent, Teacher, Staff, MajlisParticipant, BoardingGuardian,
     # Academic
     AcademicYear, ClassRoom, Subject, Schedule,
     # Finance
@@ -26,8 +26,37 @@ from app.models import (
     AppConfig
 )
 from app.utils.nis import generate_nis
+from app.utils.roles import validate_role_combination, role_label, ROLE_PRIORITY
 
 admin_bp = Blueprint('admin', __name__)
+
+
+def _infer_user_display_name(user):
+    if user.teacher_profile and user.teacher_profile.full_name:
+        return user.teacher_profile.full_name
+    if user.staff_profile and user.staff_profile.full_name:
+        return user.staff_profile.full_name
+    if user.parent_profile and user.parent_profile.full_name:
+        return user.parent_profile.full_name
+    if user.student_profile and user.student_profile.full_name:
+        return user.student_profile.full_name
+    if user.majlis_profile and user.majlis_profile.full_name:
+        return user.majlis_profile.full_name
+    if user.boarding_guardian_profile and user.boarding_guardian_profile.full_name:
+        return user.boarding_guardian_profile.full_name
+    return user.username
+
+
+def _infer_user_phone(user):
+    if user.teacher_profile and user.teacher_profile.phone:
+        return user.teacher_profile.phone
+    if user.parent_profile and user.parent_profile.phone:
+        return user.parent_profile.phone
+    if user.boarding_guardian_profile and user.boarding_guardian_profile.phone:
+        return user.boarding_guardian_profile.phone
+    if user.majlis_profile and user.majlis_profile.phone:
+        return user.majlis_profile.phone
+    return None
 
 
 def _iter_upload_rows(file):
@@ -1348,17 +1377,19 @@ def accept_candidate(candidate_id):
 def reset_password(user_id):
     user = User.query.get_or_404(user_id)
 
-    if user.role == UserRole.ADMIN:
+    if user.has_role(UserRole.ADMIN):
         flash('Tidak bisa mereset akun Admin lain dari sini.', 'danger')
         return redirect(url_for('main.dashboard'))
 
     try:
         new_password = "123456"  # Default fallback
 
-        if user.role == UserRole.SISWA and user.student_profile:
+        if user.has_role(UserRole.SISWA) and user.student_profile:
             new_password = user.student_profile.nis
-        elif user.role == UserRole.WALI_MURID and user.parent_profile:
+        elif user.has_role(UserRole.WALI_MURID) and user.parent_profile:
             new_password = user.parent_profile.phone
+        elif user.has_role(UserRole.WALI_ASRAMA) and user.boarding_guardian_profile:
+            new_password = user.boarding_guardian_profile.phone or "123456"
 
         user.password_hash = generate_password_hash(new_password)
         user.must_change_password = True
@@ -1583,18 +1614,27 @@ def manage_users():
     role_filter = (request.args.get('role') or 'all').strip().lower()
 
     # Ambil semua user KECUALI Admin (untuk keamanan)
-    users_query = User.query.filter(User.role != UserRole.ADMIN)
+    users_query = User.query.filter(
+        User.role != UserRole.ADMIN,
+        ~User.role_assignments.any(role=UserRole.ADMIN)
+    )
 
     role_mapping = {
         'santri': UserRole.SISWA,
         'wali': UserRole.WALI_MURID,
+        'wali_asrama': UserRole.WALI_ASRAMA,
         'guru': UserRole.GURU,
         'peserta_majlis': UserRole.MAJLIS_PARTICIPANT,
         'staff': UserRole.TU,
     }
     selected_role = role_mapping.get(role_filter)
     if selected_role:
-        users_query = users_query.filter(User.role == selected_role)
+        users_query = users_query.filter(
+            or_(
+                User.role == selected_role,
+                User.role_assignments.any(role=selected_role)
+            )
+        )
 
     users = users_query.order_by(User.role, User.username).all()
 
@@ -1613,10 +1653,13 @@ def manage_users():
                 owner_name = u.majlis_profile.full_name or ''
             elif u.staff_profile:
                 owner_name = u.staff_profile.full_name or ''
+            elif u.boarding_guardian_profile:
+                owner_name = u.boarding_guardian_profile.full_name or ''
 
             if (
                 keyword in (u.username or '').lower() or
                 keyword in (u.role.value or '').lower() or
+                any(keyword in rv.lower() for rv in u.all_role_values()) or
                 keyword in owner_name.lower()
             ):
                 filtered_users.append(u)
@@ -1627,6 +1670,117 @@ def manage_users():
         users=users,
         query=query,
         role_filter=role_filter
+    )
+
+
+@admin_bp.route('/users/roles', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def manage_user_roles():
+    if request.method == 'POST':
+        user_id = request.form.get('user_id', type=int)
+        selected_roles_raw = request.form.getlist('roles')
+        query = (request.form.get('q') or '').strip()
+
+        user = User.query.get_or_404(user_id)
+        selected_roles = set()
+        for item in selected_roles_raw:
+            try:
+                selected_roles.add(UserRole[item])
+            except KeyError:
+                pass
+
+        is_valid, message = validate_role_combination(selected_roles)
+        if not is_valid:
+            flash(message, 'danger')
+            return redirect(url_for('admin.manage_user_roles', q=query))
+
+        # Pilih role utama berdasarkan prioritas global agar deterministik
+        new_primary = None
+        for role in ROLE_PRIORITY:
+            if role in selected_roles:
+                new_primary = role
+                break
+
+        if not new_primary:
+            flash('Role utama tidak valid.', 'danger')
+            return redirect(url_for('admin.manage_user_roles', q=query))
+
+        # Validasi role yang wajib punya profil spesifik
+        if UserRole.SISWA in selected_roles and not user.student_profile:
+            flash('Role Santri hanya bisa diberikan ke user yang sudah memiliki profil siswa.', 'danger')
+            return redirect(url_for('admin.manage_user_roles', q=query))
+
+        if UserRole.WALI_MURID in selected_roles and not user.parent_profile:
+            flash('Role Wali Murid hanya bisa diberikan ke user yang sudah memiliki profil wali murid.', 'danger')
+            return redirect(url_for('admin.manage_user_roles', q=query))
+
+        if UserRole.MAJLIS_PARTICIPANT in selected_roles and not user.majlis_profile:
+            flash("Role Peserta Majlis hanya bisa diberikan ke user yang sudah memiliki profil peserta majlis.", 'danger')
+            return redirect(url_for('admin.manage_user_roles', q=query))
+
+        # Auto-provision profil untuk role operasional agar langsung muncul di modul terkait
+        display_name = _infer_user_display_name(user)
+        phone = _infer_user_phone(user)
+        if UserRole.GURU in selected_roles and not user.teacher_profile:
+            db.session.add(Teacher(
+                user_id=user.id,
+                full_name=display_name,
+                phone=phone
+            ))
+
+        if UserRole.TU in selected_roles and not user.staff_profile:
+            db.session.add(Staff(
+                user_id=user.id,
+                full_name=display_name,
+                position='Staff'
+            ))
+
+        if UserRole.WALI_ASRAMA in selected_roles and not user.boarding_guardian_profile:
+            db.session.add(BoardingGuardian(
+                user_id=user.id,
+                full_name=display_name,
+                phone=phone
+            ))
+
+        user.role = new_primary
+
+        # Sinkronkan role assignment tambahan (di luar role utama)
+        target_extra_roles = selected_roles - {new_primary}
+        existing_assignments = {assignment.role: assignment for assignment in user.role_assignments}
+
+        for role, assignment in list(existing_assignments.items()):
+            if role not in target_extra_roles:
+                db.session.delete(assignment)
+
+        for role in target_extra_roles:
+            if role not in existing_assignments:
+                db.session.add(UserRoleAssignment(user_id=user.id, role=role))
+
+        db.session.commit()
+        flash(f'Role user {user.username} berhasil diperbarui.', 'success')
+        return redirect(url_for('admin.manage_user_roles', q=query))
+
+    query = (request.args.get('q') or '').strip()
+    users_query = User.query.filter(
+        User.role != UserRole.ADMIN,
+        ~User.role_assignments.any(role=UserRole.ADMIN)
+    )
+    if query:
+        users_query = users_query.filter(
+            or_(
+                User.username.ilike(f'%{query}%'),
+                User.email.ilike(f'%{query}%')
+            )
+        )
+
+    users = users_query.order_by(User.username.asc()).all()
+    return render_template(
+        'admin/users/roles.html',
+        users=users,
+        query=query,
+        all_roles=list(UserRole),
+        role_label=role_label
     )
 
 

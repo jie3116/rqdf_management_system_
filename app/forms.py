@@ -26,8 +26,8 @@ from app.models import Gender
 
 
 class LoginForm(FlaskForm):
-    # Ini agar bisa menerima input: "admin", "20250001", atau "08123..."
-    login_id = StringField('Email / No. HP / NIS', validators=[DataRequired()])
+    # Bisa menerima: username, email, NIS, NIP, atau No. HP profil.
+    login_id = StringField('Username / Email / NIS / NIP / No. HP', validators=[DataRequired()])
 
     password = PasswordField('Password', validators=[DataRequired()])
     remember = BooleanField('Ingat Saya')

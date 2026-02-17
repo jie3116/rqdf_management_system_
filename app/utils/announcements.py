@@ -9,9 +9,11 @@ def visible_announcements_query(user, class_ids=None, user_ids=None, program_typ
     user_ids = [uid for uid in (user_ids or []) if uid]
     program_types = [p for p in (program_types or []) if p]
 
+    role_values = list(user.all_role_values()) if hasattr(user, 'all_role_values') else [user.role.value]
+
     filters = [
         Announcement.target_scope == 'ALL',
-        and_(Announcement.target_scope == 'ROLE', Announcement.target_role == user.role.value),
+        and_(Announcement.target_scope == 'ROLE', Announcement.target_role.in_(role_values)),
     ]
 
     if class_ids:

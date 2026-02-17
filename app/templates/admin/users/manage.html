@@ -2,7 +2,10 @@
 
 {% block content %}
 <div class="container-fluid">
-    <h1 class="h3 mb-4 text-gray-800">Manajemen Pengguna & Password</h1>
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Manajemen Pengguna & Password</h1>
+        <a href="{{ url_for('admin.manage_user_roles') }}" class="btn btn-sm btn-outline-primary">Assign/Revoke Role</a>
+    </div>
 
     <div class="card shadow mb-4">
         <div class="card-header py-3 bg-primary text-white">
@@ -13,6 +16,7 @@
             <ul class="nav nav-tabs mb-3">
                 <li class="nav-item"><a class="nav-link {% if active_role == 'all' %}active{% endif %}" href="{{ url_for('admin.manage_users') }}{% if query %}?q={{ query }}{% endif %}">Semua</a></li>
                 <li class="nav-item"><a class="nav-link {% if active_role == 'wali' %}active{% endif %}" href="{{ url_for('admin.manage_users') }}?role=wali{% if query %}&q={{ query }}{% endif %}">Wali</a></li>
+                <li class="nav-item"><a class="nav-link {% if active_role == 'wali_asrama' %}active{% endif %}" href="{{ url_for('admin.manage_users') }}?role=wali_asrama{% if query %}&q={{ query }}{% endif %}">Wali Asrama</a></li>
                 <li class="nav-item"><a class="nav-link {% if active_role == 'guru' %}active{% endif %}" href="{{ url_for('admin.manage_users') }}?role=guru{% if query %}&q={{ query }}{% endif %}">Guru</a></li>
                 <li class="nav-item"><a class="nav-link {% if active_role == 'peserta_majlis' %}active{% endif %}" href="{{ url_for('admin.manage_users') }}?role=peserta_majlis{% if query %}&q={{ query }}{% endif %}">Peserta Majlis</a></li>
                 <li class="nav-item"><a class="nav-link {% if active_role == 'staff' %}active{% endif %}" href="{{ url_for('admin.manage_users') }}?role=staff{% if query %}&q={{ query }}{% endif %}">Staff</a></li>
@@ -49,14 +53,18 @@
                         {% for u in users %}
                         <tr>
                             <td>
-                                <span class="badge 
-                                    {% if u.role.value == 'student' %}bg-success
-                                    {% elif u.role.value == 'teacher' %}bg-info
-                                    {% elif u.role.value == 'tata_usaha' %}bg-warning text-dark
-                                    {% elif u.role.value == 'majlis_participant' %}bg-primary
-                                    {% else %}bg-secondary{% endif %}">
-                                    {{ u.role.value|upper }}
-                                </span>
+                                {% set roles = u.all_role_values()|list|sort %}
+                                {% for role_name in roles %}
+                                    <span class="badge 
+                                        {% if role_name == 'student' %}bg-success
+                                        {% elif role_name == 'teacher' %}bg-info
+                                        {% elif role_name == 'wali_asrama' %}bg-dark
+                                        {% elif role_name == 'tata_usaha' %}bg-warning text-dark
+                                        {% elif role_name == 'majlis_participant' %}bg-primary
+                                        {% else %}bg-secondary{% endif %}">
+                                        {{ role_name|upper }}
+                                    </span>
+                                {% endfor %}
                             </td>
                             <td class="fw-bold">{{ u.username }}</td>
                             <td>
@@ -70,6 +78,8 @@
                                     {{ u.parent_profile.full_name }}
                                 {% elif u.majlis_profile %}
                                     {{ u.majlis_profile.full_name }}
+                                {% elif u.boarding_guardian_profile %}
+                                    {{ u.boarding_guardian_profile.full_name }}
                                 {% else %}
                                     <span class="text-muted fst-italic">- Nama tidak ditemukan -</span>
                                 {% endif %}

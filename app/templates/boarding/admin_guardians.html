@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Manajemen Wali Asrama</h1>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header bg-primary text-white">
+        <strong>Tambah Akun Wali Asrama</strong>
+    </div>
+    <div class="card-body">
+        <form method="POST" class="row g-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div class="col-md-3">
+                <label class="form-label">Username Login</label>
+                <input type="text" name="username" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Password Awal</label>
+                <input type="text" name="password" class="form-control" placeholder="Default: 123456">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Nama Lengkap</label>
+                <input type="text" name="full_name" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">No. HP</label>
+                <input type="text" name="phone" class="form-control">
+            </div>
+            <div class="col-12 text-end">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Simpan</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow">
+    <div class="card-header bg-light">
+        <strong>Daftar Wali Asrama</strong>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="mb-3">
+            <div class="row g-2 justify-content-end">
+                <div class="col-md-4">
+                    <input type="text" name="q" class="form-control form-control-sm" value="{{ query or '' }}" placeholder="Cari nama/username/no hp...">
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-sm btn-outline-primary" type="submit">Cari</button>
+                </div>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Nama</th>
+                        <th>Username</th>
+                        <th>No. HP</th>
+                        <th>Asrama yang Diampu</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for guardian in guardians %}
+                    <tr>
+                        <td>{{ guardian.full_name }}</td>
+                        <td>{{ guardian.user.username }}</td>
+                        <td>{{ guardian.phone or '-' }}</td>
+                        <td>
+                            {% set dorms = guardian.user.managed_dormitories.all() %}
+                            {% if dorms %}
+                                {% for dorm in dorms %}
+                                    <span class="badge bg-info text-dark">{{ dorm.name }}</span>
+                                {% endfor %}
+                            {% else %}
+                                <span class="text-muted">Belum ditugaskan</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center text-muted">Belum ada akun wali asrama.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

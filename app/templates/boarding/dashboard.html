@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0">Dashboard Wali Asrama</h1>
+    <span class="badge bg-primary fs-6">{{ today_name }}, {{ today.strftime('%d-%m-%Y') }}</span>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-4 mb-3">
+        <div class="card border-start border-primary border-4 shadow h-100">
+            <div class="card-body">
+                <div class="small text-muted">Asrama Diampu</div>
+                <div class="h3 mb-0">{{ dormitories|length }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card border-start border-success border-4 shadow h-100">
+            <div class="card-body">
+                <div class="small text-muted">Total Siswa Boarding</div>
+                <div class="h3 mb-0">{{ total_students }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card border-start border-warning border-4 shadow h-100">
+            <div class="card-body">
+                <div class="small text-muted">Data Absensi Hari Ini</div>
+                <div class="h3 mb-0">{{ attendance_today }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header bg-light"><strong>Asrama Saya</strong></div>
+    <div class="card-body">
+        {% if dormitories %}
+            {% for dorm in dormitories %}
+            <span class="badge bg-info text-dark me-2 mb-2">{{ dorm.name }}</span>
+            {% endfor %}
+        {% else %}
+            <div class="alert alert-warning mb-0">Anda belum ditugaskan ke asrama mana pun.</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card shadow">
+    <div class="card-header bg-light"><strong>Jadwal Hari Ini</strong></div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Asrama</th>
+                        <th>Kegiatan</th>
+                        <th>Jam</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in todays_schedules %}
+                    <tr>
+                        <td>{{ item.dormitory.name }}</td>
+                        <td>{{ item.schedule.activity_name }}</td>
+                        <td>{{ item.schedule.start_time.strftime('%H:%M') }} - {{ item.schedule.end_time.strftime('%H:%M') }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3" class="text-center text-muted">Tidak ada jadwal hari ini.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="text-end">
+            <a href="{{ url_for('boarding.input_attendance') }}" class="btn btn-primary">Input Absensi Boarding</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">Assign / Revoke Role User</h1>
+    <a href="{{ url_for('admin.manage_users') }}" class="btn btn-sm btn-outline-secondary">Kembali ke Manajemen User</a>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3 bg-primary text-white">
+        <h6 class="m-0 fw-bold">Pengaturan Role Semua User (Kecuali Admin)</h6>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="mb-3">
+            <div class="row g-2 justify-content-end">
+                <div class="col-md-4">
+                    <input type="text" name="q" class="form-control form-control-sm" value="{{ query or '' }}" placeholder="Cari username/email...">
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-sm btn-primary">Cari</button>
+                </div>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Username</th>
+                        <th>Pemilik Akun</th>
+                        <th>Role Saat Ini</th>
+                        <th>Atur Role</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in users %}
+                    <tr>
+                        <td class="fw-bold">{{ u.username }}</td>
+                        <td>
+                            {% if u.student_profile %}{{ u.student_profile.full_name }}
+                            {% elif u.teacher_profile %}{{ u.teacher_profile.full_name }}
+                            {% elif u.staff_profile %}{{ u.staff_profile.full_name }}
+                            {% elif u.parent_profile %}{{ u.parent_profile.full_name }}
+                            {% elif u.majlis_profile %}{{ u.majlis_profile.full_name }}
+                            {% elif u.boarding_guardian_profile %}{{ u.boarding_guardian_profile.full_name }}
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>
+                            {% for role_name in u.all_role_values()|list|sort %}
+                            <span class="badge bg-secondary">{{ role_name|upper }}</span>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            <form method="POST" class="d-flex flex-wrap gap-2 align-items-center">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <input type="hidden" name="user_id" value="{{ u.id }}">
+                                <input type="hidden" name="q" value="{{ query or '' }}">
+
+                                {% for role in all_roles %}
+                                    {% if role.name != 'ADMIN' %}
+                                    {% set checked = role in u.all_roles() %}
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="checkbox" name="roles" value="{{ role.name }}" id="u{{ u.id }}_{{ role.name }}" {% if checked %}checked{% endif %}>
+                                        <label class="form-check-label small" for="u{{ u.id }}_{{ role.name }}">{{ role_label(role) }}</label>
+                                    </div>
+                                    {% endif %}
+                                {% endfor %}
+                                <button class="btn btn-sm btn-success" type="submit">Simpan</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center text-muted">Tidak ada user ditemukan.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="alert alert-warning mt-3 mb-0 small">
+            Aturan kombinasi dijaga sistem. Contoh: Admin tidak boleh digabung role lain; Santri boleh dirangkap Guru/Wali Asrama, tetapi tidak boleh dirangkap Staf TU atau Wali Murid. Peserta Majlis boleh dirangkap Guru.
+        </div>
+    </div>
+</div>
+{% endblock %}

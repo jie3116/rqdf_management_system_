@@ -7,7 +7,7 @@ from app.models import (
     TahfidzEvaluation, TahfidzType, RecitationSource, ParticipantType, Grade,
     EvaluationPeriod,
     GradeType, Subject, MajlisSubject, Attendance, AttendanceStatus, AcademicYear, Schedule, db, UserRole, MajlisParticipant,
-    BehaviorReport, BehaviorReportType, Announcement
+    BehaviorReport, BehaviorReportType, Announcement, BoardingAttendance
 )
 from app.decorators import role_required
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
@@ -164,6 +164,34 @@ def dashboard():
 
     recent_recitation = RecitationRecord.query.filter_by(teacher_id=teacher.id)        .order_by(RecitationRecord.date.desc()).limit(5).all()
 
+    boarding_student_ids = []
+    if class_ids:
+        boarding_student_ids = [row[0] for row in db.session.query(Student.id).filter(
+            Student.current_class_id.in_(class_ids),
+            Student.boarding_dormitory_id.isnot(None),
+            Student.is_deleted == False
+        ).all()]
+
+    boarding_attendance_stats = {'hadir': 0, 'sakit': 0, 'izin': 0, 'alpa': 0, 'belum_input': 0}
+    if boarding_student_ids:
+        records = BoardingAttendance.query.filter(
+            BoardingAttendance.date == today,
+            BoardingAttendance.student_id.in_(boarding_student_ids)
+        ).all()
+
+        seen_students = set()
+        for record in records:
+            seen_students.add(record.student_id)
+            if record.status == AttendanceStatus.HADIR:
+                boarding_attendance_stats['hadir'] += 1
+            elif record.status == AttendanceStatus.SAKIT:
+                boarding_attendance_stats['sakit'] += 1
+            elif record.status == AttendanceStatus.IZIN:
+                boarding_attendance_stats['izin'] += 1
+            elif record.status == AttendanceStatus.ALPA:
+                boarding_attendance_stats['alpa'] += 1
+        boarding_attendance_stats['belum_input'] = max(0, len(set(boarding_student_ids)) - len(seen_students))
+
     class_programs = []
     for c in my_classes:
         if c and c.program_type:
@@ -193,7 +221,8 @@ def dashboard():
                          unread_announcements_count=unread_announcements_count,
                          todays_schedules=todays_schedules,
                          homeroom_class=homeroom_class,
-                         teaching_assignments=teaching_assignments)
+                         teaching_assignments=teaching_assignments,
+                         boarding_attendance_stats=boarding_attendance_stats)
 
 
 @teacher_bp.route('/input-nilai', methods=['GET', 'POST'])

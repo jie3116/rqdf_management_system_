@@ -12,7 +12,15 @@
             <h6 class="m-0 fw-bold text-primary">Daftar Kehadiran Peserta</h6>
             
             <form method="GET" class="d-flex align-items-center">
-                <input type="hidden" name="class_id" value="{{ selected_class_id if selected_class_id else '' }}">
+                <label class="me-2 fw-bold small">Kelas:</label>
+                <select name="class_id" class="form-select form-select-sm me-2" onchange="this.form.submit()">
+                    <option value="">Pilih Kelas</option>
+                    {% for class_room in my_classes %}
+                    <option value="{{ class_room.id }}" {{ 'selected' if selected_class_id == class_room.id else '' }}>
+                        {{ class_room.name }}
+                    </option>
+                    {% endfor %}
+                </select>
                 <label class="me-2 fw-bold small">Tanggal:</label>
                 <input type="date" name="date" class="form-control form-control-sm" 
                        value="{{ selected_date }}" onchange="this.form.submit()">
@@ -75,6 +83,15 @@
                         </tbody>
                     </table>
                 </div>
+                {% if not selected_class_id %}
+                <div class="alert alert-info mt-3 mb-0">
+                    Pilih kelas terlebih dahulu untuk menampilkan daftar peserta.
+                </div>
+                {% elif not participants %}
+                <div class="alert alert-warning mt-3 mb-0">
+                    Tidak ada peserta pada kelas ini.
+                </div>
+                {% endif %}
 
                 <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
                     <a href="{{ url_for('teacher.dashboard') }}" class="btn btn-secondary me-2">Kembali</a>

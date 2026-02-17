@@ -50,6 +50,7 @@ class UserRole(enum.Enum):
     GURU = "teacher"
     SISWA = "student"
     WALI_MURID = "wali_murid"
+    WALI_ASRAMA = "wali_asrama"
     TU = "tata_usaha"
     MAJLIS_PARTICIPANT = "majlis_participant"  # BARU: Role untuk peserta majlis non-parent
 
@@ -169,6 +170,12 @@ student_extracurriculars = db.Table('student_extracurriculars',
                                               primary_key=True)
                                     )
 
+boarding_schedule_dormitories = db.Table(
+    'boarding_schedule_dormitories',
+    db.Column('schedule_id', db.Integer, db.ForeignKey('boarding_activity_schedules.id'), primary_key=True),
+    db.Column('dormitory_id', db.Integer, db.ForeignKey('boarding_dormitories.id'), primary_key=True),
+)
+
 
 # ==========================================
 # 3. SYSTEM, CONFIG & KNOWLEDGE BASE
@@ -271,12 +278,59 @@ class User(UserMixin, BaseModel):
     parent_profile = db.relationship('Parent', backref='user', uselist=False, lazy='select')
     staff_profile = db.relationship('Staff', backref='user', uselist=False, lazy='select')
     majlis_profile = db.relationship('MajlisParticipant', backref='user', uselist=False, lazy='select')
+    boarding_guardian_profile = db.relationship('BoardingGuardian', backref='user', uselist=False, lazy='select')
+    managed_dormitories = db.relationship('BoardingDormitory', backref='guardian_user', lazy='dynamic')
+    role_assignments = db.relationship(
+        'UserRoleAssignment',
+        backref='user',
+        lazy='select',
+        cascade='all, delete-orphan'
+    )
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    def all_roles(self):
+        roles = set()
+        if self.role:
+            roles.add(self.role)
+        for assignment in self.role_assignments or []:
+            if assignment.role:
+                roles.add(assignment.role)
+        return roles
+
+    def has_role(self, *roles):
+        if not roles:
+            return False
+
+        owned_roles = self.all_roles()
+        requested_roles = set()
+        for role in roles:
+            if isinstance(role, UserRole):
+                requested_roles.add(role)
+            elif isinstance(role, str):
+                try:
+                    requested_roles.add(UserRole(role))
+                except ValueError:
+                    continue
+        return bool(owned_roles.intersection(requested_roles))
+
+    def all_role_values(self):
+        return {role.value for role in self.all_roles()}
+
+
+class UserRoleAssignment(BaseModel):
+    __tablename__ = 'user_role_assignments'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    role = db.Column(db.Enum(UserRole, name='userrole'), nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'role', name='uq_user_role_assignment'),
+    )
 
 
 class Parent(BaseModel):
@@ -337,6 +391,24 @@ class Staff(BaseModel):
     position = db.Column(db.String(50))
 
 
+class BoardingGuardian(BaseModel):
+    __tablename__ = 'boarding_guardians'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
+    full_name = db.Column(db.String(100), nullable=False)
+    phone = db.Column(db.String(20), nullable=True, index=True)
+
+
+class BoardingDormitory(BaseModel):
+    __tablename__ = 'boarding_dormitories'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+    gender = db.Column(db.Enum(Gender, name='gender'), nullable=True)
+    capacity = db.Column(db.Integer, nullable=True)
+    description = db.Column(db.Text, nullable=True)
+    guardian_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+
 class Student(BaseModel):
     __tablename__ = 'students'
     id = db.Column(db.Integer, primary_key=True)
@@ -351,6 +423,7 @@ class Student(BaseModel):
     date_of_birth = db.Column(db.Date)
     address = db.Column(db.Text)
     custom_spp_fee = db.Column(db.Integer, nullable=True, default=None)
+    boarding_dormitory_id = db.Column(db.Integer, db.ForeignKey('boarding_dormitories.id'), nullable=True)
 
     # Relations
     class_history = db.relationship('StudentClassHistory', backref='student', lazy=True)
@@ -370,6 +443,7 @@ class Student(BaseModel):
                                           backref='student', lazy='dynamic')
     extracurriculars = db.relationship('Extracurricular', secondary=student_extracurriculars, back_populates='students')
     behavior_reports = db.relationship('BehaviorReport', backref='student', lazy='dynamic')
+    boarding_dormitory = db.relationship('BoardingDormitory', backref='students')
 
     __table_args__ = (
         db.Index('idx_student_class_academic', 'current_class_id', 'created_at'),
@@ -492,6 +566,57 @@ class Attendance(BaseModel):
         db.Index('idx_attendance_date_class', 'date', 'class_id'),
         db.Index('idx_attendance_participant_date', 'participant_type', 'date'),
     )
+
+
+class BoardingActivitySchedule(BaseModel):
+    __tablename__ = 'boarding_activity_schedules'
+    id = db.Column(db.Integer, primary_key=True)
+    dormitory_id = db.Column(db.Integer, db.ForeignKey('boarding_dormitories.id'), nullable=True)  # legacy support
+    activity_name = db.Column(db.String(100), nullable=False)
+    day = db.Column(db.String(10), nullable=True)  # legacy support
+    start_time = db.Column(db.Time, nullable=False)
+    end_time = db.Column(db.Time, nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    applies_all_dormitories = db.Column(db.Boolean, default=True, nullable=False)
+    applies_all_days = db.Column(db.Boolean, default=True, nullable=False)
+    selected_days = db.Column(db.String(100), nullable=True)  # CSV hari: Senin,Selasa,...
+    exclude_national_holidays = db.Column(db.Boolean, default=True, nullable=False)
+
+    dormitory = db.relationship('BoardingDormitory', backref='activity_schedules')
+    selected_dormitories = db.relationship(
+        'BoardingDormitory',
+        secondary=boarding_schedule_dormitories,
+        backref='custom_activity_schedules'
+    )
+
+
+class BoardingAttendance(BaseModel):
+    __tablename__ = 'boarding_attendances'
+    id = db.Column(db.Integer, primary_key=True)
+    dormitory_id = db.Column(db.Integer, db.ForeignKey('boarding_dormitories.id'), nullable=False)
+    schedule_id = db.Column(db.Integer, db.ForeignKey('boarding_activity_schedules.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    attendance_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    date = db.Column(db.Date, default=datetime.utcnow, nullable=False)
+    status = db.Column(db.Enum(AttendanceStatus, name='attendancestatus'), default=AttendanceStatus.HADIR, nullable=False)
+    notes = db.Column(db.String(150), nullable=True)
+
+    dormitory = db.relationship('BoardingDormitory', backref='attendance_records')
+    schedule = db.relationship('BoardingActivitySchedule', backref='attendance_records')
+    attendance_by_user = db.relationship('User', backref='boarding_attendance_inputs')
+
+    __table_args__ = (
+        db.UniqueConstraint('date', 'schedule_id', 'student_id', name='uq_boarding_attendance_student_schedule_date'),
+        db.Index('idx_boarding_attendance_dormitory_date', 'dormitory_id', 'date'),
+    )
+
+
+class BoardingHoliday(BaseModel):
+    __tablename__ = 'boarding_holidays'
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False, unique=True, index=True)
+    name = db.Column(db.String(100), nullable=False)
+    is_national = db.Column(db.Boolean, default=True, nullable=False)
 
 
 class Grade(BaseModel):

@@ -5,8 +5,9 @@ from sqlalchemy import or_
 from app.models import (
     UserRole, TahfidzRecord, TahfidzSummary, TahfidzEvaluation, ProgramType,
     RecitationRecord, Schedule, Grade, Violation, AcademicYear, Invoice, PaymentStatus,
-ParticipantType, StudentCandidate, ProgramType, EducationLevel, ScholarshipCategory, RegistrationStatus,
-MajlisParticipant, BehaviorReport
+    ParticipantType, StudentCandidate, EducationLevel, ScholarshipCategory, RegistrationStatus,
+    MajlisParticipant, BehaviorReport, Attendance, AttendanceStatus,
+    BoardingAttendance, BoardingActivitySchedule
 )
 from app.decorators import role_required
 from app.extensions import db
@@ -194,6 +195,45 @@ def dashboard():
         BehaviorReport.created_at.desc()
     ).limit(30).all()
 
+    attendances = Attendance.query.filter_by(
+        student_id=student.id,
+        participant_type=ParticipantType.STUDENT
+    ).order_by(Attendance.date.desc(), Attendance.created_at.desc()).limit(60).all()
+
+    attendance_recap = {'hadir': 0, 'sakit': 0, 'izin': 0, 'alpa': 0}
+    for att in attendances:
+        if att.status == AttendanceStatus.HADIR:
+            attendance_recap['hadir'] += 1
+        elif att.status == AttendanceStatus.SAKIT:
+            attendance_recap['sakit'] += 1
+        elif att.status == AttendanceStatus.IZIN:
+            attendance_recap['izin'] += 1
+        elif att.status == AttendanceStatus.ALPA:
+            attendance_recap['alpa'] += 1
+
+    today = datetime.now().date()
+    boarding_attendances = BoardingAttendance.query.join(
+        BoardingActivitySchedule,
+        BoardingAttendance.schedule_id == BoardingActivitySchedule.id
+    ).filter(
+        BoardingAttendance.student_id == student.id,
+        BoardingAttendance.date >= today.replace(day=1)
+    ).order_by(
+        BoardingAttendance.date.desc(),
+        BoardingActivitySchedule.start_time.asc()
+    ).limit(100).all()
+
+    boarding_recap = {'hadir': 0, 'sakit': 0, 'izin': 0, 'alpa': 0}
+    for record in boarding_attendances:
+        if record.status == AttendanceStatus.HADIR:
+            boarding_recap['hadir'] += 1
+        elif record.status == AttendanceStatus.SAKIT:
+            boarding_recap['sakit'] += 1
+        elif record.status == AttendanceStatus.IZIN:
+            boarding_recap['izin'] += 1
+        elif record.status == AttendanceStatus.ALPA:
+            boarding_recap['alpa'] += 1
+
     invoices = Invoice.query.filter_by(student_id=student.id).order_by(Invoice.created_at.desc()).all()
     total_tagihan = sum(inv.total_amount - inv.paid_amount for inv in invoices if inv.status != PaymentStatus.PAID)
 
@@ -213,6 +253,10 @@ def dashboard():
                            todays_schedules=todays_schedules,
                            weekly_schedule=weekly_schedule,
                            grades=grades,
+                           attendances=attendances,
+                           attendance_recap=attendance_recap,
+                           boarding_attendances=boarding_attendances,
+                           boarding_recap=boarding_recap,
                            violations=violations,
                            behavior_reports=behavior_reports,
                            total_points=total_points,
