@@ -870,6 +870,27 @@ def class_announcements():
     )
 
 
+@teacher_bp.route('/pengumuman-kelas/hapus/<int:announcement_id>', methods=['POST'])
+@login_required
+@role_required(UserRole.GURU)
+def delete_class_announcement(announcement_id):
+    selected_class_id = request.form.get('class_id', type=int)
+    announcement = Announcement.query.filter_by(id=announcement_id, user_id=current_user.id).first()
+    if not announcement:
+        flash("Pengumuman tidak ditemukan atau bukan milik Anda.", "danger")
+        return redirect(url_for('teacher.class_announcements', class_id=selected_class_id))
+
+    try:
+        announcement.is_deleted = True
+        db.session.commit()
+        flash("Pengumuman berhasil dihapus.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("Gagal menghapus pengumuman.", "danger")
+
+    return redirect(url_for('teacher.class_announcements', class_id=selected_class_id))
+
+
 @teacher_bp.route('/siswa-wali-kelas')
 @login_required
 @role_required(UserRole.GURU)
