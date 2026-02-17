@@ -56,6 +56,7 @@ def cashier_pay(student_id):
     student = Student.query.get_or_404(student_id)
     unpaid_invoices = Invoice.query.filter(
         Invoice.student_id == student.id,
+        Invoice.is_deleted.is_(False),
         Invoice.status != PaymentStatus.PAID
     ).all()
 
@@ -63,7 +64,7 @@ def cashier_pay(student_id):
 
     if request.method == 'POST':
         invoice_id = request.form.get('invoice_id')
-        invoice = Invoice.query.get(invoice_id)
+        invoice = Invoice.query.filter_by(id=invoice_id, is_deleted=False).first()
 
         if invoice and form.validate_on_submit():
             bayar = form.amount.data
@@ -96,19 +97,93 @@ def cashier_pay(student_id):
     return render_template('staff/cashier_payment.html', student=student, invoices=unpaid_invoices, form=form)
 
 
+def _program_labels():
+    return {
+        ProgramType.SEKOLAH_FULLDAY.name: "SBQ (Sekolah Bina Qur'an)",
+        ProgramType.RQDF_SORE.name: 'Reguler (RQDF Sore)',
+        ProgramType.TAKHOSUS_TAHFIDZ.name: 'Takhosus Tahfidz',
+        ProgramType.MAJLIS_TALIM.name: "Majlis Ta'lim",
+    }
+
+
+def _parse_invoice_target(source):
+    target_scope = (source.get('target_scope') or 'ALL').upper()
+    target_program_type = (source.get('target_program_type') or '').strip()
+    target_class_id = source.get('target_class_id', type=int)
+    target_student_id = source.get('target_student_id', type=int)
+
+    if target_scope not in {'ALL', 'PROGRAM', 'CLASS', 'STUDENT'}:
+        return None, "Target tagihan tidak valid."
+
+    if target_scope == 'PROGRAM' and target_program_type not in _program_labels().keys():
+        return None, "Pilih program tujuan terlebih dahulu."
+
+    if target_scope == 'CLASS' and not target_class_id:
+        return None, "Pilih kelas tujuan terlebih dahulu."
+
+    if target_scope == 'STUDENT' and not target_student_id:
+        return None, "Pilih siswa tujuan terlebih dahulu."
+
+    return {
+        'target_scope': target_scope,
+        'target_program_type': target_program_type,
+        'target_class_id': target_class_id,
+        'target_student_id': target_student_id,
+    }, None
+
+
+def _targeted_students(target):
+    students_query = Student.query.filter_by(is_deleted=False)
+
+    if target['target_scope'] == 'PROGRAM':
+        program_enum = ProgramType[target['target_program_type']]
+        students_query = students_query.join(
+            ClassRoom, Student.current_class_id == ClassRoom.id
+        ).filter(
+            ClassRoom.is_deleted.is_(False),
+            ClassRoom.program_type == program_enum
+        )
+    elif target['target_scope'] == 'CLASS':
+        students_query = students_query.filter(Student.current_class_id == target['target_class_id'])
+    elif target['target_scope'] == 'STUDENT':
+        students_query = students_query.filter(Student.id == target['target_student_id'])
+
+    return students_query.order_by(Student.full_name.asc()).all()
+
+
+def _invoice_number(fee_id, student_id):
+    return f"INV/{datetime.now().strftime('%Y%m%d%H%M%S%f')}/{fee_id}/{student_id}"
+
+
+def _send_invoices_redirect_params(source, target):
+    selected_fee_id = source.get('selected_fee_id', type=int) if hasattr(source, 'get') else None
+    return {
+        'selected_fee_id': selected_fee_id or '',
+        'target_scope': target['target_scope'],
+        'target_program_type': target['target_program_type'] or '',
+        'target_class_id': target['target_class_id'] or '',
+        'target_student_id': target['target_student_id'] or '',
+    }
+
+
 @staff_bp.route('/tagihan/terbitkan/<int:fee_id>', methods=['POST'])
 @login_required
 @role_required(UserRole.TU)
 def generate_invoices(fee_id):
-    """
-    TU yang berhak menekan tombol 'Terbitkan' tagihan bulanan.
-    Admin hanya membuat Master Biayanya saja.
-    """
     fee = FeeType.query.get_or_404(fee_id)
-    students = Student.query.all()
+    target, error_message = _parse_invoice_target(request.form)
+    if error_message:
+        flash(error_message, 'warning')
+        return redirect(url_for('staff.send_invoices'))
 
+    students = _targeted_students(target)
+    if not students:
+        flash('Tidak ada siswa sesuai target pengiriman tagihan.', 'warning')
+        return redirect(url_for('staff.send_invoices', **_send_invoices_redirect_params(request.form, target)))
+
+    total_target = len(students)
     count_success = 0
-    bulan_tahun = datetime.now().strftime("%Y%m")
+    skipped_duplicate = 0
     due_date_default = datetime.now() + timedelta(days=10)
     is_monthly_fee = "SPP" in fee.name.upper() or "BULAN" in fee.name.upper()
 
@@ -116,27 +191,19 @@ def generate_invoices(fee_id):
         for student in students:
             candidate = getattr(student, "student_candidate", None)
 
-            # Filter Jurusan (RQDF vs Formal)
-            if candidate:
-                if "RQDF" in fee.name.upper() and candidate.program_type.name != 'RQDF_SORE':
-                    continue
-                if "RQDF" not in fee.name.upper() and candidate.program_type.name == 'RQDF_SORE':
-                    continue
-
-            # Cek Duplikat
-            if Invoice.query.filter_by(student_id=student.id, fee_type_id=fee.id).first():
+            # Cek duplikat hanya pada invoice aktif.
+            if Invoice.query.filter_by(student_id=student.id, fee_type_id=fee.id, is_deleted=False).first():
+                skipped_duplicate += 1
                 continue
 
-            # Hitung Nominal (Smart Logic)
             nominal_final = fee.amount
             if is_monthly_fee and student.custom_spp_fee is not None:
                 nominal_final = student.custom_spp_fee
             elif candidate and candidate.scholarship_category.name != 'NON_BEASISWA':
                 nominal_final = fee.amount * 0.5
 
-            # Buat Invoice
             new_inv = Invoice(
-                invoice_number=f"INV/{bulan_tahun}/{fee.id}/{student.id}",
+                invoice_number=_invoice_number(fee.id, student.id),
                 student_id=student.id,
                 fee_type_id=fee.id,
                 total_amount=int(nominal_final),
@@ -147,24 +214,109 @@ def generate_invoices(fee_id):
             count_success += 1
 
         db.session.commit()
-        flash(f'Berhasil menerbitkan {count_success} tagihan baru.', 'success')
+        if count_success == 0 and skipped_duplicate > 0:
+            flash(
+                f'Tidak ada tagihan baru. Target {total_target} siswa, seluruhnya sudah punya tagihan aktif untuk biaya ini.',
+                'warning'
+            )
+        elif skipped_duplicate > 0:
+            flash(
+                f'Berhasil menerbitkan {count_success} tagihan baru. Dilewati karena duplikat: {skipped_duplicate}.',
+                'warning'
+            )
+        else:
+            flash(f'Berhasil menerbitkan {count_success} tagihan baru.', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Error: {str(e)}', 'danger')
 
-    return redirect(url_for('staff.send_invoices'))
+    return redirect(url_for('staff.send_invoices', **_send_invoices_redirect_params(request.form, target)))
+
+
+@staff_bp.route('/tagihan/hapus/<int:fee_id>', methods=['POST'])
+@login_required
+@role_required(UserRole.TU)
+def delete_generated_invoices(fee_id):
+    fee = FeeType.query.get_or_404(fee_id)
+    target, error_message = _parse_invoice_target(request.form)
+    if error_message:
+        flash(error_message, 'warning')
+        return redirect(url_for('staff.send_invoices'))
+
+    students = _targeted_students(target)
+    student_ids = [student.id for student in students]
+    if not student_ids:
+        flash('Tidak ada siswa sesuai target penghapusan.', 'warning')
+        return redirect(url_for('staff.send_invoices', **_send_invoices_redirect_params(request.form, target)))
+
+    invoices = Invoice.query.filter(
+        Invoice.fee_type_id == fee.id,
+        Invoice.student_id.in_(student_ids),
+        Invoice.is_deleted.is_(False)
+    ).all()
+
+    if not invoices:
+        flash('Tidak ada invoice aktif yang bisa dihapus pada target ini.', 'warning')
+        return redirect(url_for('staff.send_invoices', **_send_invoices_redirect_params(request.form, target)))
+
+    deleted_count = 0
+    skipped_count = 0
+    try:
+        for invoice in invoices:
+            if invoice.transactions or (invoice.paid_amount or 0) > 0:
+                skipped_count += 1
+                continue
+            invoice.is_deleted = True
+            deleted_count += 1
+
+        db.session.commit()
+        if skipped_count:
+            flash(
+                f'Invoice terhapus: {deleted_count}. Dilewati (sudah ada pembayaran/transaksi): {skipped_count}.',
+                'warning'
+            )
+        else:
+            flash(f'Berhasil menghapus {deleted_count} invoice pada biaya "{fee.name}".', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Gagal menghapus invoice: {str(e)}', 'danger')
+
+    return redirect(url_for('staff.send_invoices', **_send_invoices_redirect_params(request.form, target)))
 
 
 @staff_bp.route('/tagihan/kirim', methods=['GET'])
 @login_required
 @role_required(UserRole.TU)
 def send_invoices():
-    query = (request.args.get('q') or '').strip()
+    selected_fee_id = request.args.get('selected_fee_id', type=int)
+    target, _ = _parse_invoice_target(request.args)
+    if not target:
+        target = {
+            'target_scope': 'ALL',
+            'target_program_type': '',
+            'target_class_id': None,
+            'target_student_id': None,
+        }
     fees_query = FeeType.query
-    if query:
-        fees_query = fees_query.filter(FeeType.name.ilike(f'%{query}%'))
+    if selected_fee_id:
+        fees_query = fees_query.filter(FeeType.id == selected_fee_id)
     fees = fees_query.order_by(FeeType.id.desc()).all()
-    return render_template('staff/send_invoices.html', fees=fees, query=query)
+    fee_options = FeeType.query.order_by(FeeType.name.asc()).all()
+    classes = ClassRoom.query.filter_by(is_deleted=False).order_by(ClassRoom.name.asc()).all()
+    students = Student.query.filter_by(is_deleted=False).order_by(Student.full_name.asc()).all()
+    return render_template(
+        'staff/send_invoices.html',
+        fees=fees,
+        fee_options=fee_options,
+        selected_fee_id=selected_fee_id,
+        classes=classes,
+        students=students,
+        program_labels=_program_labels(),
+        target_scope=target['target_scope'],
+        target_program_type=target['target_program_type'],
+        target_class_id=target['target_class_id'],
+        target_student_id=target['target_student_id']
+    )
 
 
 @staff_bp.route('/pengumuman', methods=['GET', 'POST'])

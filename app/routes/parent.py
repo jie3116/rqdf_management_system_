@@ -237,7 +237,7 @@ def dashboard():
             elif record.status == AttendanceStatus.ALPA:
                 boarding_recap['alpa'] += 1
 
-    invoices = Invoice.query.filter_by(student_id=student.id).order_by(Invoice.created_at.desc()).all()
+    invoices = Invoice.query.filter_by(student_id=student.id, is_deleted=False).order_by(Invoice.created_at.desc()).all()
     total_tagihan = sum(inv.total_amount - inv.paid_amount for inv in invoices if inv.status != PaymentStatus.PAID)
 
     return render_template('parent/dashboard.html',
