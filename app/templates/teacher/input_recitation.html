@@ -237,17 +237,21 @@
         $(selectStart).select2({ theme: 'bootstrap-5' });
         $(selectEnd).select2({ theme: 'bootstrap-5' });
 
-        $(selectStart).on('change', function() {
-            let selectedOption = this.options[this.selectedIndex];
-            let maxAyat = selectedOption.getAttribute("data-ayat");
+        function updateMaxAyat() {
+            const effectiveSelect = selectEnd.value ? selectEnd : selectStart;
+            const selectedOption = effectiveSelect.options[effectiveSelect.selectedIndex];
+            const maxAyat = selectedOption ? selectedOption.getAttribute("data-ayat") : null;
 
-            if(maxAyat) {
+            if (maxAyat) {
                 ayatEndInput.setAttribute("max", maxAyat);
                 maxAyatInfo.innerText = `Max: ${maxAyat} ayat`;
             } else {
+                ayatEndInput.removeAttribute("max");
                 maxAyatInfo.innerText = "";
             }
-        });
+        }
+        $(selectStart).on('change', updateMaxAyat);
+        $(selectEnd).on('change', updateMaxAyat);
 
         function toggleSource() {
             if (sourceBook.checked) {
@@ -291,6 +295,7 @@
             input.addEventListener("change", toggleSource);
         });
 
+        updateMaxAyat();
         toggleSource();
         updateScore();
     });

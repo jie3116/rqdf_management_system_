@@ -34,6 +34,7 @@
                             <th>Nama Peserta</th>
                             <th>No. WhatsApp</th>
                             <th style="width: 35%">Kelas Majlis</th>
+                            <th style="width: 10%">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -49,10 +50,15 @@
                                     {% endfor %}
                                 </select>
                             </td>
+                            <td>
+                                <a href="{{ url_for('staff.edit_majlis_participant', participant_id=p.id) }}" class="btn btn-warning btn-sm">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                            </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="3" class="text-center text-muted">Belum ada peserta Majlis Ta'lim.</td>
+                            <td colspan="4" class="text-center text-muted">Belum ada peserta Majlis Ta'lim.</td>
                         </tr>
                         {% endfor %}
                     </tbody>

@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <div>
+            <h1 class="h3 mb-0 text-gray-800">Riwayat Nilai Peserta</h1>
+            <p class="mb-0 text-muted">Riwayat akademik, setoran hafalan, bacaan, dan evaluasi tahfidz.</p>
+        </div>
+        <a href="{{ url_for('teacher.dashboard') }}" class="btn btn-sm btn-secondary shadow-sm">
+            <i class="fas fa-arrow-left me-1"></i> Kembali ke Dashboard
+        </a>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-white">
+            <h6 class="m-0 fw-bold text-primary"><i class="fas fa-filter me-2"></i>Filter Peserta</h6>
+        </div>
+        <div class="card-body">
+            <form method="GET" class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label">Kelas</label>
+                    <select name="class_id" class="form-select" onchange="this.form.submit()">
+                        <option value="">-- Pilih Kelas --</option>
+                        {% for cls in my_classes %}
+                        <option value="{{ cls.id }}" {% if selected_class and selected_class.id == cls.id %}selected{% endif %}>{{ cls.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">Peserta</label>
+                    <select name="participant" class="form-select" {% if not selected_class %}disabled{% endif %}>
+                        <option value="">-- Pilih Peserta --</option>
+                        {% for p in participants %}
+                        <option value="{{ p.key }}" {% if selected_participant_key == p.key %}selected{% endif %}>
+                            {{ p.display_name }} ({{ p.identifier_label }}: {{ p.identifier }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button class="btn btn-primary" type="submit">
+                        <i class="fas fa-search me-1"></i> Tampilkan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if selected_participant %}
+    <div class="alert alert-info">
+        Menampilkan riwayat untuk <strong>{{ selected_participant.display_name }}</strong>
+        di kelas <strong>{{ selected_class.name if selected_class else '-' }}</strong>.
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-white">
+            <h6 class="m-0 fw-bold text-primary"><i class="fas fa-chart-line me-2"></i>Ringkasan Akademik Otomatis</h6>
+        </div>
+        <div class="card-body">
+            {% if academic_summary_rows %}
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Mapel</th>
+                            <th>TUGAS</th>
+                            <th>UH</th>
+                            <th>UTS</th>
+                            <th>UAS</th>
+                            <th>Nilai Akhir</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in academic_summary_rows %}
+                        <tr>
+                            <td class="fw-bold">{{ row.subject_name }}</td>
+                            <td>{{ row.type_averages.get('TUGAS', '-') }} {% if row.type_counts.get('TUGAS') %}<small class="text-muted">({{ row.type_counts.get('TUGAS') }}x)</small>{% endif %}</td>
+                            <td>{{ row.type_averages.get('UH', '-') }} {% if row.type_counts.get('UH') %}<small class="text-muted">({{ row.type_counts.get('UH') }}x)</small>{% endif %}</td>
+                            <td>{{ row.type_averages.get('UTS', '-') }} {% if row.type_counts.get('UTS') %}<small class="text-muted">({{ row.type_counts.get('UTS') }}x)</small>{% endif %}</td>
+                            <td>{{ row.type_averages.get('UAS', '-') }} {% if row.type_counts.get('UAS') %}<small class="text-muted">({{ row.type_counts.get('UAS') }}x)</small>{% endif %}</td>
+                            <td class="fw-bold text-primary">{{ row.final_score }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">Belum ada data nilai akademik.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-white">
+            <h6 class="m-0 fw-bold text-primary"><i class="fas fa-list me-2"></i>Riwayat Detail Nilai Akademik</h6>
+        </div>
+        <div class="card-body">
+            {% if academic_grade_rows %}
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Waktu Input</th>
+                            <th>Mapel</th>
+                            <th>Tipe</th>
+                            <th>Nilai</th>
+                            <th>Catatan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in academic_grade_rows %}
+                        <tr>
+                            <td>{{ row.created_at.strftime('%d/%m/%Y %H:%M') if row.created_at else '-' }}</td>
+                            <td>{{ row.subject.name if row.subject else (row.majlis_subject.name if row.majlis_subject else '-') }}</td>
+                            <td><span class="badge bg-primary">{{ row.type.name if row.type else '-' }}</span></td>
+                            <td class="fw-bold">{{ row.score }}</td>
+                            <td>{{ row.notes or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">Belum ada riwayat nilai akademik.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-white">
+                    <h6 class="m-0 fw-bold text-success"><i class="fas fa-quran me-2"></i>Riwayat Setoran Tahfidz</h6>
+                </div>
+                <div class="card-body">
+                    {% if tahfidz_records %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Tanggal</th>
+                                    <th>Jenis</th>
+                                    <th>Materi</th>
+                                    <th>Nilai</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in tahfidz_records %}
+                                <tr>
+                                    <td>{{ row.date.strftime('%d/%m/%Y %H:%M') if row.date else '-' }}</td>
+                                    <td>{{ row.type.name if row.type else '-' }}</td>
+                                    <td>{{ row.surah or '-' }} ({{ row.ayat_start or '-' }}-{{ row.ayat_end or '-' }})</td>
+                                    <td>{{ row.score or '-' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">Belum ada riwayat setoran tahfidz.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-white">
+                    <h6 class="m-0 fw-bold text-info"><i class="fas fa-book-reader me-2"></i>Riwayat Setoran Bacaan</h6>
+                </div>
+                <div class="card-body">
+                    {% if recitation_records %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Tanggal</th>
+                                    <th>Sumber</th>
+                                    <th>Materi</th>
+                                    <th>Nilai</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in recitation_records %}
+                                <tr>
+                                    <td>{{ row.date.strftime('%d/%m/%Y %H:%M') if row.date else '-' }}</td>
+                                    <td>{{ row.recitation_source.value if row.recitation_source else '-' }}</td>
+                                    <td>
+                                        {% if row.recitation_source and row.recitation_source.name == 'BOOK' %}
+                                            {{ row.book_name or '-' }} ({{ row.page_start or '-' }}-{{ row.page_end or '-' }})
+                                        {% else %}
+                                            {{ row.surah or '-' }} ({{ row.ayat_start or '-' }}-{{ row.ayat_end or '-' }})
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ row.score or '-' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">Belum ada riwayat setoran bacaan.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-white">
+            <h6 class="m-0 fw-bold text-warning"><i class="fas fa-clipboard-check me-2"></i>Riwayat Evaluasi Tahfidz</h6>
+        </div>
+        <div class="card-body">
+            {% if tahfidz_evaluations %}
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Tanggal</th>
+                            <th>Periode</th>
+                            <th>Label</th>
+                            <th>Nilai</th>
+                            <th>Catatan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in tahfidz_evaluations %}
+                        <tr>
+                            <td>{{ row.date.strftime('%d/%m/%Y %H:%M') if row.date else '-' }}</td>
+                            <td>{{ row.period_type.value if row.period_type else '-' }}</td>
+                            <td>{{ row.period_label or '-' }}</td>
+                            <td class="fw-bold">{{ row.score or '-' }}</td>
+                            <td>{{ row.notes or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">Belum ada riwayat evaluasi tahfidz.</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

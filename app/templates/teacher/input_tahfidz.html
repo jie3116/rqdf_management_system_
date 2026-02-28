@@ -284,18 +284,22 @@ textarea[name="notes"]::placeholder {
         $(selectStart).select2({ theme: 'bootstrap-5' });
         $(selectEnd).select2({ theme: 'bootstrap-5' });
 
-        // Logic Max Ayat
-        $(selectStart).on('change', function() {
-            let selectedOption = this.options[this.selectedIndex];
-            let maxAyat = selectedOption.getAttribute("data-ayat");
+        // Max ayat mengikuti surat akhir (jika dipilih), fallback ke surat awal.
+        function updateMaxAyat() {
+            const effectiveSelect = selectEnd.value ? selectEnd : selectStart;
+            const selectedOption = effectiveSelect.options[effectiveSelect.selectedIndex];
+            const maxAyat = selectedOption ? selectedOption.getAttribute("data-ayat") : null;
 
-            if(maxAyat) {
+            if (maxAyat) {
                 ayatEndInput.setAttribute("max", maxAyat);
                 maxAyatInfo.innerText = `Max: ${maxAyat} ayat`;
             } else {
+                ayatEndInput.removeAttribute("max");
                 maxAyatInfo.innerText = "";
             }
-        });
+        }
+        $(selectStart).on('change', updateMaxAyat);
+        $(selectEnd).on('change', updateMaxAyat);
 
         function updateScore() {
             const tajwid = parseInt(tajwidInput.value || "0", 10);
@@ -349,6 +353,7 @@ textarea[name="notes"]::placeholder {
             input.addEventListener("change", toggleTahfidzErrors);
         });
 
+        updateMaxAyat();
         toggleTahfidzErrors();
         updateScore();
     });

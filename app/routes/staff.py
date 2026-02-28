@@ -598,6 +598,63 @@ def assign_majlis_classes():
     )
 
 
+@staff_bp.route('/majlis/peserta/edit/<int:participant_id>', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.TU)
+def edit_majlis_participant(participant_id):
+    participant = MajlisParticipant.query.filter_by(id=participant_id, is_deleted=False).first_or_404()
+
+    majlis_classes = ClassRoom.query.filter_by(
+        is_deleted=False,
+        class_type=ClassType.MAJLIS_TALIM
+    ).order_by(ClassRoom.name).all()
+    if not majlis_classes:
+        majlis_classes = ClassRoom.query.filter_by(is_deleted=False).order_by(ClassRoom.name).all()
+    allowed_class_ids = {cls.id for cls in majlis_classes}
+
+    if request.method == 'POST':
+        full_name = (request.form.get('full_name') or '').strip()
+        phone = (request.form.get('phone') or '').strip()
+        address = (request.form.get('address') or '').strip()
+        job = (request.form.get('job') or '').strip()
+        class_id_raw = (request.form.get('majlis_class_id') or '').strip()
+        new_class_id = int(class_id_raw) if class_id_raw else None
+
+        if not full_name or not phone:
+            flash('Nama peserta dan nomor WhatsApp wajib diisi.', 'warning')
+            return redirect(url_for('staff.edit_majlis_participant', participant_id=participant.id))
+
+        if new_class_id and new_class_id not in allowed_class_ids:
+            flash('Kelas Majlis yang dipilih tidak valid.', 'warning')
+            return redirect(url_for('staff.edit_majlis_participant', participant_id=participant.id))
+
+        if participant.user and phone != participant.phone and phone != participant.user.username:
+            duplicate_user = User.query.filter(
+                User.username == phone,
+                User.id != participant.user_id
+            ).first()
+            if duplicate_user:
+                flash('Nomor WhatsApp tersebut sudah digunakan akun lain.', 'danger')
+                return redirect(url_for('staff.edit_majlis_participant', participant_id=participant.id))
+            participant.user.username = phone
+
+        participant.full_name = full_name
+        participant.phone = phone
+        participant.address = address or None
+        participant.job = job or None
+        participant.majlis_class_id = new_class_id
+
+        db.session.commit()
+        flash('Data peserta Majlis berhasil diperbarui.', 'success')
+        return redirect(url_for('staff.list_students'))
+
+    return render_template(
+        'staff/edit_majlis_participant.html',
+        participant=participant,
+        majlis_classes=majlis_classes
+    )
+
+
 @staff_bp.route('/siswa/edit/<int:student_id>', methods=['GET', 'POST'])
 @login_required
 @role_required(UserRole.TU)
@@ -608,7 +665,7 @@ def edit_student(student_id):
 
     if request.method == 'POST':
         student.full_name = request.form.get('full_name')
-        student.nisn = request.form.get('nisn')
+        student.nisn = (request.form.get('nisn') or '').strip() or None
 
         class_id = request.form.get('class_id')
         student.current_class_id = int(class_id) if class_id else None
@@ -620,9 +677,13 @@ def edit_student(student_id):
         else:
             student.custom_spp_fee = None
 
-        db.session.commit()
-        flash('Data siswa berhasil diupdate.', 'success')
-        return redirect(url_for('staff.list_students'))
+        try:
+            db.session.commit()
+            flash('Data siswa berhasil diupdate.', 'success')
+            return redirect(url_for('staff.list_students'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Gagal update data siswa: {e}', 'danger')
 
     return render_template('staff/edit_student.html',
                            student=student,
