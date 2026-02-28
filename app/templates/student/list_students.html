@@ -197,7 +197,7 @@
                         <td class="fw-bold">{{ m.full_name }}</td><td>{{ m.phone }}</td>
                         <td>{{ m.majlis_class.name if m.majlis_class else '-' }}</td><td>{{ m.address or '-' }}</td>
                         <td>
-                            {% if current_user.has_role('tata_usaha') %}
+                            {% if current_user.has_role('tata_usaha') or current_user.has_role('admin') %}
                             <a href="{{ url_for('staff.edit_majlis_participant', participant_id=m.id) }}" class="btn btn-warning btn-sm">
                                 <i class="fas fa-edit"></i>
                             </a>

@@ -2,7 +2,7 @@
 {% block content %}
 <div class="container-fluid">
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
-        <h1 class="h3 mb-0 text-gray-800">Data Siswa Perwalian</h1>
+        <h1 class="h3 mb-0 text-gray-800">Data Perwalian</h1>
         <span class="badge bg-warning text-dark px-3 py-2 fs-6"><i class="fas fa-chalkboard-teacher me-2"></i>Kelas: {{ homeroom_class.name }}</span>
     </div>
 
@@ -34,6 +34,29 @@
                         </tr>
                         {% else %}
                         <tr><td colspan="5" class="text-center text-muted">Belum ada siswa di kelas ini.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3"><h6 class="m-0 fw-bold text-success">Daftar Peserta Majlis Ta'lim</h6></div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-hover" width="100%">
+                    <thead class="bg-dark text-white text-center"><tr><th>Nama Peserta</th><th>No. WhatsApp</th><th>Pekerjaan</th><th>Alamat</th></tr></thead>
+                    <tbody>
+                        {% for participant in majlis_participants %}
+                        <tr>
+                            <td class="fw-bold">{{ participant.full_name }}</td>
+                            <td class="text-center">{{ participant.phone or '-' }}</td>
+                            <td>{{ participant.job or '-' }}</td>
+                            <td>{{ participant.address or '-' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted">Belum ada peserta majlis di kelas ini.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

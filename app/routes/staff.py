@@ -13,6 +13,7 @@ from app.models import (
     MajlisParticipant, ClassType, Announcement
 )
 from app.utils.nis import generate_nis
+from app.utils.roles import get_active_role
 
 staff_bp = Blueprint('staff', __name__)
 
@@ -600,9 +601,11 @@ def assign_majlis_classes():
 
 @staff_bp.route('/majlis/peserta/edit/<int:participant_id>', methods=['GET', 'POST'])
 @login_required
-@role_required(UserRole.TU)
+@role_required(UserRole.TU, UserRole.ADMIN)
 def edit_majlis_participant(participant_id):
     participant = MajlisParticipant.query.filter_by(id=participant_id, is_deleted=False).first_or_404()
+    active_role = get_active_role(current_user)
+    list_endpoint = 'admin.list_students' if active_role == UserRole.ADMIN else 'staff.list_students'
 
     majlis_classes = ClassRoom.query.filter_by(
         is_deleted=False,
@@ -646,12 +649,13 @@ def edit_majlis_participant(participant_id):
 
         db.session.commit()
         flash('Data peserta Majlis berhasil diperbarui.', 'success')
-        return redirect(url_for('staff.list_students'))
+        return redirect(url_for(list_endpoint))
 
     return render_template(
         'staff/edit_majlis_participant.html',
         participant=participant,
-        majlis_classes=majlis_classes
+        majlis_classes=majlis_classes,
+        list_endpoint=list_endpoint
     )
 
 
