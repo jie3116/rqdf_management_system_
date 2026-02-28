@@ -54,7 +54,7 @@
 
                 <div class="alert alert-info border-left-info py-2 small">
                     <i class="fas fa-info-circle me-1"></i> 
-                    Anda sedang menginput nilai <strong>{{ type_name }}</strong>. Isi angka (0-100). Kosongkan jika siswa belum dinilai.
+                    Anda sedang menginput nilai <strong>{{ type_name }}</strong>. Setiap penyimpanan akan menjadi attempt baru (tidak menimpa nilai lama).
                 </div>
 
                 <div class="table-responsive">
@@ -64,13 +64,14 @@
                                 <th style="width: 5%">No</th>
                                 <th style="width: 15%">Identitas</th>
                                 <th style="width: 35%" class="text-start">Nama Peserta</th>
-                                <th style="width: 25%">Nilai (Angka)</th>
-                                <th style="width: 20%">Status</th>
+                                <th style="width: 20%">Nilai Baru (Angka)</th>
+                                <th style="width: 20%">Statistik {{ type_name }}</th>
+                                <th style="width: 10%">Riwayat</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for participant in participants %}
-                                {% set current_val = existing_grades.get(participant.key, {}).get(type_name, '') %}
+                                {% set current_stat = existing_grades.get(participant.key, {}).get(type_name) %}
                             <tr>
                                 <td class="text-center">{{ loop.index }}</td>
                                 <td class="text-center">{{ participant.identifier_label }}: {{ participant.identifier }}</td>
@@ -79,15 +80,23 @@
                                     <input type="number" step="0.01" min="0" max="100" 
                                            name="score_{{ participant.key }}" 
                                            class="form-control text-center fw-bold text-primary"
-                                           value="{{ current_val }}"
+                                           value=""
                                            placeholder="-">
                                 </td>
                                 <td class="text-center">
-                                    {% if current_val != '' %}
-                                        <span class="badge bg-success"><i class="fas fa-check me-1"></i> Tersimpan</span>
+                                    {% if current_stat %}
+                                        <div><span class="badge bg-success">{{ current_stat.count }}x input</span></div>
+                                        <small class="text-muted d-block mt-1">Rata-rata: <strong>{{ current_stat.avg }}</strong></small>
+                                        <small class="text-muted d-block">Terakhir: <strong>{{ current_stat.latest }}</strong></small>
                                     {% else %}
-                                        <span class="badge bg-light text-secondary border">Kosong</span>
+                                        <span class="badge bg-light text-secondary border">Belum ada</span>
                                     {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <a href="{{ url_for('teacher.grade_history', class_id=target_class.id if target_class else None, participant=participant.key) }}"
+                                       class="btn btn-sm btn-outline-secondary">
+                                        <i class="fas fa-history"></i>
+                                    </a>
                                 </td>
                             </tr>
                             {% endfor %}

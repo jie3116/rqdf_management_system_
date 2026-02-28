@@ -190,15 +190,24 @@
         </form>
         <div class="table-responsive">
             <table class="table table-bordered table-hover">
-                <thead class="table-light"><tr><th>Nama</th><th>No WA</th><th>Kelas Majlis</th><th>Alamat</th></tr></thead>
+                <thead class="table-light"><tr><th>Nama</th><th>No WA</th><th>Kelas Majlis</th><th>Alamat</th><th>Aksi</th></tr></thead>
                 <tbody>
                     {% for m in majlis_participants %}
                     <tr>
                         <td class="fw-bold">{{ m.full_name }}</td><td>{{ m.phone }}</td>
                         <td>{{ m.majlis_class.name if m.majlis_class else '-' }}</td><td>{{ m.address or '-' }}</td>
+                        <td>
+                            {% if current_user.has_role('tata_usaha') %}
+                            <a href="{{ url_for('staff.edit_majlis_participant', participant_id=m.id) }}" class="btn btn-warning btn-sm">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="4" class="text-center text-muted">Belum ada peserta majlis ta'lim.</td></tr>
+                    <tr><td colspan="5" class="text-center text-muted">Belum ada peserta majlis ta'lim.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

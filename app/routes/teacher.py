@@ -98,6 +98,24 @@ def _build_participant_rows(students, majlis_participants):
         })
     return rows
 
+
+def _calculate_weighted_final(type_averages):
+    """Hitung nilai akhir berbobot dari rata-rata per tipe nilai."""
+    weights = {'TUGAS': 0.3, 'UH': 0.2, 'UTS': 0.25, 'UAS': 0.25}
+    total_weighted = 0
+    total_weight = 0
+    for type_name, avg_score in type_averages.items():
+        weight = weights.get(type_name, 0)
+        total_weighted += avg_score * weight
+        total_weight += weight
+    return round(total_weighted / total_weight, 2) if total_weight > 0 else 0
+
+
+def _resolve_selected_participant(participants, participant_key):
+    if not participant_key:
+        return None
+    return next((p for p in participants if p['key'] == participant_key), None)
+
 @teacher_bp.route('/dashboard')
 @login_required
 @role_required(UserRole.GURU)
@@ -276,14 +294,26 @@ def input_grades():
         else:
             grade_query = grade_query.filter(False)
 
-        for g in grade_query.all():
+        grouped_scores = {}
+        latest_scores = {}
+        grade_rows = grade_query.order_by(Grade.created_at.asc(), Grade.id.asc()).all()
+        for g in grade_rows:
             if g.participant_type == ParticipantType.EXTERNAL_MAJLIS and g.majlis_participant_id:
                 key = f'M-{g.majlis_participant_id}'
             elif g.student_id:
                 key = f'S-{g.student_id}'
             else:
                 continue
-            existing_grades.setdefault(key, {})[g.type.name] = g.score
+            grouped_scores.setdefault(key, {}).setdefault(g.type.name, []).append(g.score)
+            latest_scores.setdefault(key, {})[g.type.name] = g.score
+
+        for participant_key, type_map in grouped_scores.items():
+            for type_name, scores in type_map.items():
+                existing_grades.setdefault(participant_key, {})[type_name] = {
+                    'latest': latest_scores[participant_key][type_name],
+                    'avg': round(sum(scores) / len(scores), 2),
+                    'count': len(scores)
+                }
     
     if request.method == 'POST':
         if not active_year:
@@ -334,32 +364,18 @@ def input_grades():
             except ValueError:
                 continue
 
-            existing = Grade.query.filter_by(
+            db.session.add(Grade(
                 student_id=participant['student_id'],
                 majlis_participant_id=participant['majlis_participant_id'],
                 participant_type=participant['participant_type'],
                 subject_id=subject_id,
                 majlis_subject_id=majlis_subject_id,
                 academic_year_id=active_year.id,
+                teacher_id=teacher.id,
                 type=GradeType[grade_type],
-                teacher_id=teacher.id
-            ).first()
-            if existing:
-                existing.score = score_float
-                existing.notes = notes
-            else:
-                db.session.add(Grade(
-                    student_id=participant['student_id'],
-                    majlis_participant_id=participant['majlis_participant_id'],
-                    participant_type=participant['participant_type'],
-                    subject_id=subject_id,
-                    majlis_subject_id=majlis_subject_id,
-                    academic_year_id=active_year.id,
-                    teacher_id=teacher.id,
-                    type=GradeType[grade_type],
-                    score=score_float,
-                    notes=notes
-                ))
+                score=score_float,
+                notes=notes
+            ))
             success_count += 1
 
         if success_count:
@@ -382,6 +398,128 @@ def input_grades():
                            subject=subject,
                            majlis_subject=majlis_subject,
                            existing_grades=existing_grades)
+
+
+@teacher_bp.route('/riwayat-nilai')
+@login_required
+@role_required(UserRole.GURU)
+def grade_history():
+    teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
+    my_classes = _get_teacher_classes(teacher)
+
+    selected_class_id = request.args.get('class_id', type=int)
+    selected_participant_key = (request.args.get('participant') or '').strip()
+
+    selected_class = None
+    participants = []
+    selected_participant = None
+    academic_grade_rows = []
+    tahfidz_records = []
+    recitation_records = []
+    tahfidz_evaluations = []
+    academic_summary_rows = []
+
+    if selected_class_id:
+        selected_class = ClassRoom.query.get(selected_class_id)
+        if selected_class not in my_classes:
+            flash('Anda tidak memiliki akses ke kelas tersebut.', 'danger')
+            return redirect(url_for('teacher.grade_history'))
+
+        students, majlis_participants = _get_class_participants(selected_class_id)
+        participants = _build_participant_rows(students, majlis_participants)
+        selected_participant = _resolve_selected_participant(participants, selected_participant_key)
+
+        if selected_participant:
+            base_grade_query = Grade.query.filter(
+                Grade.teacher_id == teacher.id
+            )
+            base_tahfidz_query = TahfidzRecord.query.filter(
+                TahfidzRecord.teacher_id == teacher.id
+            )
+            base_recitation_query = RecitationRecord.query.filter(
+                RecitationRecord.teacher_id == teacher.id
+            )
+            base_evaluation_query = TahfidzEvaluation.query.filter(
+                TahfidzEvaluation.teacher_id == teacher.id
+            )
+
+            if selected_participant['participant_type'] == ParticipantType.STUDENT:
+                participant_id = selected_participant['student_id']
+                base_grade_query = base_grade_query.filter(
+                    Grade.participant_type == ParticipantType.STUDENT,
+                    Grade.student_id == participant_id
+                )
+                base_tahfidz_query = base_tahfidz_query.filter(
+                    TahfidzRecord.participant_type == ParticipantType.STUDENT,
+                    TahfidzRecord.student_id == participant_id
+                )
+                base_recitation_query = base_recitation_query.filter(
+                    RecitationRecord.participant_type == ParticipantType.STUDENT,
+                    RecitationRecord.student_id == participant_id
+                )
+                base_evaluation_query = base_evaluation_query.filter(
+                    TahfidzEvaluation.participant_type == ParticipantType.STUDENT,
+                    TahfidzEvaluation.student_id == participant_id
+                )
+            else:
+                participant_id = selected_participant['majlis_participant_id']
+                base_grade_query = base_grade_query.filter(
+                    Grade.participant_type == ParticipantType.EXTERNAL_MAJLIS,
+                    Grade.majlis_participant_id == participant_id
+                )
+                base_tahfidz_query = base_tahfidz_query.filter(
+                    TahfidzRecord.participant_type == ParticipantType.EXTERNAL_MAJLIS,
+                    TahfidzRecord.majlis_participant_id == participant_id
+                )
+                base_recitation_query = base_recitation_query.filter(
+                    RecitationRecord.participant_type == ParticipantType.EXTERNAL_MAJLIS,
+                    RecitationRecord.majlis_participant_id == participant_id
+                )
+                base_evaluation_query = base_evaluation_query.filter(
+                    TahfidzEvaluation.participant_type == ParticipantType.EXTERNAL_MAJLIS,
+                    TahfidzEvaluation.majlis_participant_id == participant_id
+                )
+
+            academic_grade_rows = base_grade_query.order_by(Grade.created_at.desc(), Grade.id.desc()).all()
+            tahfidz_records = base_tahfidz_query.order_by(TahfidzRecord.date.desc(), TahfidzRecord.id.desc()).all()
+            recitation_records = base_recitation_query.order_by(RecitationRecord.date.desc(), RecitationRecord.id.desc()).all()
+            tahfidz_evaluations = base_evaluation_query.order_by(TahfidzEvaluation.date.desc(), TahfidzEvaluation.id.desc()).all()
+
+            grouped = defaultdict(lambda: defaultdict(list))
+            for row in academic_grade_rows:
+                subject_name = row.subject.name if row.subject else (row.majlis_subject.name if row.majlis_subject else '-')
+                grouped[subject_name][row.type.name].append(row.score)
+
+            for subject_name, subject_data in grouped.items():
+                type_averages = {}
+                type_counts = {}
+                for grade_type in ['TUGAS', 'UH', 'UTS', 'UAS']:
+                    scores = subject_data.get(grade_type, [])
+                    if scores:
+                        type_averages[grade_type] = round(sum(scores) / len(scores), 2)
+                        type_counts[grade_type] = len(scores)
+                academic_summary_rows.append({
+                    'subject_name': subject_name,
+                    'type_averages': type_averages,
+                    'type_counts': type_counts,
+                    'final_score': _calculate_weighted_final(type_averages)
+                })
+
+            academic_summary_rows.sort(key=lambda row: row['subject_name'])
+
+    return render_template(
+        'teacher/grade_history.html',
+        my_classes=my_classes,
+        selected_class=selected_class,
+        selected_participant_key=selected_participant_key,
+        selected_participant=selected_participant,
+        participants=participants,
+        academic_grade_rows=academic_grade_rows,
+        academic_summary_rows=academic_summary_rows,
+        tahfidz_records=tahfidz_records,
+        recitation_records=recitation_records,
+        tahfidz_evaluations=tahfidz_evaluations
+    )
 
 
 @teacher_bp.route('/input-tahfidz', methods=['GET', 'POST'])
@@ -413,9 +551,29 @@ def input_tahfidz():
         ayat_end = request.form.get('ayat_end')
         notes = request.form.get('notes')
 
-        tajwid_errors = int(request.form.get('tajwid_errors') or 0)
-        makhraj_errors = int(request.form.get('makhraj_errors') or 0)
-        tahfidz_errors = int(request.form.get('tahfidz_errors') or 0)
+        if not start_surah or not ayat_start or not ayat_end:
+            flash("Surat dan ayat wajib diisi.", "warning")
+            return redirect(url_for('teacher.input_tahfidz', class_id=selected_class_id))
+
+        try:
+            final_ayat_start = int(ayat_start)
+            final_ayat_end = int(ayat_end)
+            tajwid_errors = int(request.form.get('tajwid_errors') or 0)
+            makhraj_errors = int(request.form.get('makhraj_errors') or 0)
+            tahfidz_errors = int(request.form.get('tahfidz_errors') or 0)
+        except ValueError:
+            flash("Ayat dan jumlah kesalahan harus berupa angka.", "warning")
+            return redirect(url_for('teacher.input_tahfidz', class_id=selected_class_id))
+
+        if final_ayat_start < 1 or final_ayat_end < 1:
+            flash("Ayat awal/akhir minimal bernilai 1.", "warning")
+            return redirect(url_for('teacher.input_tahfidz', class_id=selected_class_id))
+
+        # Validasi urutan ayat hanya berlaku jika surat awal dan akhir sama.
+        is_same_surah = (not end_surah) or (start_surah == end_surah)
+        if is_same_surah and final_ayat_end < final_ayat_start:
+            flash("Ayat akhir tidak boleh lebih kecil dari ayat awal jika suratnya sama.", "warning")
+            return redirect(url_for('teacher.input_tahfidz', class_id=selected_class_id))
 
         if not participant_id or not participant_type:
             flash("Silakan pilih peserta terlebih dahulu.", "warning")
@@ -443,8 +601,8 @@ def input_tahfidz():
             type=TahfidzType[jenis_setoran],
             juz=0,
             surah=final_surah_name,
-            ayat_start=int(ayat_start),
-            ayat_end=int(ayat_end),
+            ayat_start=final_ayat_start,
+            ayat_end=final_ayat_end,
             tajwid_errors=tajwid_errors,
             makhraj_errors=makhraj_errors,
             tahfidz_errors=tahfidz_errors,
@@ -470,7 +628,7 @@ def input_tahfidz():
 
         if jenis_setoran == 'ZIYADAH':
             summary.last_surah = final_surah_name
-            summary.last_ayat = int(ayat_end)
+            summary.last_ayat = final_ayat_end
 
         db.session.commit()
         flash('Setoran tahfidz berhasil disimpan!', 'success')
@@ -573,8 +731,14 @@ def input_recitation():
                 flash("Ayat awal/akhir harus berupa angka.", "warning")
                 return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
 
-            if final_ayat_end < final_ayat_start:
-                flash("Ayat akhir tidak boleh lebih kecil dari ayat awal.", "warning")
+            if final_ayat_start < 1 or final_ayat_end < 1:
+                flash("Ayat awal/akhir minimal bernilai 1.", "warning")
+                return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
+
+            # Validasi urutan ayat hanya jika surat awal dan akhir sama.
+            is_same_surah = (not end_surah) or (start_surah == end_surah)
+            if is_same_surah and final_ayat_end < final_ayat_start:
+                flash("Ayat akhir tidak boleh lebih kecil dari ayat awal jika suratnya sama.", "warning")
                 return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
 
             final_surah_name = start_surah if (not end_surah or start_surah == end_surah) else f"{start_surah} - {end_surah}"
@@ -941,6 +1105,8 @@ def calculate_student_grades(student_id):
     # Group by subject
     grades_by_subject = defaultdict(list)
     for grade in grades:
+        if not grade.subject:
+            continue
         grades_by_subject[grade.subject].append(grade)
     
     # Hitung rata-rata per mapel
@@ -950,25 +1116,12 @@ def calculate_student_grades(student_id):
         for grade in subject_grades:
             type_scores[grade.type].append(grade.score)
         
-        # Rata-rata per tipe
+        # Rata-rata per tipe (berdasarkan enum name: TUGAS/UH/UTS/UAS)
         type_averages = {}
         for grade_type, scores in type_scores.items():
-            type_averages[grade_type.value] = sum(scores) / len(scores)
-        
-        # Bobot sederhana (bisa dikustomisasi)
-        weights = {'Tugas': 0.3, 'UH': 0.2, 'UTS': 0.25, 'UAS': 0.25}
-        
-        total_weighted = 0
-        total_weight = 0
-        for type_name, avg_score in type_averages.items():
-            weight = weights.get(type_name, 0)
-            total_weighted += avg_score * weight
-            total_weight += weight
-        
-        if total_weight > 0:
-            subject_averages[subject.name] = round(total_weighted / total_weight, 2)
-        else:
-            subject_averages[subject.name] = 0
+            type_averages[grade_type.name] = sum(scores) / len(scores)
+
+        subject_averages[subject.name] = _calculate_weighted_final(type_averages)
     
     return render_template('teacher/student_grades_calculation.html',
                          student=student,
@@ -1002,11 +1155,12 @@ def print_report_card(student_id):
             grouped[g.subject][g.type.name].append(g.score)
 
         for sub, data in grouped.items():
-            tugas_uh = data.get('TUGAS', []) + data.get('UH', [])
-            avg_tugas = sum(tugas_uh) / len(tugas_uh) if tugas_uh else 0
-            avg_uts = sum(data.get('UTS', [])) / len(data.get('UTS', [])) if data.get('UTS') else 0
-            avg_uas = sum(data.get('UAS', [])) / len(data.get('UAS', [])) if data.get('UAS') else 0
-            final_score = round((avg_tugas * 0.3) + (avg_uts * 0.3) + (avg_uas * 0.4), 2)
+            type_averages = {}
+            for grade_type in ['TUGAS', 'UH', 'UTS', 'UAS']:
+                scores = data.get(grade_type, [])
+                if scores:
+                    type_averages[grade_type] = sum(scores) / len(scores)
+            final_score = _calculate_weighted_final(type_averages)
             predikat = 'A' if final_score >= 85 else 'B' if final_score >= 75 else 'C' if final_score >= 65 else 'D'
             final_report.append({'subject': sub.name, 'kkm': sub.kkm or 70, 'final': final_score, 'predikat': predikat})
 

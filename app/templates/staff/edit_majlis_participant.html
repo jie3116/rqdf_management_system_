@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Edit Peserta Majlis Ta'lim</h1>
+        <a href="{{ url_for('staff.list_students') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left me-1"></i>Kembali
+        </a>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-success text-white">
+            <h6 class="m-0 fw-bold"><i class="fas fa-user-edit me-2"></i>Form Perubahan Data Peserta</h6>
+        </div>
+        <div class="card-body">
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Nama Peserta</label>
+                        <input type="text" name="full_name" class="form-control" value="{{ participant.full_name }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">No. WhatsApp</label>
+                        <input type="text" name="phone" class="form-control" value="{{ participant.phone }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Kelas Majlis</label>
+                        <select class="form-select" name="majlis_class_id">
+                            <option value="">-- Belum ditempatkan --</option>
+                            {% for cls in majlis_classes %}
+                            <option value="{{ cls.id }}" {% if participant.majlis_class_id == cls.id %}selected{% endif %}>
+                                {{ cls.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Pekerjaan</label>
+                        <input type="text" name="job" class="form-control" value="{{ participant.job or '' }}">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold">Alamat</label>
+                        <textarea name="address" class="form-control" rows="3">{{ participant.address or '' }}</textarea>
+                    </div>
+                </div>
+
+                <div class="mt-4 d-flex justify-content-end gap-2">
+                    <a href="{{ url_for('staff.list_students') }}" class="btn btn-outline-secondary">Batal</a>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-save me-1"></i>Simpan Perubahan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

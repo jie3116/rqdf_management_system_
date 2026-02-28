@@ -730,6 +730,16 @@ def add_student():
             else:
                 # Jika sudah ada user, ambil profilnya
                 parent_profile = parent_user.parent_profile
+                if not parent_profile:
+                    parent_profile = Parent(
+                        user_id=parent_user.id,
+                        full_name=form.parent_name.data,
+                        phone=form.parent_phone.data,
+                        job=form.parent_job.data,
+                        address=form.address.data
+                    )
+                    db.session.add(parent_profile)
+                    db.session.flush()
 
             # Sambungkan Siswa ke Wali
             new_student.parent_id = parent_profile.id
@@ -756,7 +766,7 @@ def edit_student(student_id):
         # Update Data Dasar
         student.full_name = request.form.get('full_name')
         student.nis = request.form.get('nis')
-        student.nisn = request.form.get('nisn')
+        student.nisn = (request.form.get('nisn') or '').strip() or None
 
         # Update Kelas
         cid = request.form.get('class_id')
@@ -769,9 +779,13 @@ def edit_student(student_id):
         else:
             student.custom_spp_fee = None
 
-        student.save()  # Menggunakan method save() dari BaseModel
-        flash('Data siswa diupdate.', 'success')
-        return redirect(url_for('admin.list_students'))
+        try:
+            student.save()  # Menggunakan method save() dari BaseModel
+            flash('Data siswa diupdate.', 'success')
+            return redirect(url_for('admin.list_students'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Gagal update data siswa: {e}', 'danger')
 
     return render_template('staff/edit_student.html',
                            student=student,
