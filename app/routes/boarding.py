@@ -200,18 +200,37 @@ def manage_dormitories():
             return redirect(url_for('boarding.manage_dormitories'))
 
         if action == 'assign_students':
-            students = Student.query.filter_by(is_deleted=False).all()
+            query_value = (request.form.get('q') or '').strip()
+            submitted_assignments = {}
+            for key, value in request.form.items():
+                if not key.startswith('dormitory_'):
+                    continue
+                student_id_raw = key.replace('dormitory_', '', 1).strip()
+                try:
+                    student_id = int(student_id_raw)
+                except ValueError:
+                    continue
+                value = (value or '').strip()
+                submitted_assignments[student_id] = int(value) if value else None
+
+            if not submitted_assignments:
+                flash('Tidak ada data penempatan yang dikirim.', 'warning')
+                return redirect(url_for('boarding.manage_dormitories', q=query_value or None))
+
+            students = Student.query.filter(
+                Student.id.in_(submitted_assignments.keys()),
+                Student.is_deleted == False
+            ).all()
             updated = 0
             for student in students:
-                raw = (request.form.get(f'dormitory_{student.id}') or '').strip()
-                new_dormitory_id = int(raw) if raw else None
+                new_dormitory_id = submitted_assignments.get(student.id)
                 if student.boarding_dormitory_id != new_dormitory_id:
                     student.boarding_dormitory_id = new_dormitory_id
                     updated += 1
 
             db.session.commit()
             flash(f'Penempatan asrama siswa diperbarui ({updated} perubahan).', 'success')
-            return redirect(url_for('boarding.manage_dormitories'))
+            return redirect(url_for('boarding.manage_dormitories', q=query_value or None))
 
     student_query = (request.args.get('q') or '').strip()
     students_query = Student.query.filter_by(is_deleted=False)

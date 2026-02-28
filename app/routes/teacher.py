@@ -166,6 +166,10 @@ def dashboard():
 
     homeroom_class = teacher.homeroom_class
     top_tab = (request.args.get('top_tab') or 'main').strip().lower()
+    main_tab = (request.args.get('main_tab') or 'ringkas').strip().lower()
+    allowed_main_tabs = {'ringkas', 'input', 'riwayat', 'perwalian'}
+    if main_tab not in allowed_main_tabs:
+        main_tab = 'ringkas'
     show_all_announcements = (request.args.get('ann') or '').strip().lower() == 'all'
 
     today_tahfidz = TahfidzRecord.query.filter(
@@ -181,7 +185,6 @@ def dashboard():
     recent_tahfidz = TahfidzRecord.query.filter_by(teacher_id=teacher.id)        .order_by(TahfidzRecord.date.desc()).limit(5).all()
 
     recent_recitation = RecitationRecord.query.filter_by(teacher_id=teacher.id)        .order_by(RecitationRecord.date.desc()).limit(5).all()
-
     boarding_student_ids = []
     if class_ids:
         boarding_student_ids = [row[0] for row in db.session.query(Student.id).filter(
@@ -228,6 +231,7 @@ def dashboard():
     return render_template('teacher/dashboard.html',
                          teacher=teacher,
                          my_classes=my_classes,
+                         main_tab=main_tab,
                          total_students=total_students,
                          today_tahfidz=today_tahfidz,
                          today_recitation=today_recitation,
@@ -519,6 +523,98 @@ def grade_history():
         tahfidz_records=tahfidz_records,
         recitation_records=recitation_records,
         tahfidz_evaluations=tahfidz_evaluations
+    )
+
+
+@teacher_bp.route('/riwayat-absensi')
+@login_required
+@role_required(UserRole.GURU)
+def attendance_history():
+    teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
+    my_classes = _get_teacher_classes(teacher)
+
+    selected_class_id = request.args.get('class_id', type=int)
+    selected_participant_key = (request.args.get('participant') or '').strip()
+
+    selected_class = None
+    participants = []
+    selected_participant = None
+    class_attendances = []
+    participant_attendances = []
+    class_recap = {'hadir': 0, 'sakit': 0, 'izin': 0, 'alpa': 0, 'total': 0}
+    participant_recap = {'hadir': 0, 'sakit': 0, 'izin': 0, 'alpa': 0, 'total': 0}
+
+    if selected_class_id:
+        selected_class = ClassRoom.query.get(selected_class_id)
+        if selected_class not in my_classes:
+            flash('Anda tidak memiliki akses ke kelas tersebut.', 'danger')
+            return redirect(url_for('teacher.attendance_history'))
+
+        students, majlis_participants = _get_class_participants(selected_class_id)
+        participants = _build_participant_rows(students, majlis_participants)
+        selected_participant = _resolve_selected_participant(participants, selected_participant_key)
+
+        class_attendances = Attendance.query.filter(
+            Attendance.class_id == selected_class_id,
+            Attendance.participant_type.in_([ParticipantType.STUDENT, ParticipantType.EXTERNAL_MAJLIS])
+        ).order_by(
+            Attendance.date.desc(),
+            Attendance.created_at.desc()
+        ).limit(300).all()
+
+        for row in class_attendances:
+            class_recap['total'] += 1
+            if row.status == AttendanceStatus.HADIR:
+                class_recap['hadir'] += 1
+            elif row.status == AttendanceStatus.SAKIT:
+                class_recap['sakit'] += 1
+            elif row.status == AttendanceStatus.IZIN:
+                class_recap['izin'] += 1
+            elif row.status == AttendanceStatus.ALPA:
+                class_recap['alpa'] += 1
+
+        if selected_participant:
+            participant_query = Attendance.query.filter(
+                Attendance.class_id == selected_class_id
+            )
+            if selected_participant['participant_type'] == ParticipantType.STUDENT:
+                participant_query = participant_query.filter(
+                    Attendance.participant_type == ParticipantType.STUDENT,
+                    Attendance.student_id == selected_participant['student_id']
+                )
+            else:
+                participant_query = participant_query.filter(
+                    Attendance.participant_type == ParticipantType.EXTERNAL_MAJLIS,
+                    Attendance.majlis_participant_id == selected_participant['majlis_participant_id']
+                )
+
+            participant_attendances = participant_query.order_by(
+                Attendance.date.desc(),
+                Attendance.created_at.desc()
+            ).all()
+
+            for row in participant_attendances:
+                participant_recap['total'] += 1
+                if row.status == AttendanceStatus.HADIR:
+                    participant_recap['hadir'] += 1
+                elif row.status == AttendanceStatus.SAKIT:
+                    participant_recap['sakit'] += 1
+                elif row.status == AttendanceStatus.IZIN:
+                    participant_recap['izin'] += 1
+                elif row.status == AttendanceStatus.ALPA:
+                    participant_recap['alpa'] += 1
+
+    return render_template(
+        'teacher/attendance_history.html',
+        my_classes=my_classes,
+        selected_class=selected_class,
+        selected_participant_key=selected_participant_key,
+        selected_participant=selected_participant,
+        participants=participants,
+        class_attendances=class_attendances,
+        participant_attendances=participant_attendances,
+        class_recap=class_recap,
+        participant_recap=participant_recap
     )
 
 
@@ -1069,11 +1165,19 @@ def homeroom_students():
     selected_class_id = request.args.get('class_id', type=int) or homeroom_classes[0].id
     selected_class = next((c for c in homeroom_classes if c.id == selected_class_id), homeroom_classes[0])
 
-    students = Student.query.filter_by(current_class_id=selected_class.id, is_deleted=False).order_by(Student.full_name).all()
+    students = Student.query.filter_by(
+        current_class_id=selected_class.id,
+        is_deleted=False
+    ).order_by(Student.full_name).all()
+    majlis_participants = MajlisParticipant.query.filter_by(
+        majlis_class_id=selected_class.id,
+        is_deleted=False
+    ).order_by(MajlisParticipant.full_name).all()
 
     return render_template('teacher/homeroom_students.html',
                          teacher=teacher,
                          students=students,
+                         majlis_participants=majlis_participants,
                          homeroom_class=selected_class,
                          homeroom_classes=homeroom_classes)
 

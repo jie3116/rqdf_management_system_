@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <div>
+            <h1 class="h3 mb-0 text-gray-800">Riwayat Absensi Peserta</h1>
+            <p class="mb-0 text-muted">Pilih kelas lalu peserta untuk melihat rekap dan riwayat absensi.</p>
+        </div>
+        <a href="{{ url_for('teacher.dashboard', top_tab='main', main_tab='riwayat') }}" class="btn btn-sm btn-secondary shadow-sm">
+            <i class="fas fa-arrow-left me-1"></i> Kembali ke Dashboard
+        </a>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-white">
+            <h6 class="m-0 fw-bold text-primary"><i class="fas fa-filter me-2"></i>Filter Absensi</h6>
+        </div>
+        <div class="card-body">
+            <form method="GET" class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label">Kelas</label>
+                    <select name="class_id" class="form-select" onchange="this.form.submit()">
+                        <option value="">-- Pilih Kelas --</option>
+                        {% for cls in my_classes %}
+                        <option value="{{ cls.id }}" {% if selected_class and selected_class.id == cls.id %}selected{% endif %}>{{ cls.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">Peserta</label>
+                    <select name="participant" class="form-select" {% if not selected_class %}disabled{% endif %}>
+                        <option value="">-- Pilih Peserta --</option>
+                        {% for p in participants %}
+                        <option value="{{ p.key }}" {% if selected_participant_key == p.key %}selected{% endif %}>
+                            {{ p.display_name }} ({{ p.identifier_label }}: {{ p.identifier }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button class="btn btn-primary" type="submit">
+                        <i class="fas fa-search me-1"></i> Tampilkan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if selected_class %}
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-white">
+            <h6 class="m-0 fw-bold text-success"><i class="fas fa-chart-pie me-2"></i>Resume Absensi Kelas {{ selected_class.name }}</h6>
+        </div>
+        <div class="card-body">
+            <div class="row mb-2">
+                <div class="col-md-3 col-6 mb-2"><span class="badge bg-success">Hadir {{ class_recap.hadir }}</span></div>
+                <div class="col-md-3 col-6 mb-2"><span class="badge bg-warning text-dark">Sakit {{ class_recap.sakit }}</span></div>
+                <div class="col-md-3 col-6 mb-2"><span class="badge bg-info">Izin {{ class_recap.izin }}</span></div>
+                <div class="col-md-3 col-6 mb-2"><span class="badge bg-danger">Alpa {{ class_recap.alpa }}</span></div>
+            </div>
+            <div class="small text-muted">Total record absensi kelas: <strong>{{ class_recap.total }}</strong></div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if selected_participant %}
+    <div class="alert alert-info">
+        Menampilkan riwayat absensi untuk <strong>{{ selected_participant.display_name }}</strong>
+        di kelas <strong>{{ selected_class.name if selected_class else '-' }}</strong>.
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-white">
+            <h6 class="m-0 fw-bold text-primary"><i class="fas fa-user-check me-2"></i>Rekap Peserta</h6>
+        </div>
+        <div class="card-body">
+            <div class="row mb-2">
+                <div class="col-md-3 col-6 mb-2"><span class="badge bg-success">Hadir {{ participant_recap.hadir }}</span></div>
+                <div class="col-md-3 col-6 mb-2"><span class="badge bg-warning text-dark">Sakit {{ participant_recap.sakit }}</span></div>
+                <div class="col-md-3 col-6 mb-2"><span class="badge bg-info">Izin {{ participant_recap.izin }}</span></div>
+                <div class="col-md-3 col-6 mb-2"><span class="badge bg-danger">Alpa {{ participant_recap.alpa }}</span></div>
+            </div>
+            <div class="small text-muted">Total absensi peserta: <strong>{{ participant_recap.total }}</strong></div>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-white">
+            <h6 class="m-0 fw-bold text-primary"><i class="fas fa-list me-2"></i>Riwayat Detail Absensi Peserta</h6>
+        </div>
+        <div class="card-body">
+            {% if participant_attendances %}
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Tanggal</th>
+                            <th>Status</th>
+                            <th>Guru Penginput</th>
+                            <th>Catatan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in participant_attendances %}
+                        <tr>
+                            <td>{{ row.date.strftime('%d/%m/%Y') if row.date else '-' }}</td>
+                            <td>
+                                <span class="badge {% if row.status and row.status.name == 'HADIR' %}bg-success{% elif row.status and row.status.name == 'SAKIT' %}bg-warning text-dark{% elif row.status and row.status.name == 'IZIN' %}bg-info{% else %}bg-danger{% endif %}">
+                                    {{ row.status.value if row.status else '-' }}
+                                </span>
+                            </td>
+                            <td>{{ row.teacher.full_name if row.teacher else '-' }}</td>
+                            <td>{{ row.notes or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">Belum ada riwayat absensi untuk peserta ini.</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
