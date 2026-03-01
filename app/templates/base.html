@@ -17,6 +17,9 @@
         .sidebar a:hover, .sidebar a.active { background: #34495e; color: white; border-left: 4px solid #3498db; }
         .nav-header { font-size: 0.75rem; text-transform: uppercase; color: #95a5a6; padding: 15px 15px 5px; font-weight: bold; }
         .content { padding: 20px; }
+        .row-pagination-controls .pagination {
+            margin-bottom: 0;
+        }
 
         .login-wrapper {
             min-height: 100vh;
@@ -279,6 +282,120 @@
                 overlay.classList.remove('active');
             });
         }
+
+        function initializeRowPaginations() {
+            const tables = document.querySelectorAll('table.js-row-paginate');
+
+            tables.forEach((table, idx) => {
+                const tbody = table.querySelector('tbody');
+                if (!tbody) return;
+
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                const dataRows = rows.filter((row) => {
+                    if (row.classList.contains('js-no-paginate')) return false;
+                    if (row.children.length === 1 && row.children[0].hasAttribute('colspan')) return false;
+                    return true;
+                });
+                if (dataRows.length === 0) return;
+
+                const defaultPerPage = parseInt(table.dataset.defaultPerPage || '10', 10);
+                let perPage = Number.isNaN(defaultPerPage) || defaultPerPage < 1 ? 10 : defaultPerPage;
+                let currentPage = 1;
+                const totalPages = () => Math.max(1, Math.ceil(dataRows.length / perPage));
+
+                const controls = document.createElement('div');
+                controls.className = 'row-pagination-controls d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mt-2';
+
+                const perPageListId = `row-per-page-options-${idx + 1}`;
+                const left = document.createElement('div');
+                left.className = 'd-flex align-items-center gap-2 flex-wrap small text-muted';
+                left.innerHTML = `
+                    <label class="mb-0">Baris per halaman:</label>
+                    <input list="${perPageListId}" type="number" min="1" class="form-control form-control-sm row-pagination-per-page" style="width: 96px;">
+                    <datalist id="${perPageListId}">
+                        <option value="10"></option>
+                        <option value="15"></option>
+                        <option value="20"></option>
+                        <option value="50"></option>
+                    </datalist>
+                    <span class="ms-1 row-pagination-info"></span>
+                `;
+
+                const right = document.createElement('nav');
+                right.setAttribute('aria-label', `Row pagination ${idx + 1}`);
+                right.innerHTML = '<ul class="pagination pagination-sm mb-0"></ul>';
+
+                controls.appendChild(left);
+                controls.appendChild(right);
+
+                const input = left.querySelector('.row-pagination-per-page');
+                const info = left.querySelector('.row-pagination-info');
+                const pagination = right.querySelector('.pagination');
+
+                input.value = String(perPage);
+
+                function render() {
+                    const pages = totalPages();
+                    if (currentPage > pages) currentPage = pages;
+                    if (currentPage < 1) currentPage = 1;
+
+                    dataRows.forEach((row, i) => {
+                        const start = (currentPage - 1) * perPage;
+                        const end = start + perPage;
+                        row.style.display = (i >= start && i < end) ? '' : 'none';
+                    });
+
+                    const startNum = dataRows.length ? ((currentPage - 1) * perPage) + 1 : 0;
+                    const endNum = Math.min(currentPage * perPage, dataRows.length);
+                    info.textContent = `Menampilkan ${startNum}-${endNum} dari ${dataRows.length} data`;
+
+                    pagination.innerHTML = '';
+                    const makeItem = (label, page, disabled = false, active = false) => {
+                        const li = document.createElement('li');
+                        li.className = `page-item${disabled ? ' disabled' : ''}${active ? ' active' : ''}`;
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'page-link';
+                        btn.textContent = label;
+                        btn.disabled = disabled;
+                        btn.addEventListener('click', () => {
+                            currentPage = page;
+                            render();
+                        });
+                        li.appendChild(btn);
+                        return li;
+                    };
+
+                    pagination.appendChild(makeItem('Prev', currentPage - 1, currentPage <= 1));
+                    for (let p = 1; p <= pages; p++) {
+                        pagination.appendChild(makeItem(String(p), p, false, p === currentPage));
+                    }
+                    pagination.appendChild(makeItem('Next', currentPage + 1, currentPage >= pages));
+                }
+
+                function applyPerPageValue() {
+                    const val = parseInt(input.value, 10);
+                    perPage = Number.isNaN(val) || val < 1 ? 10 : val;
+                    input.value = String(perPage);
+                    currentPage = 1;
+                    render();
+                }
+                input.addEventListener('change', applyPerPageValue);
+                input.addEventListener('blur', applyPerPageValue);
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        applyPerPageValue();
+                    }
+                });
+
+                const host = table.closest('.table-responsive') || table.parentElement;
+                host.appendChild(controls);
+                render();
+            });
+        }
+
+        initializeRowPaginations();
     });
 </script>
 
