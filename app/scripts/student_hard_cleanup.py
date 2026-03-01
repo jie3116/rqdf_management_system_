@@ -1,5 +1,5 @@
 import argparse
-from typing import List
+from typing import List, Optional
 
 from app import create_app
 from app.extensions import db
@@ -50,13 +50,69 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def normalize_nis_to_int(nis: Optional[str]) -> Optional[int]:
+    if not nis:
+        return None
+    digits = "".join(ch for ch in str(nis).strip() if ch.isdigit())
+    if not digits:
+        return None
+    return int(digits)
+
+
 def get_target_students(nis_start: str, nis_end: str) -> List[Student]:
-    return (
+    start_num = normalize_nis_to_int(nis_start)
+    end_num = normalize_nis_to_int(nis_end)
+    if start_num is None or end_num is None:
+        return []
+    if start_num > end_num:
+        start_num, end_num = end_num, start_num
+
+    candidates = (
         Student.query.execution_options(include_deleted=True)
-        .filter(Student.nis >= nis_start, Student.nis <= nis_end)
-        .order_by(Student.nis.asc())
+        .filter(Student.nis.isnot(None))
         .all()
     )
+
+    matched = []
+    for student in candidates:
+        nis_num = normalize_nis_to_int(student.nis)
+        if nis_num is None:
+            continue
+        if start_num <= nis_num <= end_num:
+            matched.append(student)
+
+    matched.sort(key=lambda item: (normalize_nis_to_int(item.nis) or 0, item.id))
+    return matched
+
+
+def print_zero_result_debug(nis_start: str, nis_end: str) -> None:
+    start_prefix = (nis_start or "").strip()[:4]
+    total_all = Student.query.execution_options(include_deleted=True).count()
+    total_active = Student.query.count()
+    exact_start = (
+        Student.query.execution_options(include_deleted=True)
+        .filter(Student.nis == nis_start.strip())
+        .count()
+    )
+    exact_end = (
+        Student.query.execution_options(include_deleted=True)
+        .filter(Student.nis == nis_end.strip())
+        .count()
+    )
+    prefix_count = 0
+    if start_prefix:
+        prefix_count = (
+            Student.query.execution_options(include_deleted=True)
+            .filter(Student.nis.like(f"{start_prefix}%"))
+            .count()
+        )
+
+    print("Diagnostik:")
+    print(f"- total siswa (include soft-delete): {total_all}")
+    print(f"- total siswa aktif (exclude soft-delete): {total_active}")
+    print(f"- exact NIS start ({nis_start}): {exact_start}")
+    print(f"- exact NIS end   ({nis_end}): {exact_end}")
+    print(f"- jumlah NIS prefix {start_prefix}: {prefix_count}")
 
 
 def print_preview(students: List[Student]) -> None:
@@ -159,6 +215,7 @@ def main() -> int:
 
         if not students:
             print("Tidak ada data siswa pada rentang NIS tersebut.")
+            print_zero_result_debug(args.nis_start, args.nis_end)
             return 0
 
         if not args.yes:
