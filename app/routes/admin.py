@@ -18,6 +18,12 @@ from app.models import (
     AcademicYear, ClassRoom, Subject, Schedule,
     # Finance
     FeeType, Invoice, Transaction,
+    # Student Related
+    StudentClassHistory, Attendance, BoardingAttendance, Grade, ReportCard, StudentAttitude,
+    Violation, BehaviorReport, TahfidzRecord, TahfidzSummary, RecitationRecord, TahfidzEvaluation,
+    student_extracurriculars,
+    # User/System Related
+    Announcement, AnnouncementRead, NotificationQueue, AuditLog, BoardingDormitory,
     # Activities
     Extracurricular,
     # PPDB
