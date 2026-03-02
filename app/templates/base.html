@@ -367,9 +367,36 @@
                     };
 
                     pagination.appendChild(makeItem('Prev', currentPage - 1, currentPage <= 1));
-                    for (let p = 1; p <= pages; p++) {
+
+                    const maxVisiblePages = 5;
+                    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+                    let endPage = Math.min(pages, startPage + maxVisiblePages - 1);
+                    startPage = Math.max(1, endPage - maxVisiblePages + 1);
+
+                    if (startPage > 1) {
+                        pagination.appendChild(makeItem('1', 1, false, currentPage === 1));
+                        if (startPage > 2) {
+                            const ellipsis = document.createElement('li');
+                            ellipsis.className = 'page-item disabled';
+                            ellipsis.innerHTML = '<span class="page-link">...</span>';
+                            pagination.appendChild(ellipsis);
+                        }
+                    }
+
+                    for (let p = startPage; p <= endPage; p++) {
                         pagination.appendChild(makeItem(String(p), p, false, p === currentPage));
                     }
+
+                    if (endPage < pages) {
+                        if (endPage < pages - 1) {
+                            const ellipsis = document.createElement('li');
+                            ellipsis.className = 'page-item disabled';
+                            ellipsis.innerHTML = '<span class="page-link">...</span>';
+                            pagination.appendChild(ellipsis);
+                        }
+                        pagination.appendChild(makeItem(String(pages), pages, false, currentPage === pages));
+                    }
+
                     pagination.appendChild(makeItem('Next', currentPage + 1, currentPage >= pages));
                 }
 
