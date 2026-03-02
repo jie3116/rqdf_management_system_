@@ -38,6 +38,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--nis-start", required=True, help="NIS awal, contoh: 202600001")
     parser.add_argument("--nis-end", required=True, help="NIS akhir, contoh: 202600203")
     parser.add_argument(
+        "--target",
+        choices=["students", "users"],
+        default="students",
+        help="Target cleanup: students (default) atau users (akun login).",
+    )
+    parser.add_argument(
         "--delete-users",
         action="store_true",
         help="Ikut hapus akun user siswa yang aman untuk dihapus (student-only).",
@@ -113,6 +119,38 @@ def print_zero_result_debug(nis_start: str, nis_end: str) -> None:
     print(f"- exact NIS start ({nis_start}): {exact_start}")
     print(f"- exact NIS end   ({nis_end}): {exact_end}")
     print(f"- jumlah NIS prefix {start_prefix}: {prefix_count}")
+
+
+def get_target_users_by_username(nis_start: str, nis_end: str) -> List[User]:
+    start_num = normalize_nis_to_int(nis_start)
+    end_num = normalize_nis_to_int(nis_end)
+    if start_num is None or end_num is None:
+        return []
+    if start_num > end_num:
+        start_num, end_num = end_num, start_num
+
+    users = User.query.execution_options(include_deleted=True).all()
+    matched = []
+    for user in users:
+        username_num = normalize_nis_to_int(user.username)
+        if username_num is None:
+            continue
+        if start_num <= username_num <= end_num:
+            matched.append(user)
+
+    matched.sort(key=lambda item: (normalize_nis_to_int(item.username) or 0, item.id))
+    return matched
+
+
+def print_user_preview(users: List[User]) -> None:
+    print(f"Total target user: {len(users)}")
+    for user in users:
+        roles = ",".join(sorted(user.all_role_values())) if user.all_role_values() else "-"
+        student_id = user.student_profile.id if user.student_profile else "-"
+        print(
+            f"- user_id={user.id} username={user.username} roles={roles} "
+            f"student_profile_id={student_id} is_deleted={user.is_deleted}"
+        )
 
 
 def print_preview(students: List[Student]) -> None:
@@ -210,31 +248,55 @@ def main() -> int:
     app = create_app()
 
     with app.app_context():
-        students = get_target_students(args.nis_start, args.nis_end)
-        print_preview(students)
+        if args.target == "students":
+            students = get_target_students(args.nis_start, args.nis_end)
+            print_preview(students)
 
-        if not students:
-            print("Tidak ada data siswa pada rentang NIS tersebut.")
-            print_zero_result_debug(args.nis_start, args.nis_end)
+            if not students:
+                print("Tidak ada data siswa pada rentang NIS tersebut.")
+                print_zero_result_debug(args.nis_start, args.nis_end)
+                return 0
+
+            if not args.yes:
+                print("Mode preview. Tambahkan --yes untuk eksekusi hard cleanup.")
+                return 0
+
+            student_ids = [s.id for s in students]
+            user_ids = [s.user_id for s in students if s.user_id is not None]
+
+            try:
+                delete_student_data(student_ids)
+                if args.delete_users:
+                    delete_student_only_users(user_ids)
+                db.session.commit()
+                print("Hard cleanup selesai.")
+                return 0
+            except Exception as exc:
+                db.session.rollback()
+                print(f"Gagal hard cleanup: {exc}")
+                return 1
+
+        users = get_target_users_by_username(args.nis_start, args.nis_end)
+        print_user_preview(users)
+        if not users:
+            print("Tidak ada user pada rentang username/NIS tersebut.")
             return 0
 
         if not args.yes:
-            print("Mode preview. Tambahkan --yes untuk eksekusi hard cleanup.")
+            print("Mode preview. Tambahkan --yes untuk eksekusi hard cleanup user.")
             return 0
 
-        student_ids = [s.id for s in students]
-        user_ids = [s.user_id for s in students if s.user_id is not None]
-
         try:
-            delete_student_data(student_ids)
-            if args.delete_users:
-                delete_student_only_users(user_ids)
+            student_ids = [u.student_profile.id for u in users if u.student_profile is not None]
+            if student_ids:
+                delete_student_data(student_ids)
+            delete_student_only_users([u.id for u in users])
             db.session.commit()
-            print("Hard cleanup selesai.")
+            print("Hard cleanup user selesai.")
             return 0
         except Exception as exc:
             db.session.rollback()
-            print(f"Gagal hard cleanup: {exc}")
+            print(f"Gagal hard cleanup user: {exc}")
             return 1
 
 
