@@ -22,6 +22,7 @@ def create_app(config_class=Config):
         import locale
         from flask_login import current_user
         from app.utils.roles import get_active_role, role_label
+        from app.utils.timezone import local_now, local_today
         try:
             # Opsional: Set bahasa tanggal ke Indonesia
             locale.setlocale(locale.LC_TIME, 'id_ID.utf8')
@@ -30,6 +31,8 @@ def create_app(config_class=Config):
         active_role = get_active_role(current_user) if current_user.is_authenticated else None
         return {
             'datetime': datetime,
+            'local_now': local_now,
+            'local_today': local_today,
             'active_role': active_role,
             'active_role_value': active_role.value if active_role else None,
             'active_role_label': role_label(active_role) if active_role else '-',

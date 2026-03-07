@@ -13,6 +13,7 @@ from app.models import (
 )
 from app.decorators import role_required
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
+from app.utils.timezone import local_now, local_today
 
 student_bp = Blueprint('student', __name__)
 
@@ -65,7 +66,7 @@ def dashboard():
 
     # --- BAGIAN 2: JADWAL PELAJARAN (OPTIMIZED N+1) ---
     today_name_map = {0: 'Senin', 1: 'Selasa', 2: 'Rabu', 3: 'Kamis', 4: 'Jumat', 5: 'Sabtu', 6: 'Minggu'}
-    today_idx = datetime.now().weekday()
+    today_idx = local_now().weekday()
     today_name = today_name_map[today_idx]
 
     # Jadwal Hari Ini
@@ -166,7 +167,7 @@ def dashboard():
     boarding_today = []
     boarding_recap = {'hadir': 0, 'sakit': 0, 'izin': 0, 'alpa': 0}
     if is_boarding_student:
-        today = datetime.now().date()
+        today = local_today()
         boarding_attendances = BoardingAttendance.query.join(
             BoardingActivitySchedule,
             BoardingAttendance.schedule_id == BoardingActivitySchedule.id

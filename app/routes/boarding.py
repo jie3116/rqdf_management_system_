@@ -4,6 +4,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 
 from app.decorators import role_required
+from app.utils.timezone import local_today
 from app.extensions import db
 from app.models import (
     User,
@@ -461,7 +462,7 @@ def manage_schedules():
 @login_required
 @role_required(UserRole.WALI_ASRAMA)
 def dashboard():
-    today = datetime.now().date()
+    today = local_today()
     today_name = _weekday_label(today)
 
     dormitories = BoardingDormitory.query.filter_by(guardian_user_id=current_user.id).order_by(BoardingDormitory.name).all()
@@ -503,7 +504,7 @@ def input_attendance():
     my_dormitory_ids = [d.id for d in my_dormitories]
 
     selected_dormitory_id = request.args.get('dormitory_id', type=int)
-    selected_date = (request.args.get('date') or datetime.now().strftime('%Y-%m-%d')).strip()
+    selected_date = (request.args.get('date') or local_today().strftime('%Y-%m-%d')).strip()
 
     if request.method == 'POST':
         selected_dormitory_id = request.form.get('dormitory_id', type=int)
@@ -608,3 +609,4 @@ def input_attendance():
         existing_attendance=existing_attendance,
         AttendanceStatus=AttendanceStatus,
     )
+

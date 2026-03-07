@@ -1,9 +1,10 @@
 from datetime import datetime
 from app.models import Student, User
+from app.utils.timezone import local_now
 
 
 def generate_nis(year=None):
-    target_year = year or datetime.now().year
+    target_year = year or local_now().year
     prefix = f"{target_year}"
     last_student = Student.query.filter(Student.nis.like(f"{prefix}%")).order_by(Student.nis.desc()).first()
 

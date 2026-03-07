@@ -38,7 +38,7 @@
                                     
                                     <form method="POST" class="card card-body border-0 shadow-sm">
                                         {{ form.hidden_tag() }}
-                                        <input type="hidden" name="invoice_id" value="{{ inv.id }}">
+                                        <input type="hidden" name="invoice_token" value="{{ invoice_tokens.get(inv.id, '') }}">
                                         
                                         <div class="row">
                                             <div class="col-md-6 mb-2">

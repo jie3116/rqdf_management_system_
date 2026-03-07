@@ -8,7 +8,6 @@ from wtforms import (
     DateField,
     TextAreaField,
     IntegerField,
-    FloatField,
     RadioField,
     SubmitField,
 )
@@ -19,6 +18,7 @@ from wtforms.validators import (
     Email,
     Length,
     EqualTo,
+    NumberRange,
 )
 
 from app.models import Gender
@@ -73,7 +73,7 @@ class ChangePasswordForm(FlaskForm):
 
 class FeeTypeForm(FlaskForm):
     name = StringField('Nama Biaya (Cth: SPP Juli 2024)', validators=[DataRequired()])
-    amount = FloatField('Nominal (Rp)', validators=[DataRequired()])
+    amount = IntegerField('Nominal (Rp)', validators=[DataRequired(), NumberRange(min=1)])
     academic_year_id = SelectField('Tahun Ajaran', coerce=int, validators=[DataRequired()])
     submit = SubmitField('Simpan Biaya')
 
@@ -185,7 +185,10 @@ class PPDBForm(FlaskForm):
 
 # Form untuk TU menginput pembayaran
 class PaymentForm(FlaskForm):
-    amount = FloatField('Jumlah Pembayaran (Rp)', validators=[DataRequired()])
+    amount = IntegerField(
+        'Jumlah Pembayaran (Rp)',
+        validators=[DataRequired(), NumberRange(min=1, message='Jumlah pembayaran minimal Rp 1')]
+    )
     method = SelectField('Metode Pembayaran', choices=[
         ('TUNAI', 'Tunai / Cash'),
         ('TRANSFER', 'Transfer Bank')

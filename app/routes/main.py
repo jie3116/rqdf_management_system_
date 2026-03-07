@@ -17,6 +17,7 @@ from sqlalchemy import and_, or_
 from app.extensions import db
 from app.forms import PPDBForm
 from app.decorators import role_required
+from app.utils.timezone import local_now
 
 # Kita hapus import model Student, Tahfidz, Schedule dll karena tidak dipakai lagi di sini
 # Sisakan import yang dipakai untuk PPDB form saja
@@ -289,7 +290,7 @@ def ppdb_register():
             db.session.add(candidate)
             db.session.flush()
 
-            year = datetime.now().year
+            year = local_now().year
             if program_type == ProgramType.MAJLIS_TALIM:
                 candidate.registration_no = f"MAJ{year}{candidate.id:05d}"  # BARU: Prefix khusus Majelis
             else:

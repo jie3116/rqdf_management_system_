@@ -8,6 +8,7 @@ from sqlalchemy import func, or_, and_
 from openpyxl import load_workbook
 from app.extensions import db
 from app.decorators import role_required
+from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
     # Base & Enums
@@ -33,6 +34,7 @@ from app.models import (
 )
 from app.utils.nis import generate_nis
 from app.utils.roles import validate_role_combination, role_label, ROLE_PRIORITY
+from app.utils.money import to_rupiah_int
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -118,9 +120,10 @@ def dashboard():
     total_teachers = Teacher.query.filter_by(is_deleted=False).count()
 
     # 2. Hitung Pemasukan Hari Ini (PENTING!)
-    today = datetime.now().date()
+    start_utc, end_utc = local_day_bounds_utc_naive()
     income_today = db.session.query(func.sum(Transaction.amount)).filter(
-        func.date(Transaction.date) == today
+        Transaction.date >= start_utc,
+        Transaction.date < end_utc
     ).scalar() or 0  # <--- "or 0" penting agar tidak None
 
     # 3. Kirim variabel ke HTML (income_today wajib ada)
@@ -1072,11 +1075,16 @@ def manage_fee_types():
         name = request.form.get('name')
         amount = request.form.get('amount')
         academic_year_id = request.form.get('academic_year_id', type=int)
+        amount_rupiah = to_rupiah_int(amount, default=-1)
+
+        if amount_rupiah <= 0:
+            flash('Nominal biaya harus lebih dari 0.', 'warning')
+            return redirect(url_for('admin.manage_fee_types'))
 
         try:
             new_fee = FeeType(
                 name=name,
-                amount=float(amount),
+                amount=amount_rupiah,
                 academic_year_id=academic_year_id
             )
             db.session.add(new_fee)
@@ -1113,7 +1121,11 @@ def edit_fee_type(fee_id):
 
     if request.method == 'POST':
         fee.name = request.form.get('name')
-        fee.amount = float(request.form.get('amount'))
+        amount_rupiah = to_rupiah_int(request.form.get('amount'), default=-1)
+        if amount_rupiah <= 0:
+            flash('Nominal biaya harus lebih dari 0.', 'warning')
+            return redirect(url_for('admin.edit_fee_type', fee_id=fee_id))
+        fee.amount = amount_rupiah
 
         # Handle Tahun Ajaran (Bisa None/Null jika berlaku umum)
         year_id = request.form.get('academic_year_id')
@@ -1143,8 +1155,8 @@ def generate_invoices(fee_id):
     students = Student.query.all()
 
     count_success = 0
-    bulan_tahun = datetime.now().strftime("%Y%m")
-    due_date_default = datetime.now() + timedelta(days=10)
+    bulan_tahun = local_now().strftime("%Y%m")
+    due_date_default = local_now() + timedelta(days=10)
     is_monthly_fee = "SPP" in fee.name.upper() or "BULAN" in fee.name.upper()
 
     try:
@@ -1170,7 +1182,7 @@ def generate_invoices(fee_id):
                 invoice_number=f"INV/{bulan_tahun}/{fee.id}/{student.id}",
                 student_id=student.id,
                 fee_type_id=fee.id,
-                total_amount=int(nominal_final),
+                total_amount=to_rupiah_int(nominal_final),
                 status=PaymentStatus.UNPAID,
                 due_date=due_date_default
             )
@@ -1288,8 +1300,8 @@ def accept_candidate(candidate_id):
         def get_nominal(nama_biaya, harga_default):
             biaya_db = FeeType.query.filter_by(name=nama_biaya).first()
             if biaya_db:
-                return biaya_db.amount
-            return harga_default
+                return to_rupiah_int(biaya_db.amount)
+            return to_rupiah_int(harga_default)
 
         tagihan_list = []
 
@@ -1352,14 +1364,14 @@ def accept_candidate(candidate_id):
             if harga_seragam > 0:
                 tagihan_list.append({'nama': f'Seragam RQDF (Ukuran {uk})', 'nominal': harga_seragam})
 
-        due_date = datetime.now() + timedelta(days=14)
-        inv_prefix = f"INV/{datetime.now().strftime('%Y%m')}/{siswa_baru.id}"
+        due_date = local_now() + timedelta(days=14)
+        inv_prefix = f"INV/{local_now().strftime('%Y%m')}/{siswa_baru.id}"
 
         ctr = 1
         for item in tagihan_list:
             fee_type = FeeType.query.filter_by(name=item['nama']).first()
             if not fee_type:
-                fee_type = FeeType(name=item['nama'], amount=item['nominal'])
+                fee_type = FeeType(name=item['nama'], amount=to_rupiah_int(item['nominal']))
                 db.session.add(fee_type)
                 db.session.flush()
 
@@ -1367,7 +1379,7 @@ def accept_candidate(candidate_id):
                 invoice_number=f"{inv_prefix}/{ctr}",
                 student_id=siswa_baru.id,
                 fee_type_id=fee_type.id,
-                total_amount=item['nominal'],
+                total_amount=to_rupiah_int(item['nominal']),
                 paid_amount=0,
                 status=PaymentStatus.UNPAID,
                 due_date=due_date

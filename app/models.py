@@ -3,6 +3,7 @@ from datetime import datetime
 import enum
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
+from app.utils.timezone import local_today, utc_now_naive
 
 
 # ==========================================
@@ -15,8 +16,8 @@ class BaseModel(db.Model):
     """
     __abstract__ = True
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now_naive)
+    updated_at = db.Column(db.DateTime, default=utc_now_naive, onupdate=utc_now_naive)
     is_deleted = db.Column(db.Boolean, default=False)
 
     def save(self):
@@ -195,7 +196,7 @@ class AuditLog(db.Model):
     action = db.Column(db.String(50))
     details = db.Column(db.Text)
     ip_address = db.Column(db.String(50))
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=utc_now_naive)
 
 
 class NotificationQueue(BaseModel):
@@ -232,7 +233,7 @@ class AnnouncementRead(BaseModel):
     id = db.Column(db.Integer, primary_key=True)
     announcement_id = db.Column(db.Integer, db.ForeignKey('announcements.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    read_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    read_at = db.Column(db.DateTime, default=utc_now_naive, nullable=False)
 
     announcement = db.relationship('Announcement', backref='read_logs')
     user = db.relationship('User', backref='announcement_reads')
@@ -364,7 +365,7 @@ class MajlisParticipant(BaseModel):
     job = db.Column(db.String(100))
 
     majlis_class_id = db.Column(db.Integer, db.ForeignKey('class_rooms.id'), nullable=True)
-    join_date = db.Column(db.Date, default=datetime.utcnow)
+    join_date = db.Column(db.Date, default=local_today)
 
     majlis_class = db.relationship('ClassRoom', foreign_keys=[majlis_class_id], backref='majlis_external_participants')
 
@@ -553,7 +554,7 @@ class Attendance(BaseModel):
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False)
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'), nullable=True)
 
-    date = db.Column(db.Date, default=datetime.utcnow, nullable=False)
+    date = db.Column(db.Date, default=local_today, nullable=False)
     status = db.Column(db.Enum(AttendanceStatus, name='attendancestatus'), default=AttendanceStatus.HADIR)
     notes = db.Column(db.String(100))
 
@@ -597,7 +598,7 @@ class BoardingAttendance(BaseModel):
     schedule_id = db.Column(db.Integer, db.ForeignKey('boarding_activity_schedules.id'), nullable=False)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     attendance_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    date = db.Column(db.Date, default=datetime.utcnow, nullable=False)
+    date = db.Column(db.Date, default=local_today, nullable=False)
     status = db.Column(db.Enum(AttendanceStatus, name='attendancestatus'), default=AttendanceStatus.HADIR, nullable=False)
     notes = db.Column(db.String(150), nullable=True)
 
@@ -700,7 +701,7 @@ class Violation(BaseModel):
     __tablename__ = 'violations'
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
-    date = db.Column(db.Date, default=datetime.utcnow)
+    date = db.Column(db.Date, default=local_today)
     description = db.Column(db.Text)
     points = db.Column(db.Integer)
     sanction = db.Column(db.String(100))
@@ -711,7 +712,7 @@ class BehaviorReport(BaseModel):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False, index=True)
-    report_date = db.Column(db.Date, default=datetime.utcnow, nullable=False, index=True)
+    report_date = db.Column(db.Date, default=local_today, nullable=False, index=True)
     report_type = db.Column(db.Enum(BehaviorReportType, name='behaviorreporttype'), nullable=False)
     title = db.Column(db.String(120), nullable=False)
     description = db.Column(db.Text, nullable=False)
@@ -747,7 +748,7 @@ class TahfidzRecord(BaseModel):
 
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'))
     teacher = db.relationship('Teacher', backref='tahfidz_history')
-    date = db.Column(db.DateTime, default=datetime.utcnow)
+    date = db.Column(db.DateTime, default=utc_now_naive)
     type = db.Column(db.Enum(TahfidzType, name='tahfidztype'))  # Hanya ZIYADAH/MURAJAAH
     juz = db.Column(db.Integer)
     surah = db.Column(db.String(50))
@@ -802,7 +803,7 @@ class RecitationRecord(BaseModel):
 
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'))
     teacher = db.relationship('Teacher', backref='recitation_history')
-    date = db.Column(db.DateTime, default=datetime.utcnow)
+    date = db.Column(db.DateTime, default=utc_now_naive)
 
     # BARU: Menggunakan RecitationSource enum
     recitation_source = db.Column(db.Enum(RecitationSource, name='recitationsource'), default=RecitationSource.QURAN)
@@ -841,7 +842,7 @@ class TahfidzEvaluation(BaseModel):
 
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'))
     teacher = db.relationship('Teacher', backref='tahfidz_evaluations')
-    date = db.Column(db.DateTime, default=datetime.utcnow)
+    date = db.Column(db.DateTime, default=utc_now_naive)
     period_type = db.Column(db.Enum(EvaluationPeriod, name='evaluationperiod'))
     period_label = db.Column(db.String(30))
     makhraj_errors = db.Column(db.Integer, default=0)
@@ -863,7 +864,7 @@ class FeeType(BaseModel):
     __tablename__ = 'fee_types'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50))
-    amount = db.Column(db.Float)
+    amount = db.Column(db.Integer)
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
     academic_year = db.relationship('AcademicYear', backref='fees')
 
@@ -874,8 +875,8 @@ class Invoice(BaseModel):
     invoice_number = db.Column(db.String(50), unique=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'))
     fee_type_id = db.Column(db.Integer, db.ForeignKey('fee_types.id'))
-    total_amount = db.Column(db.Float)
-    paid_amount = db.Column(db.Float, default=0)
+    total_amount = db.Column(db.Integer)
+    paid_amount = db.Column(db.Integer, default=0)
     status = db.Column(db.Enum(PaymentStatus, name='paymentstatus'), default=PaymentStatus.UNPAID)
     due_date = db.Column(db.Date)
 
@@ -887,9 +888,9 @@ class Transaction(BaseModel):
     __tablename__ = 'transactions'
     id = db.Column(db.Integer, primary_key=True)
     invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'))
-    amount = db.Column(db.Float)
+    amount = db.Column(db.Integer)
     method = db.Column(db.String(30))
-    date = db.Column(db.DateTime, default=datetime.utcnow)
+    date = db.Column(db.DateTime, default=utc_now_naive)
     pic_id = db.Column(db.Integer, db.ForeignKey('users.id'))
 
 
@@ -949,3 +950,5 @@ class AdmissionFeeTemplate(BaseModel):
 
     # Opsional: Jika harga di template beda dengan harga master FeeType
     custom_amount = db.Column(db.Float, nullable=True)
+
+

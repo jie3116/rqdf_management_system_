@@ -13,9 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy seluruh kodingan ke dalam container
 COPY . .
 
-# Buka port 8000 (sesuai settingan flask/gunicorn nanti)
+# Buka port 8000 (sesuai settingan flask/gunicorn)
 EXPOSE 8000
 
 # Perintah default untuk menjalankan aplikasi
-# Ganti 'app.py' dengan nama file utama aplikasi Anda jika beda (misal: run.py)
 CMD ["python", "run.py"]
