@@ -1,8 +1,9 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app
 from flask_login import login_required, current_user
 from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
 from sqlalchemy import func, or_, and_
+from itsdangerous import URLSafeSerializer, BadSignature
 from app.extensions import db
 from app.decorators import role_required
 from app.forms import PaymentForm, StudentForm  # Pastikan import ini ada
@@ -14,8 +15,26 @@ from app.models import (
 )
 from app.utils.nis import generate_nis
 from app.utils.roles import get_active_role
+from app.utils.money import to_rupiah_int
+from app.utils.timezone import local_day_bounds_utc_naive, local_now
 
 staff_bp = Blueprint('staff', __name__)
+
+
+def _cashier_serializer():
+    return URLSafeSerializer(current_app.config['SECRET_KEY'], salt='cashier-invoice-v1')
+
+
+def _sign_cashier_invoice(invoice_id, student_id):
+    return _cashier_serializer().dumps({'invoice_id': int(invoice_id), 'student_id': int(student_id)})
+
+
+def _verify_cashier_invoice(token):
+    try:
+        data = _cashier_serializer().loads(token)
+        return int(data.get('invoice_id')), int(data.get('student_id'))
+    except (BadSignature, TypeError, ValueError):
+        return None, None
 
 
 @staff_bp.route('/dashboard')
@@ -23,9 +42,10 @@ staff_bp = Blueprint('staff', __name__)
 @role_required(UserRole.TU)
 def dashboard():
     # 1. Hitung Pemasukan Hari Ini
-    today = datetime.now().date()
+    start_utc, end_utc = local_day_bounds_utc_naive()
     pemasukan_hari_ini = db.session.query(func.sum(Transaction.amount)).filter(
-        func.date(Transaction.date) == today
+        Transaction.date >= start_utc,
+        Transaction.date < end_utc
     ).scalar() or 0
 
     # 2. Kirim ke HTML
@@ -60,42 +80,81 @@ def cashier_pay(student_id):
         Invoice.is_deleted.is_(False),
         Invoice.status != PaymentStatus.PAID
     ).all()
+    invoice_tokens = {inv.id: _sign_cashier_invoice(inv.id, student.id) for inv in unpaid_invoices}
 
     form = PaymentForm()
 
     if request.method == 'POST':
-        invoice_id = request.form.get('invoice_id')
-        invoice = Invoice.query.filter_by(id=invoice_id, is_deleted=False).first()
+        invoice_token = request.form.get('invoice_token', '').strip()
+        invoice_id, signed_student_id = _verify_cashier_invoice(invoice_token)
+        if not invoice_id or signed_student_id != student.id:
+            current_app.logger.warning(
+                "Cashier token mismatch user_id=%s route_student_id=%s signed_student_id=%s invoice_id=%s ip=%s",
+                getattr(current_user, 'id', None), student.id, signed_student_id, invoice_id, request.remote_addr
+            )
+            flash('Invoice tidak valid atau tidak sesuai siswa.', 'danger')
+            return redirect(url_for('staff.cashier_pay', student_id=student.id))
 
-        if invoice and form.validate_on_submit():
-            bayar = form.amount.data
-            sisa_tagihan = invoice.total_amount - invoice.paid_amount
+        if not form.validate_on_submit():
+            flash('Input pembayaran tidak valid.', 'danger')
+            return redirect(url_for('staff.cashier_pay', student_id=student.id))
 
-            if bayar > sisa_tagihan:
-                flash(f'Gagal! Pembayaran melebihi sisa (Maks: {sisa_tagihan})', 'danger')
+        # Lock invoice saat proses pembayaran untuk mengurangi risiko update paralel.
+        invoice = Invoice.query.filter(
+            Invoice.id == invoice_id,
+            Invoice.student_id == student.id,
+            Invoice.is_deleted.is_(False),
+            Invoice.status != PaymentStatus.PAID
+        ).with_for_update().first()
+
+        if not invoice:
+            current_app.logger.warning(
+                "Cashier invoice mismatch user_id=%s route_student_id=%s invoice_id=%s ip=%s",
+                getattr(current_user, 'id', None), student.id, invoice_id, request.remote_addr
+            )
+            flash('Invoice tidak ditemukan atau tidak sesuai dengan siswa ini.', 'danger')
+            return redirect(url_for('staff.cashier_pay', student_id=student.id))
+
+        bayar = to_rupiah_int(form.amount.data)
+        total_tagihan = to_rupiah_int(invoice.total_amount)
+        sudah_bayar = to_rupiah_int(invoice.paid_amount)
+        sisa_tagihan = max(0, total_tagihan - sudah_bayar)
+
+        if bayar <= 0:
+            flash('Jumlah pembayaran harus lebih dari 0.', 'danger')
+        elif bayar > sisa_tagihan:
+            flash(f'Gagal! Pembayaran melebihi sisa (Maks: {sisa_tagihan})', 'danger')
+        else:
+            # Catat Transaksi
+            trx = Transaction(
+                invoice_id=invoice.id,
+                amount=bayar,
+                method=form.method.data,
+                pic_id=current_user.id,
+            )
+            db.session.add(trx)
+
+            # Update Invoice
+            invoice.paid_amount = sudah_bayar + bayar
+            if invoice.paid_amount >= total_tagihan:
+                invoice.paid_amount = total_tagihan
+                invoice.status = PaymentStatus.PAID
+            elif invoice.paid_amount > 0:
+                invoice.status = PaymentStatus.PARTIAL
             else:
-                # Catat Transaksi
-                trx = Transaction(
-                    invoice_id=invoice.id,
-                    amount=bayar,
-                    method=form.method.data,
-                    pic_id=current_user.id,  # TU yang login
-                    #status='SUCCESS'
-                )
-                db.session.add(trx)
+                invoice.status = PaymentStatus.UNPAID
 
-                # Update Invoice
-                invoice.paid_amount += bayar
-                if invoice.paid_amount >= invoice.total_amount:
-                    invoice.status = PaymentStatus.PAID
-                else:
-                    invoice.status = PaymentStatus.PARTIAL
+            db.session.commit()
+            flash(f'Pembayaran Rp {bayar:,.0f} diterima!', 'success')
+            return redirect(url_for('staff.cashier_pay', student_id=student.id))
 
-                db.session.commit()
-                flash(f'Pembayaran Rp {bayar:,.0f} diterima!', 'success')
-                return redirect(url_for('staff.cashier_pay', student_id=student.id))
-
-    return render_template('staff/cashier_payment.html', student=student, invoices=unpaid_invoices, form=form)
+    return render_template(
+        'staff/cashier_payment.html',
+        student=student,
+        invoices=unpaid_invoices,
+        invoice_tokens=invoice_tokens,
+        form=form
+    )
 
 
 def _program_labels():
@@ -153,7 +212,7 @@ def _targeted_students(target):
 
 
 def _invoice_number(fee_id, student_id):
-    return f"INV/{datetime.now().strftime('%Y%m%d%H%M%S%f')}/{fee_id}/{student_id}"
+    return f"INV/{local_now().strftime('%Y%m%d%H%M%S%f')}/{fee_id}/{student_id}"
 
 
 def _send_invoices_redirect_params(source, target):
@@ -185,7 +244,7 @@ def generate_invoices(fee_id):
     total_target = len(students)
     count_success = 0
     skipped_duplicate = 0
-    due_date_default = datetime.now() + timedelta(days=10)
+    due_date_default = local_now() + timedelta(days=10)
     is_monthly_fee = "SPP" in fee.name.upper() or "BULAN" in fee.name.upper()
 
     try:
@@ -207,7 +266,7 @@ def generate_invoices(fee_id):
                 invoice_number=_invoice_number(fee.id, student.id),
                 student_id=student.id,
                 fee_type_id=fee.id,
-                total_amount=int(nominal_final),
+                total_amount=to_rupiah_int(nominal_final),
                 status=PaymentStatus.UNPAID,
                 due_date=due_date_default
             )
@@ -805,8 +864,8 @@ def accept_candidate(candidate_id):
         def get_nominal(nama_biaya, harga_default):
             biaya_db = FeeType.query.filter_by(name=nama_biaya).first()
             if biaya_db:
-                return biaya_db.amount
-            return harga_default
+                return to_rupiah_int(biaya_db.amount)
+            return to_rupiah_int(harga_default)
 
         tagihan_list = []
 
@@ -869,14 +928,14 @@ def accept_candidate(candidate_id):
             if harga_seragam > 0:
                 tagihan_list.append({'nama': f'Seragam RQDF (Ukuran {uk})', 'nominal': harga_seragam})
 
-        due_date = datetime.now() + timedelta(days=14)
-        inv_prefix = f"INV/{datetime.now().strftime('%Y%m')}/{siswa_baru.id}"
+        due_date = local_now() + timedelta(days=14)
+        inv_prefix = f"INV/{local_now().strftime('%Y%m')}/{siswa_baru.id}"
 
         ctr = 1
         for item in tagihan_list:
             fee_type = FeeType.query.filter_by(name=item['nama']).first()
             if not fee_type:
-                fee_type = FeeType(name=item['nama'], amount=item['nominal'])
+                fee_type = FeeType(name=item['nama'], amount=to_rupiah_int(item['nominal']))
                 db.session.add(fee_type)
                 db.session.flush()
 
@@ -884,7 +943,7 @@ def accept_candidate(candidate_id):
                 invoice_number=f"{inv_prefix}/{ctr}",
                 student_id=siswa_baru.id,
                 fee_type_id=fee_type.id,
-                total_amount=item['nominal'],
+                total_amount=to_rupiah_int(item['nominal']),
                 paid_amount=0,
                 status=PaymentStatus.UNPAID,
                 due_date=due_date

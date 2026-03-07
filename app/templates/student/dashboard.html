@@ -418,7 +418,7 @@
                                     <tbody>
                                         {% if boarding_attendances %}
                                             {% for rec in boarding_attendances %}
-                                            <tr {% if rec.date == datetime.now().date() %}class="table-warning"{% endif %}>
+                                            <tr {% if rec.date == local_today() %}class="table-warning"{% endif %}>
                                                 <td>{{ rec.date.strftime('%d/%m/%Y') if rec.date else '-' }}</td>
                                                 <td>{{ rec.schedule.activity_name if rec.schedule else '-' }}</td>
                                                 <td>
@@ -623,3 +623,4 @@
     {% endif %}
 </div>
 {% endblock %}
+

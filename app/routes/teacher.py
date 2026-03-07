@@ -11,6 +11,7 @@ from app.models import (
 )
 from app.decorators import role_required
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
+from app.utils.timezone import local_day_bounds_utc_naive, local_today, utc_now_naive
 
 teacher_bp = Blueprint('teacher', __name__)
 
@@ -130,7 +131,7 @@ def dashboard():
         Student.is_deleted == False
     ).count() if class_ids else 0
 
-    today = datetime.now().date()
+    today = local_today()
     today_name_map = {0: 'Senin', 1: 'Selasa', 2: 'Rabu', 3: 'Kamis', 4: 'Jumat', 5: 'Sabtu', 6: 'Minggu'}
     today_name = today_name_map[today.weekday()]
 
@@ -172,14 +173,18 @@ def dashboard():
         main_tab = 'ringkas'
     show_all_announcements = (request.args.get('ann') or '').strip().lower() == 'all'
 
+    start_utc, end_utc = local_day_bounds_utc_naive(today)
+
     today_tahfidz = TahfidzRecord.query.filter(
         TahfidzRecord.teacher_id == teacher.id,
-        db.func.date(TahfidzRecord.date) == today
+        TahfidzRecord.date >= start_utc,
+        TahfidzRecord.date < end_utc
     ).count()
 
     today_recitation = RecitationRecord.query.filter(
         RecitationRecord.teacher_id == teacher.id,
-        db.func.date(RecitationRecord.date) == today
+        RecitationRecord.date >= start_utc,
+        RecitationRecord.date < end_utc
     ).count()
 
     recent_tahfidz = TahfidzRecord.query.filter_by(teacher_id=teacher.id)        .order_by(TahfidzRecord.date.desc()).limit(5).all()
@@ -705,7 +710,7 @@ def input_tahfidz():
             score=score,
             quality=quality,
             notes=notes,
-            date=datetime.now()
+            date=utc_now_naive()
         )
         db.session.add(new_record)
 
@@ -873,7 +878,7 @@ def input_recitation():
             makhraj_errors=makhraj_errors,
             score=score,
             notes=notes,
-            date=datetime.now()
+            date=utc_now_naive()
         )
         db.session.add(new_record)
         db.session.commit()
@@ -970,7 +975,7 @@ def input_tahfidz_evaluation():
             tahfidz_errors=tahfidz_errors,
             score=score,
             notes=notes,
-            date=datetime.now()
+            date=utc_now_naive()
         )
         db.session.add(new_evaluation)
         db.session.commit()
@@ -1044,7 +1049,7 @@ def input_behavior_report():
             return redirect(url_for('teacher.input_behavior_report', class_id=class_id))
 
         try:
-            report_date = datetime.strptime(report_date_str, '%Y-%m-%d').date() if report_date_str else datetime.now().date()
+            report_date = datetime.strptime(report_date_str, '%Y-%m-%d').date() if report_date_str else local_today()
             follow_up_date = datetime.strptime(follow_up_date_str, '%Y-%m-%d').date() if follow_up_date_str else None
         except ValueError:
             flash("Format tanggal tidak valid.", "warning")
@@ -1321,7 +1326,7 @@ def input_attendance():
     my_classes = _get_teacher_classes(teacher)
     
     selected_class_id = request.args.get('class_id', type=int)
-    selected_date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    selected_date = request.args.get('date', local_today().strftime('%Y-%m-%d'))
     
     students = []
     majlis_participants = []
@@ -1414,3 +1419,4 @@ def input_attendance():
                          selected_date=selected_date,
                          existing_attendance=existing_attendance,
                          attendance_statuses=AttendanceStatus)
+

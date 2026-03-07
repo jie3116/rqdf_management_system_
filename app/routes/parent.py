@@ -10,6 +10,7 @@ from app.models import (
     BoardingAttendance, BoardingActivitySchedule
 )
 from app.decorators import role_required
+from app.utils.timezone import local_now, local_today
 from app.extensions import db
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
 
@@ -68,7 +69,7 @@ def join_majlis():
         )
         db.session.add(candidate)
         db.session.flush()
-        year = datetime.now().year
+        year = local_now().year
         candidate.registration_no = f"MAJ{year}{candidate.id:05d}"
 
     if participant_profile:
@@ -83,13 +84,13 @@ def join_majlis():
             phone=participant_phone,
             job=participant_job,
             address=participant_address,
-            join_date=datetime.now().date()
+            join_date=local_today()
         )
         db.session.add(participant_profile)
 
     parent.is_majlis_participant = True
     if not parent.majlis_join_date:
-        parent.majlis_join_date = datetime.now().date()
+        parent.majlis_join_date = local_today()
 
     try:
         db.session.commit()
@@ -165,7 +166,7 @@ def dashboard():
         unread_announcements_count = 0
 
     today_name_map = {0: 'Senin', 1: 'Selasa', 2: 'Rabu', 3: 'Kamis', 4: 'Jumat', 5: 'Sabtu', 6: 'Minggu'}
-    today_name = today_name_map[datetime.now().weekday()]
+    today_name = today_name_map[local_now().weekday()]
 
     todays_schedules = []
     if student.current_class_id:
@@ -215,7 +216,7 @@ def dashboard():
     boarding_attendances = []
     boarding_recap = {'hadir': 0, 'sakit': 0, 'izin': 0, 'alpa': 0}
     if is_boarding_student:
-        today = datetime.now().date()
+        today = local_today()
         boarding_attendances = BoardingAttendance.query.join(
             BoardingActivitySchedule,
             BoardingAttendance.schedule_id == BoardingActivitySchedule.id
@@ -291,7 +292,7 @@ def majlis_dashboard():
             address=parent.address,
             job=parent.job,
             majlis_class_id=parent.majlis_class_id,
-            join_date=parent.majlis_join_date or datetime.now().date()
+            join_date=parent.majlis_join_date or local_today()
         )
         db.session.add(participant_profile)
         db.session.commit()
@@ -304,3 +305,4 @@ def majlis_dashboard():
 @role_required(UserRole.WALI_MURID)
 def majlis_activities():
     return redirect(url_for('main.majlis_dashboard'))
+

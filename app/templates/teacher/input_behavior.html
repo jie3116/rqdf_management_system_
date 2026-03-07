@@ -51,7 +51,7 @@
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label fw-bold">Tanggal Laporan</label>
-                                <input type="date" name="report_date" class="form-control" value="{{ datetime.now().strftime('%Y-%m-%d') }}" required>
+                                <input type="date" name="report_date" class="form-control" value="{{ local_today().strftime('%Y-%m-%d') }}" required>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label fw-bold">Jenis Laporan</label>
@@ -133,3 +133,4 @@
     {% endif %}
 </div>
 {% endblock %}
+
