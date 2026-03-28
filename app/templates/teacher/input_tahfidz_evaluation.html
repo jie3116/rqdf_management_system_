@@ -32,8 +32,9 @@
                     <h6 class="m-0 fw-bold"><i class="fas fa-clipboard-check me-2"></i>Form Evaluasi Tahfidz</h6>
                 </div>
                 <div class="card-body">
-                    <form method="POST">
+                    <form method="POST" id="evaluation-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" name="class_id" value="{{ selected_class.id }}">
 
                         <div class="mb-3">
                             <label class="fw-bold small">Nama Santri</label>
@@ -51,60 +52,49 @@
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="fw-bold small">Periode Evaluasi</label>
-                                <select name="period_type" class="form-select" required>
+                                <select name="period_type" id="period_type" class="form-select" required>
                                     {% for period in EvaluationPeriod %}
                                     <option value="{{ period.name }}">{{ period.value }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label class="fw-bold small">Keterangan (contoh: Juli 2024)</label>
-                                <input type="text" name="period_label" class="form-control" placeholder="Bulan / Semester">
+                                <label id="period-label-text" class="fw-bold small">Pilih bulan</label>
+                                <select name="period_label" id="period_label" class="form-select" required></select>
                             </div>
                         </div>
 
                         <div class="card border-0 bg-light mb-3">
                             <div class="card-body">
-                                <h6 class="fw-bold mb-3">Komponen Penilaian</h6>
-                                <div class="row g-3">
-                                    <div class="col-md-3">
-                                        <label class="small fw-bold text-muted">Kesalahan Tajwid</label>
-                                        <div class="input-group">
-                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="tajwid_errors" data-step="-1">-</button>
-                                            <input type="number" name="tajwid_errors" id="tajwid_errors" class="form-control text-center" value="0" min="0">
-                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="tajwid_errors" data-step="1">+</button>
-                                        </div>
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <div>
+                                        <h6 class="fw-bold mb-1">Pertanyaan Uji</h6>
+                                        <small class="text-muted">Setiap soal menyimpan surah, ayat yang diuji, dan nilai per soal.</small>
                                     </div>
-                                    <div class="col-md-3">
-                                        <label class="small fw-bold text-muted">Kesalahan Makhraj</label>
-                                        <div class="input-group">
-                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="makhraj_errors" data-step="-1">-</button>
-                                            <input type="number" name="makhraj_errors" id="makhraj_errors" class="form-control text-center" value="0" min="0">
-                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="makhraj_errors" data-step="1">+</button>
+                                    <button type="button" id="add-question-btn" class="btn btn-outline-warning btn-sm">
+                                        <i class="fas fa-plus me-1"></i>Tambah Pertanyaan
+                                    </button>
+                                </div>
+
+                                <div id="question-list" class="d-grid gap-3"></div>
+
+                                <div class="mt-3 p-3 rounded border bg-white">
+                                    <div class="row align-items-center">
+                                        <div class="col-md-8">
+                                            <div class="fw-bold">Nilai akhir</div>
+                                            <small class="text-muted">Nilai akhir otomatis dihitung dari rata-rata nilai semua soal.</small>
                                         </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <label class="small fw-bold text-muted">Kesalahan Harakat</label>
-                                        <div class="input-group">
-                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="harakat_errors" data-step="-1">-</button>
-                                            <input type="number" name="harakat_errors" id="harakat_errors" class="form-control text-center" value="0" min="0">
-                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="harakat_errors" data-step="1">+</button>
+                                        <div class="col-md-4 mt-2 mt-md-0">
+                                            <input type="text" id="score_preview" class="form-control text-center fw-bold" value="0.00" readonly>
                                         </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <label class="small fw-bold text-muted">Kesalahan Tahfidz</label>
-                                        <div class="input-group">
-                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="tahfidz_errors" data-step="-1">-</button>
-                                            <input type="number" name="tahfidz_errors" id="tahfidz_errors" class="form-control text-center" value="0" min="0">
-                                            <button class="btn btn-outline-secondary btn-counter" type="button" data-target="tahfidz_errors" data-step="1">+</button>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <label class="small fw-bold text-muted">Nilai (100 - 2×kesalahan)</label>
-                                        <input type="number" id="score_preview" class="form-control text-center fw-bold" value="100" readonly>
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="small text-muted">Keterangan materi uji</label>
+                            <textarea name="question_details" class="form-control" rows="2" placeholder="Contoh: Sambung ayat, tebak lanjutan ayat, atau baca acak."></textarea>
                         </div>
 
                         <div class="mb-3">
@@ -123,7 +113,7 @@
         <div class="col-lg-4">
             <div class="alert alert-info">
                 <i class="fas fa-info-circle me-2"></i>
-                Pilih <strong>Halaqoh</strong> di atas terlebih dahulu, maka daftar santri yang muncul hanya yang ada di halaqoh tersebut.
+                Tambahkan soal satu per satu sesuai ayat yang diuji. Nilai akhir akan dihitung otomatis dari rata-rata nilai seluruh pertanyaan.
             </div>
         </div>
     </div>
@@ -136,39 +126,204 @@
 </div>
 
 <script>
+    const quranData = [
+        {no:1, name:"Al-Fatihah", ayat:7}, {no:2, name:"Al-Baqarah", ayat:286}, {no:3, name:"Ali 'Imran", ayat:200},
+        {no:4, name:"An-Nisa'", ayat:176}, {no:5, name:"Al-Ma'idah", ayat:120}, {no:6, name:"Al-An'am", ayat:165},
+        {no:7, name:"Al-A'raf", ayat:206}, {no:8, name:"Al-Anfal", ayat:75}, {no:9, name:"At-Taubah", ayat:129},
+        {no:10, name:"Yunus", ayat:109}, {no:11, name:"Hud", ayat:123}, {no:12, name:"Yusuf", ayat:111},
+        {no:13, name:"Ar-Ra'd", ayat:43}, {no:14, name:"Ibrahim", ayat:52}, {no:15, name:"Al-Hijr", ayat:99},
+        {no:16, name:"An-Nahl", ayat:128}, {no:17, name:"Al-Isra", ayat:111}, {no:18, name:"Al-Kahf", ayat:110},
+        {no:19, name:"Maryam", ayat:98}, {no:20, name:"Taha", ayat:135}, {no:21, name:"Al-Anbiya", ayat:112},
+        {no:22, name:"Al-Hajj", ayat:78}, {no:23, name:"Al-Mu'minun", ayat:118}, {no:24, name:"An-Nur", ayat:64},
+        {no:25, name:"Al-Furqan", ayat:77}, {no:26, name:"Asy-Syu'ara", ayat:227}, {no:27, name:"An-Naml", ayat:93},
+        {no:28, name:"Al-Qasas", ayat:88}, {no:29, name:"Al-'Ankabut", ayat:69}, {no:30, name:"Ar-Rum", ayat:60},
+        {no:31, name:"Luqman", ayat:34}, {no:32, name:"As-Sajdah", ayat:30}, {no:33, name:"Al-Ahzab", ayat:73},
+        {no:34, name:"Saba", ayat:54}, {no:35, name:"Fatir", ayat:45}, {no:36, name:"Yasin", ayat:83},
+        {no:37, name:"As-Saffat", ayat:182}, {no:38, name:"Sad", ayat:88}, {no:39, name:"Az-Zumar", ayat:75},
+        {no:40, name:"Ghafir", ayat:85}, {no:41, name:"Fussilat", ayat:54}, {no:42, name:"Asy-Syura", ayat:53},
+        {no:43, name:"Az-Zukhruf", ayat:89}, {no:44, name:"Ad-Dukhan", ayat:59}, {no:45, name:"Al-Jasiyah", ayat:37},
+        {no:46, name:"Al-Ahqaf", ayat:35}, {no:47, name:"Muhammad", ayat:38}, {no:48, name:"Al-Fath", ayat:29},
+        {no:49, name:"Al-Hujurat", ayat:18}, {no:50, name:"Qaf", ayat:45}, {no:51, name:"Az-Zariyat", ayat:60},
+        {no:52, name:"At-Tur", ayat:49}, {no:53, name:"An-Najm", ayat:62}, {no:54, name:"Al-Qamar", ayat:55},
+        {no:55, name:"Ar-Rahman", ayat:78}, {no:56, name:"Al-Waqi'ah", ayat:96}, {no:57, name:"Al-Hadid", ayat:29},
+        {no:58, name:"Al-Mujadilah", ayat:22}, {no:59, name:"Al-Hasyr", ayat:24}, {no:60, name:"Al-Mumtahanah", ayat:13},
+        {no:61, name:"As-Saff", ayat:14}, {no:62, name:"Al-Jumu'ah", ayat:11}, {no:63, name:"Al-Munafiqun", ayat:11},
+        {no:64, name:"At-Tagabun", ayat:18}, {no:65, name:"At-Talaq", ayat:12}, {no:66, name:"At-Tahrim", ayat:12},
+        {no:67, name:"Al-Mulk", ayat:30}, {no:68, name:"Al-Qalam", ayat:52}, {no:69, name:"Al-Haqqah", ayat:52},
+        {no:70, name:"Al-Ma'arij", ayat:44}, {no:71, name:"Nuh", ayat:28}, {no:72, name:"Al-Jinn", ayat:28},
+        {no:73, name:"Al-Muzzammil", ayat:20}, {no:74, name:"Al-Muddassir", ayat:56}, {no:75, name:"Al-Qiyamah", ayat:40},
+        {no:76, name:"Al-Insan", ayat:31}, {no:77, name:"Al-Mursalat", ayat:50}, {no:78, name:"An-Naba", ayat:40},
+        {no:79, name:"An-Nazi'at", ayat:46}, {no:80, name:"Abasa", ayat:42}, {no:81, name:"At-Takwir", ayat:29},
+        {no:82, name:"Al-Infitar", ayat:19}, {no:83, name:"Al-Mutaffifin", ayat:36}, {no:84, name:"Al-Insyiqaq", ayat:25},
+        {no:85, name:"Al-Buruj", ayat:22}, {no:86, name:"At-Tariq", ayat:17}, {no:87, name:"Al-A'la", ayat:19},
+        {no:88, name:"Al-Gasyiyah", ayat:26}, {no:89, name:"Al-Fajr", ayat:30}, {no:90, name:"Al-Balad", ayat:20},
+        {no:91, name:"Asy-Syams", ayat:15}, {no:92, name:"Al-Lail", ayat:21}, {no:93, name:"Ad-Duha", ayat:11},
+        {no:94, name:"Asy-Syarh", ayat:8}, {no:95, name:"At-Tin", ayat:8}, {no:96, name:"Al-'Alaq", ayat:19},
+        {no:97, name:"Al-Qadr", ayat:5}, {no:98, name:"Al-Bayyinah", ayat:8}, {no:99, name:"Az-Zalzalah", ayat:8},
+        {no:100, name:"Al-'Adiyat", ayat:11}, {no:101, name:"Al-Qari'ah", ayat:11}, {no:102, name:"At-Takathur", ayat:8},
+        {no:103, name:"Al-'Asr", ayat:3}, {no:104, name:"Al-Humazah", ayat:9}, {no:105, name:"Al-Fil", ayat:5},
+        {no:106, name:"Quraish", ayat:4}, {no:107, name:"Al-Ma'un", ayat:7}, {no:108, name:"Al-Kawthar", ayat:3},
+        {no:109, name:"Al-Kafirun", ayat:6}, {no:110, name:"An-Nasr", ayat:3}, {no:111, name:"Al-Masad", ayat:5},
+        {no:112, name:"Al-Ikhlas", ayat:4}, {no:113, name:"Al-Falaq", ayat:5}, {no:114, name:"An-Nas", ayat:6}
+    ];
+
+    const periodOptions = {
+        BULANAN: [
+            "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+            "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+        ],
+        TENGAH_SEMESTER: [
+            "Tengah Semester 1", "Tengah Semester 2", "Tengah Semester 3", "Tengah Semester 4"
+        ],
+        SEMESTER: [
+            "Semester 1", "Semester 2"
+        ]
+    };
+
+    const periodLabels = {
+        BULANAN: "Pilih bulan",
+        TENGAH_SEMESTER: "Periode tengah semester",
+        SEMESTER: "Pilih semester"
+    };
+
+    function surahOptionsHtml(selectedValue = "") {
+        const options = ['<option value="">-- Pilih Surah --</option>'];
+        quranData.forEach((surah) => {
+            const selected = selectedValue === surah.name ? 'selected' : '';
+            options.push(`<option value="${surah.name}" data-ayat="${surah.ayat}" ${selected}>${surah.no}. ${surah.name}</option>`);
+        });
+        return options.join("");
+    }
+
     document.addEventListener("DOMContentLoaded", function() {
-        const tajwidInput = document.getElementById("tajwid_errors");
-        const makhrajInput = document.getElementById("makhraj_errors");
-        const harakatInput = document.getElementById("harakat_errors");
-        const tahfidzInput = document.getElementById("tahfidz_errors");
+        const periodType = document.getElementById("period_type");
+        const periodLabel = document.getElementById("period_label");
+        const periodLabelText = document.getElementById("period-label-text");
+        const addQuestionButton = document.getElementById("add-question-btn");
+        const questionList = document.getElementById("question-list");
         const scorePreview = document.getElementById("score_preview");
 
-        function updateScore() {
-            const tajwid = parseInt(tajwidInput.value || "0", 10);
-            const makhraj = parseInt(makhrajInput.value || "0", 10);
-            const harakat = parseInt(harakatInput.value || "0", 10);
-            const tahfidz = parseInt(tahfidzInput.value || "0", 10);
-            const total = tajwid + makhraj + harakat + tahfidz;
-            const score = Math.max(0, 100 - (total * 2));
-            scorePreview.value = score;
+        if (!periodType || !periodLabel || !periodLabelText || !addQuestionButton || !questionList || !scorePreview) {
+            return;
         }
 
-        document.querySelectorAll(".btn-counter").forEach(button => {
-            button.addEventListener("click", function() {
-                const target = document.getElementById(this.dataset.target);
-                const step = parseInt(this.dataset.step, 10);
-                const current = parseInt(target.value || "0", 10);
-                const next = Math.max(0, current + step);
-                target.value = next;
-                updateScore();
+        function updatePeriodOptions(forceReset = false) {
+            const type = periodType.value;
+            const options = periodOptions[type] || [];
+            const currentValue = periodLabel.value;
+            periodLabel.innerHTML = "";
+            options.forEach((item) => {
+                const option = new Option(item, item);
+                periodLabel.add(option);
             });
-        });
+            periodLabelText.textContent = periodLabels[type] || "Label periode";
+            if (!options.length) {
+                return;
+            }
+            if (!forceReset && options.includes(currentValue)) {
+                periodLabel.value = currentValue;
+                return;
+            }
+            periodLabel.value = options[0];
+        }
 
-        [tajwidInput, makhrajInput, harakatInput, tahfidzInput].forEach(input => {
-            input.addEventListener("input", updateScore);
-        });
+        function updateQuestionNumbers() {
+            questionList.querySelectorAll("[data-question-card]").forEach((card, index) => {
+                const title = card.querySelector("[data-question-title]");
+                if (title) {
+                    title.textContent = `Soal ${index + 1}`;
+                }
+            });
+        }
 
-        updateScore();
+        function updateScorePreview() {
+            const values = Array.from(document.querySelectorAll('input[name="question_score[]"]'))
+                .map((input) => parseFloat(input.value || ""))
+                .filter((value) => !Number.isNaN(value));
+            if (!values.length) {
+                scorePreview.value = "0.00";
+                return;
+            }
+            const total = values.reduce((sum, value) => sum + value, 0);
+            scorePreview.value = (total / values.length).toFixed(2);
+        }
+
+        function bindQuestionCard(card) {
+            const removeButton = card.querySelector("[data-remove-question]");
+            const scoreInput = card.querySelector('input[name="question_score[]"]');
+            const ayatInput = card.querySelector('input[name="question_ayat[]"]');
+            const surahSelect = card.querySelector('select[name="question_surah[]"]');
+            const maxAyatInfo = card.querySelector("[data-max-ayat]");
+
+            function updateMaxAyat() {
+                const selectedOption = surahSelect.options[surahSelect.selectedIndex];
+                const maxAyat = selectedOption ? selectedOption.getAttribute("data-ayat") : null;
+                maxAyatInfo.textContent = maxAyat
+                    ? `Jumlah ayat surah terpilih: ${maxAyat} ayat`
+                    : "Pilih surah untuk melihat jumlah ayat.";
+                if (ayatInput.value && maxAyat && parseInt(ayatInput.value, 10) > parseInt(maxAyat, 10)) {
+                    ayatInput.value = maxAyat;
+                }
+            }
+
+            removeButton.addEventListener("click", function() {
+                if (questionList.children.length <= 1) {
+                    return;
+                }
+                card.remove();
+                updateQuestionNumbers();
+                updateScorePreview();
+            });
+
+            scoreInput.addEventListener("input", updateScorePreview);
+            surahSelect.addEventListener("change", updateMaxAyat);
+            updateMaxAyat();
+        }
+
+        function addQuestionRow() {
+            const wrapper = document.createElement("div");
+            wrapper.setAttribute("data-question-card", "true");
+            wrapper.className = "border rounded p-3 bg-white";
+            wrapper.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="fw-bold" data-question-title>Soal</div>
+                    <button type="button" class="btn btn-outline-danger btn-sm" data-remove-question>
+                        <i class="fas fa-trash-alt me-1"></i>Hapus
+                    </button>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="small text-muted fw-bold">Surah yang diuji</label>
+                        <select name="question_surah[]" class="form-select" required>
+                            ${surahOptionsHtml()}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small text-muted fw-bold">Ayat</label>
+                        <input type="number" name="question_ayat[]" class="form-control" min="1" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small text-muted fw-bold">Nilai</label>
+                        <input type="number" name="question_score[]" class="form-control" min="0" max="100" step="0.01" required>
+                    </div>
+                    <div class="col-12">
+                        <small class="text-muted" data-max-ayat>Pilih surah untuk melihat jumlah ayat.</small>
+                    </div>
+                </div>
+            `;
+            questionList.appendChild(wrapper);
+            bindQuestionCard(wrapper);
+            updateQuestionNumbers();
+            updateScorePreview();
+        }
+
+        periodType.addEventListener("change", function() {
+            updatePeriodOptions(true);
+        });
+        addQuestionButton.addEventListener("click", addQuestionRow);
+
+        updatePeriodOptions(true);
+        addQuestionRow();
     });
 </script>
 {% endblock %}

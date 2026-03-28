@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 from collections import defaultdict
+import json
 from app.models import (
     Teacher, Student, ClassRoom, TahfidzRecord, TahfidzSummary, RecitationRecord,
     TahfidzEvaluation, TahfidzType, RecitationSource, ParticipantType, Grade,
@@ -39,6 +40,45 @@ def _get_teacher_classes(teacher):
     return list(classes)
 
 
+def _is_tahfidz_related_schedule(schedule):
+    labels = []
+    if schedule.subject and schedule.subject.name:
+        labels.append(schedule.subject.name)
+    if schedule.majlis_subject and schedule.majlis_subject.name:
+        labels.append(schedule.majlis_subject.name)
+    haystack = ' '.join(labels).lower()
+    keywords = [
+        'tahfidz',
+        'tahsin',
+        'tajwid',
+        'quran',
+        "qur'an",
+        'al-qur',
+        'tilawah',
+        'bacaan',
+    ]
+    return any(keyword in haystack for keyword in keywords)
+
+
+def _get_teacher_tahfidz_classes(teacher):
+    classes = []
+    seen_ids = set()
+    schedules = Schedule.query.filter_by(
+        teacher_id=teacher.id,
+        is_deleted=False,
+    ).order_by(Schedule.day.asc(), Schedule.start_time.asc()).all()
+    for schedule in schedules:
+        if not schedule.class_room or schedule.class_room.is_deleted:
+            continue
+        if not _is_tahfidz_related_schedule(schedule):
+            continue
+        if schedule.class_id in seen_ids:
+            continue
+        seen_ids.add(schedule.class_id)
+        classes.append(schedule.class_room)
+    return classes
+
+
 def _get_class_participants(class_id):
     students = Student.query.filter_by(
         current_class_id=class_id,
@@ -61,18 +101,33 @@ def _parse_participant_key(participant_key):
             participant_id = int(raw_id)
         except ValueError:
             return None, None
-
         if prefix == 'S':
             return ParticipantType.STUDENT, participant_id
         if prefix == 'M':
             return ParticipantType.EXTERNAL_MAJLIS, participant_id
         return None, None
 
-    # Backward-compatible: nilai lama hanya student_id integer
     try:
         return ParticipantType.STUDENT, int(participant_key)
     except (TypeError, ValueError):
         return None, None
+
+
+def _evaluation_period_labels(period_type):
+    mapping = {
+        'BULANAN': [
+            'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+        ],
+        'TENGAH_SEMESTER': [
+            'Tengah Semester 1',
+            'Tengah Semester 2',
+            'Tengah Semester 3',
+            'Tengah Semester 4',
+        ],
+        'SEMESTER': ['Semester 1', 'Semester 2'],
+    }
+    return mapping.get((period_type or '').strip().upper(), [])
 
 
 def _build_participant_rows(students, majlis_participants):
@@ -628,7 +683,7 @@ def attendance_history():
 @role_required(UserRole.GURU)
 def input_tahfidz():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
-    my_classes = _get_teacher_classes(teacher)
+    my_classes = _get_teacher_tahfidz_classes(teacher)
 
     selected_class_id = request.args.get('class_id', type=int)
     students = []
@@ -748,7 +803,7 @@ def input_tahfidz():
 @role_required(UserRole.GURU)
 def input_recitation():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
-    my_classes = _get_teacher_classes(teacher)
+    my_classes = _get_teacher_tahfidz_classes(teacher)
 
     selected_class_id = request.args.get('class_id', type=int)
     students = []
@@ -898,7 +953,7 @@ def input_recitation():
 @role_required(UserRole.GURU)
 def input_tahfidz_evaluation():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
-    my_classes = _get_teacher_classes(teacher)
+    my_classes = _get_teacher_tahfidz_classes(teacher)
 
     selected_class_id = request.args.get('class_id', type=int)
     students = []
@@ -918,6 +973,7 @@ def input_tahfidz_evaluation():
         participant_type, participant_id = _parse_participant_key(request.form.get('student_id'))
         period_type = request.form.get('period_type')
         period_label = request.form.get('period_label')
+        question_details = request.form.get('question_details')
         notes = request.form.get('notes')
 
         active_class_id = form_class_id or selected_class_id
@@ -928,6 +984,9 @@ def input_tahfidz_evaluation():
 
         if period_type not in [p.name for p in EvaluationPeriod]:
             flash("Periode evaluasi tidak valid.", "danger")
+            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+        if period_label not in _evaluation_period_labels(period_type):
+            flash("Label periode evaluasi tidak valid.", "danger")
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         student_id = participant_id if participant_type == ParticipantType.STUDENT else None
@@ -959,8 +1018,42 @@ def input_tahfidz_evaluation():
             flash("Input jumlah kesalahan harus berupa angka.", "danger")
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
-        total_errors = makhraj_errors + tajwid_errors + harakat_errors + tahfidz_errors
-        score = max(0, 100 - (total_errors * 2))
+        question_surahs = request.form.getlist('question_surah[]')
+        question_ayats = request.form.getlist('question_ayat[]')
+        question_scores = request.form.getlist('question_score[]')
+        if not (
+            len(question_surahs) == len(question_ayats) == len(question_scores)
+        ):
+            flash("Setiap pertanyaan harus memiliki surah, ayat, dan nilai.", "danger")
+            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+        normalized_questions = []
+        try:
+            for surah, ayat_raw, score_raw in zip(question_surahs, question_ayats, question_scores):
+                surah = (surah or '').strip()
+                ayat = int(ayat_raw or 0)
+                score_value = float(score_raw or 0)
+                if not surah or ayat < 1 or score_value < 0 or score_value > 100:
+                    raise ValueError
+                normalized_questions.append({
+                    'surah': surah,
+                    'ayat': ayat,
+                    'score': round(score_value, 2),
+                })
+        except ValueError:
+            flash("Setiap pertanyaan harus memiliki surah, ayat, dan nilai yang valid.", "danger")
+            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+
+        if not normalized_questions:
+            flash("Tambahkan minimal satu pertanyaan evaluasi.", "danger")
+            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+
+        question_count = len(normalized_questions)
+        score = round(sum(item['score'] for item in normalized_questions) / question_count, 2)
+        first_question = normalized_questions[0]
+        last_question = normalized_questions[-1]
+        summary_surah = first_question['surah']
+        if any(item['surah'] != summary_surah for item in normalized_questions[1:]):
+            summary_surah = f"{summary_surah} - {last_question['surah']}"
 
         new_evaluation = TahfidzEvaluation(
             student_id=student_id,
@@ -969,6 +1062,12 @@ def input_tahfidz_evaluation():
             teacher_id=teacher.id,
             period_type=EvaluationPeriod[period_type],
             period_label=period_label,
+            question_count=question_count,
+            question_details=question_details,
+            question_items=json.dumps(normalized_questions),
+            surah=summary_surah,
+            ayat_start=first_question['ayat'],
+            ayat_end=last_question['ayat'],
             makhraj_errors=makhraj_errors,
             tajwid_errors=tajwid_errors,
             harakat_errors=harakat_errors,
