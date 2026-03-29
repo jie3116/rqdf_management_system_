@@ -220,6 +220,8 @@
                             <th>Tanggal</th>
                             <th>Periode</th>
                             <th>Label</th>
+                            <th>Cakupan Uji</th>
+                            <th>Pertanyaan</th>
                             <th>Nilai</th>
                             <th>Catatan</th>
                         </tr>
@@ -230,6 +232,11 @@
                             <td>{{ row.date.strftime('%d/%m/%Y %H:%M') if row.date else '-' }}</td>
                             <td>{{ row.period_type.value if row.period_type else '-' }}</td>
                             <td>{{ row.period_label or '-' }}</td>
+                            <td>{{ row.surah or '-' }}{% if row.ayat_start and row.ayat_end %} ({{ row.ayat_start }}-{{ row.ayat_end }}){% endif %}</td>
+                            <td>
+                                {{ row.question_count or '-' }}
+                                {% if row.question_details %}<br><small class="text-muted">{{ row.question_details }}</small>{% endif %}
+                            </td>
                             <td class="fw-bold">{{ row.score or '-' }}</td>
                             <td>{{ row.notes or '-' }}</td>
                         </tr>
