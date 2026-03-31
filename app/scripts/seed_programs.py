@@ -52,6 +52,14 @@ PROGRAM_DEFINITIONS = (
         "report_schema": "MAJLIS",
         "organization_unit": "MAJLIS",
     },
+    {
+        "code": "BAHASA",
+        "name": "Program Bahasa",
+        "category": ProgramCategory.NON_FORMAL,
+        "education_level": None,
+        "report_schema": "BAHASA",
+        "organization_unit": "BAHASA",
+    },
 )
 
 
