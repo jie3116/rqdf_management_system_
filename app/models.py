@@ -128,6 +128,55 @@ class EducationLevel(enum.Enum):
     SMA = "SMA"
 
 
+class TenantStatus(enum.Enum):
+    ACTIVE = "Active"
+    SUSPENDED = "Suspended"
+    ARCHIVED = "Archived"
+
+
+class PersonKind(enum.Enum):
+    STUDENT = "Student"
+    PARENT = "Parent"
+    EXTERNAL = "External"
+    STAFF = "Staff"
+
+
+class ProgramCategory(enum.Enum):
+    FORMAL = "Formal"
+    NON_FORMAL = "Non Formal"
+
+
+class EnrollmentStatus(enum.Enum):
+    ACTIVE = "Active"
+    INACTIVE = "Inactive"
+    GRADUATED = "Graduated"
+    LEFT = "Left"
+    COMPLETED = "Completed"
+
+
+class GroupType(enum.Enum):
+    CLASS = "Class"
+    HALAQAH = "Halaqah"
+    MAJLIS_CLASS = "Majlis Class"
+    DORMITORY = "Dormitory"
+    ACTIVITY_GROUP = "Activity Group"
+
+
+class MembershipStatus(enum.Enum):
+    ACTIVE = "Active"
+    LEFT = "Left"
+    MOVED = "Moved"
+    COMPLETED = "Completed"
+
+
+class AssignmentRole(enum.Enum):
+    HOMEROOM = "Homeroom"
+    SUBJECT_TEACHER = "Subject Teacher"
+    MURABBI = "Murabbi"
+    MUSYRIF = "Musyrif"
+    PEMBINA = "Pembina"
+
+
 class ScholarshipCategory(enum.Enum):
     NON_BEASISWA = "Non Beasiswa / Reguler"
     TAHFIDZ_5_JUZ = "Beasiswa 5 Juz"
@@ -260,12 +309,28 @@ class SchoolDocument(BaseModel):
     vector_id = db.Column(db.String(100), nullable=True)
 
 
+class Tenant(BaseModel):
+    __tablename__ = 'tenants'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    slug = db.Column(db.String(80), nullable=False, unique=True, index=True)
+    code = db.Column(db.String(50), nullable=False, unique=True, index=True)
+    status = db.Column(db.Enum(TenantStatus, name='tenantstatus'), default=TenantStatus.ACTIVE, nullable=False)
+    timezone = db.Column(db.String(50), default='Asia/Jakarta', nullable=False)
+    is_default = db.Column(db.Boolean, default=False, nullable=False)
+
+    users = db.relationship('User', backref='tenant', lazy='dynamic')
+    people = db.relationship('Person', backref='tenant', lazy='dynamic')
+    programs = db.relationship('Program', backref='tenant', lazy='dynamic')
+
+
 # ==========================================
 # 4. USERS & PROFILES
 # ==========================================
 class User(UserMixin, BaseModel):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
     username = db.Column(db.String(64), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256))
@@ -344,6 +409,30 @@ class MobileRateLimitBucket(db.Model):
     window_ends_at = db.Column(db.DateTime, nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=utc_now_naive, nullable=False)
     updated_at = db.Column(db.DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+class Person(BaseModel):
+    __tablename__ = 'people'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    person_code = db.Column(db.String(50), nullable=False)
+    full_name = db.Column(db.String(100), nullable=False)
+    gender = db.Column(db.Enum(Gender, name='gender'), nullable=True)
+    date_of_birth = db.Column(db.Date, nullable=True)
+    phone = db.Column(db.String(20), nullable=True, index=True)
+    address = db.Column(db.Text, nullable=True)
+    person_kind = db.Column(db.Enum(PersonKind, name='personkind'), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    user = db.relationship('User', backref=db.backref('person', uselist=False))
+    enrollments = db.relationship('ProgramEnrollment', backref='person', lazy='dynamic')
+    staff_assignments = db.relationship('StaffAssignment', backref='person', lazy='dynamic')
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'person_code', name='uq_people_tenant_person_code'),
+        db.UniqueConstraint('tenant_id', 'user_id', name='uq_people_tenant_user'),
+    )
 
 
 class UserRoleAssignment(BaseModel):
@@ -471,6 +560,112 @@ class Student(BaseModel):
 
     __table_args__ = (
         db.Index('idx_student_class_academic', 'current_class_id', 'created_at'),
+    )
+
+
+class Program(BaseModel):
+    __tablename__ = 'programs'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    code = db.Column(db.String(50), nullable=False)
+    name = db.Column(db.String(150), nullable=False)
+    category = db.Column(db.Enum(ProgramCategory, name='programcategory'), nullable=False)
+    education_level = db.Column(db.Enum(EducationLevel, name='educationlevel'), nullable=True)
+    report_schema = db.Column(db.String(50), nullable=False)
+    organization_unit = db.Column(db.String(100), nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    enrollments = db.relationship('ProgramEnrollment', backref='program', lazy='dynamic')
+    groups = db.relationship('ProgramGroup', backref='program', lazy='dynamic')
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'code', name='uq_programs_tenant_code'),
+        db.UniqueConstraint('tenant_id', 'name', name='uq_programs_tenant_name'),
+    )
+
+
+class ProgramEnrollment(BaseModel):
+    __tablename__ = 'program_enrollments'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    person_id = db.Column(db.Integer, db.ForeignKey('people.id'), nullable=False, index=True)
+    program_id = db.Column(db.Integer, db.ForeignKey('programs.id'), nullable=False, index=True)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'), nullable=True)
+    status = db.Column(db.Enum(EnrollmentStatus, name='enrollmentstatus'), default=EnrollmentStatus.ACTIVE, nullable=False)
+    join_date = db.Column(db.Date, default=local_today, nullable=False)
+    end_date = db.Column(db.Date, nullable=True)
+    origin_type = db.Column(db.String(30), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    tenant = db.relationship('Tenant', backref='program_enrollments')
+    academic_year = db.relationship('AcademicYear', backref='program_enrollments')
+    group_memberships = db.relationship('GroupMembership', backref='enrollment', lazy='dynamic')
+
+    __table_args__ = (
+        db.Index('idx_program_enrollment_active', 'tenant_id', 'program_id', 'status'),
+    )
+
+
+class ProgramGroup(BaseModel):
+    __tablename__ = 'program_groups'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    program_id = db.Column(db.Integer, db.ForeignKey('programs.id'), nullable=False, index=True)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'), nullable=True)
+    name = db.Column(db.String(100), nullable=False)
+    group_type = db.Column(db.Enum(GroupType, name='grouptype'), nullable=False)
+    level_label = db.Column(db.String(50), nullable=True)
+    gender_scope = db.Column(db.Enum(Gender, name='gender'), nullable=True)
+    capacity = db.Column(db.Integer, nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    tenant = db.relationship('Tenant', backref='program_groups')
+    academic_year = db.relationship('AcademicYear', backref='program_groups')
+    memberships = db.relationship('GroupMembership', backref='group', lazy='dynamic')
+    staff_assignments = db.relationship('StaffAssignment', backref='group', lazy='dynamic')
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'program_id', 'academic_year_id', 'name', name='uq_program_groups_scope'),
+    )
+
+
+class GroupMembership(BaseModel):
+    __tablename__ = 'group_memberships'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    enrollment_id = db.Column(db.Integer, db.ForeignKey('program_enrollments.id'), nullable=False, index=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('program_groups.id'), nullable=False, index=True)
+    status = db.Column(db.Enum(MembershipStatus, name='membershipstatus'), default=MembershipStatus.ACTIVE, nullable=False)
+    start_date = db.Column(db.Date, default=local_today, nullable=False)
+    end_date = db.Column(db.Date, nullable=True)
+    is_primary = db.Column(db.Boolean, default=False, nullable=False)
+
+    tenant = db.relationship('Tenant', backref='group_memberships')
+
+    __table_args__ = (
+        db.Index('idx_group_membership_active', 'tenant_id', 'group_id', 'status'),
+    )
+
+
+class StaffAssignment(BaseModel):
+    __tablename__ = 'staff_assignments'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    person_id = db.Column(db.Integer, db.ForeignKey('people.id'), nullable=False, index=True)
+    program_id = db.Column(db.Integer, db.ForeignKey('programs.id'), nullable=False, index=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('program_groups.id'), nullable=True, index=True)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'), nullable=True)
+    assignment_role = db.Column(db.Enum(AssignmentRole, name='assignmentrole'), nullable=False)
+    start_date = db.Column(db.Date, default=local_today, nullable=False)
+    end_date = db.Column(db.Date, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    tenant = db.relationship('Tenant', backref='staff_assignments')
+    program = db.relationship('Program', backref='staff_assignments')
+    academic_year = db.relationship('AcademicYear', backref='staff_assignments')
+
+    __table_args__ = (
+        db.Index('idx_staff_assignment_active', 'tenant_id', 'program_id', 'assignment_role'),
     )
 
 
