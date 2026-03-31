@@ -450,6 +450,7 @@ class Parent(BaseModel):
     __tablename__ = 'parents'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    person_id = db.Column(db.Integer, db.ForeignKey('people.id'), nullable=True, index=True)
     full_name = db.Column(db.String(100), nullable=False)
     phone = db.Column(db.String(20), nullable=False, index=True)
     address = db.Column(db.Text)
@@ -471,6 +472,7 @@ class MajlisParticipant(BaseModel):
     __tablename__ = 'majlis_participants'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    person_id = db.Column(db.Integer, db.ForeignKey('people.id'), nullable=True, index=True)
     full_name = db.Column(db.String(100), nullable=False)
     phone = db.Column(db.String(20), nullable=False, index=True)
     address = db.Column(db.Text)
@@ -486,6 +488,7 @@ class Teacher(BaseModel):
     __tablename__ = 'teachers'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
+    person_id = db.Column(db.Integer, db.ForeignKey('people.id'), nullable=True, unique=True, index=True)
     nip = db.Column(db.String(20), unique=True)
     full_name = db.Column(db.String(100))
     phone = db.Column(db.String(20))
@@ -500,6 +503,7 @@ class Staff(BaseModel):
     __tablename__ = 'staff'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    person_id = db.Column(db.Integer, db.ForeignKey('people.id'), nullable=True, unique=True, index=True)
     full_name = db.Column(db.String(100))
     position = db.Column(db.String(50))
 
@@ -508,6 +512,7 @@ class BoardingGuardian(BaseModel):
     __tablename__ = 'boarding_guardians'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
+    person_id = db.Column(db.Integer, db.ForeignKey('people.id'), nullable=True, unique=True, index=True)
     full_name = db.Column(db.String(100), nullable=False)
     phone = db.Column(db.String(20), nullable=True, index=True)
 
@@ -527,6 +532,7 @@ class Student(BaseModel):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     parent_id = db.Column(db.Integer, db.ForeignKey('parents.id'), nullable=True)
+    person_id = db.Column(db.Integer, db.ForeignKey('people.id'), nullable=True, unique=True, index=True)
     current_class_id = db.Column(db.Integer, db.ForeignKey('class_rooms.id'))
     nis = db.Column(db.String(20), unique=True, nullable=False, index=True)
     nisn = db.Column(db.String(20), unique=True, nullable=True, index=True)
