@@ -17,6 +17,7 @@ from sqlalchemy import and_, or_
 from app.extensions import db
 from app.forms import PPDBForm
 from app.decorators import role_required
+from app.services.majlis_enrollment_service import resolve_majlis_classroom
 from app.utils.timezone import local_now
 
 # Kita hapus import model Student, Tahfidz, Schedule dll karena tidak dipakai lagi di sini
@@ -47,7 +48,16 @@ main_bp = Blueprint('main', __name__)
 
 def _get_majlis_announcements(limit=None):
     profile = current_user.majlis_profile
+    parent_profile = current_user.parent_profile if current_user.has_role(UserRole.WALI_MURID) else None
     class_id = profile.majlis_class_id if profile else None
+
+    if class_id is None and profile and getattr(profile, "person_id", None):
+        majlis_class = resolve_majlis_classroom(current_user.tenant_id, profile.person_id)
+        class_id = majlis_class.id if majlis_class else None
+
+    if class_id is None and parent_profile and getattr(parent_profile, "person_id", None):
+        majlis_class = resolve_majlis_classroom(current_user.tenant_id, parent_profile.person_id)
+        class_id = majlis_class.id if majlis_class else None
 
     announcements, _ = get_announcements_for_dashboard(
         current_user,
@@ -174,9 +184,15 @@ def majlis_dashboard():
     recent_recitation = RecitationRecord.query.filter(or_(*recitation_filters)).order_by(RecitationRecord.date.desc()).limit(10).all()
     recent_evaluations = TahfidzEvaluation.query.filter(or_(*evaluation_filters)).order_by(TahfidzEvaluation.date.desc()).limit(10).all()
 
+    majlis_class = profile.majlis_class
+    if parent_profile and getattr(parent_profile, "person_id", None):
+        majlis_class = resolve_majlis_classroom(current_user.tenant_id, parent_profile.person_id) or majlis_class
+    if getattr(profile, "person_id", None):
+        majlis_class = resolve_majlis_classroom(current_user.tenant_id, profile.person_id) or majlis_class
+
     weekly_schedule = {day: [] for day in ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']}
-    if profile.majlis_class_id:
-        schedules = Schedule.query.filter_by(class_id=profile.majlis_class_id).order_by(Schedule.start_time).all()
+    if majlis_class:
+        schedules = Schedule.query.filter_by(class_id=majlis_class.id).order_by(Schedule.start_time).all()
         for sch in schedules:
             if sch.day in weekly_schedule:
                 weekly_schedule[sch.day].append(sch)
@@ -187,7 +203,7 @@ def majlis_dashboard():
     unread_announcements_count = 0
     _, unread_announcements_count = get_announcements_for_dashboard(
         current_user,
-        class_ids=[profile.majlis_class_id if profile else None],
+        class_ids=[majlis_class.id if majlis_class else None],
         user_ids=[current_user.id],
         program_types=[ProgramType.MAJLIS_TALIM.name],
         show_all=False
@@ -203,7 +219,7 @@ def majlis_dashboard():
         recent_tahfidz=recent_tahfidz,
         recent_recitation=recent_recitation,
         recent_evaluations=recent_evaluations,
-        majlis_class=profile.majlis_class,
+        majlis_class=majlis_class,
         weekly_schedule=weekly_schedule,
         majlis_announcements=majlis_announcements,
         show_all_announcements=show_all_announcements,
