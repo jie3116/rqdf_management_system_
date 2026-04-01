@@ -8,7 +8,7 @@ from sqlalchemy import func, or_, and_
 from openpyxl import load_workbook
 from app.extensions import db
 from app.decorators import role_required
-from app.services.majlis_enrollment_service import list_active_majlis_participants
+from app.services.majlis_enrollment_service import ensure_majlis_participant_acceptance, list_active_majlis_participants
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
@@ -1228,28 +1228,29 @@ def accept_candidate(candidate_id):
     try:
         # Jalur khusus peserta Majelis Ta'lim (tidak membuat akun siswa & tagihan)
         if calon.program_type == ProgramType.MAJLIS_TALIM:
-            majlis_user = User.query.filter_by(username=calon.parent_phone).first()
+            nomor_majelis = calon.personal_phone or calon.parent_phone
+            if not nomor_majelis:
+                raise ValueError('Nomor WhatsApp peserta Majelis tidak ditemukan.')
+
+            majlis_user = User.query.filter_by(username=nomor_majelis).first()
             if not majlis_user:
                 majlis_user = User(
-                    username=calon.parent_phone,
+                    username=nomor_majelis,
                     email=f"majlis.{calon.id}@sekolah.id",
-                    password_hash=generate_password_hash(calon.parent_phone or "123456"),
+                    password_hash=generate_password_hash(nomor_majelis or "123456"),
                     role=UserRole.MAJLIS_PARTICIPANT,
                     must_change_password=True,
                 )
                 db.session.add(majlis_user)
                 db.session.flush()
 
-            if not majlis_user.majlis_profile:
-                db.session.add(
-                    MajlisParticipant(
-                        user_id=majlis_user.id,
-                        full_name=calon.full_name,
-                        phone=calon.parent_phone,
-                        address=calon.address,
-                        job=calon.personal_job,
-                    )
-                )
+            ensure_majlis_participant_acceptance(
+                user=majlis_user,
+                full_name=calon.full_name,
+                phone=nomor_majelis,
+                address=calon.address,
+                job=calon.personal_job,
+            )
 
             calon.status = RegistrationStatus.ACCEPTED
             db.session.commit()

@@ -9,6 +9,7 @@ from app.decorators import role_required
 from app.forms import PaymentForm, StudentForm  # Pastikan import ini ada
 from app.services.majlis_enrollment_service import (
     assign_majlis_class,
+    ensure_majlis_participant_acceptance,
     list_active_majlis_participants,
     sync_majlis_participant_profile,
 )
@@ -804,14 +805,13 @@ def accept_candidate(candidate_id):
                 db.session.add(majlis_user)
                 db.session.flush()
 
-            if not majlis_user.majlis_profile:
-                db.session.add(MajlisParticipant(
-                    user_id=majlis_user.id,
-                    full_name=calon.full_name,
-                    phone=nomor_majelis,
-                    address=calon.address,
-                    job=calon.personal_job,
-                ))
+            ensure_majlis_participant_acceptance(
+                user=majlis_user,
+                full_name=calon.full_name,
+                phone=nomor_majelis,
+                address=calon.address,
+                job=calon.personal_job,
+            )
 
             calon.status = RegistrationStatus.ACCEPTED
             db.session.commit()
