@@ -525,6 +525,7 @@ class BoardingDormitory(BaseModel):
     capacity = db.Column(db.Integer, nullable=True)
     description = db.Column(db.Text, nullable=True)
     guardian_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    program_group_id = db.Column(db.Integer, db.ForeignKey('program_groups.id'), nullable=True, unique=True, index=True)
 
 
 class Student(BaseModel):
@@ -692,6 +693,7 @@ class ClassRoom(BaseModel):
     name = db.Column(db.String(50), nullable=False)
     grade_level = db.Column(db.Integer, nullable=True)
     homeroom_teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'))
+    program_group_id = db.Column(db.Integer, db.ForeignKey('program_groups.id'), nullable=True, unique=True, index=True)
 
     # BARU: Tipe kelas
     class_type = db.Column(db.Enum(ClassType, name='classtype'), default=ClassType.REGULAR)

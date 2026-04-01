@@ -17,7 +17,7 @@ from app.models import (
 def _tenant_id_from_user(user_id):
     if not user_id:
         return None
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     return user.tenant_id if user else None
 
 
@@ -33,7 +33,7 @@ def _resolve_tenant_id(profile):
         return tenant_id
 
     if isinstance(profile, Student) and profile.parent_id:
-        parent = Parent.query.get(profile.parent_id)
+        parent = db.session.get(Parent, profile.parent_id)
         if parent and parent.user_id:
             tenant_id = _tenant_id_from_user(parent.user_id)
             if tenant_id is not None:
@@ -130,7 +130,7 @@ def backfill_people():
             if tenant_id is None:
                 stats["skipped"] += 1
                 continue
-            person = _ensure_person(tenant_id, teacher, PersonKind.STAFF, "STAFF")
+            person = _ensure_person(tenant_id, teacher, PersonKind.STAFF, "TEACHER")
             _flush_and_attach(teacher, person)
             stats["teachers"] += 1
 
@@ -150,7 +150,7 @@ def backfill_people():
             if tenant_id is None:
                 stats["skipped"] += 1
                 continue
-            person = _ensure_person(tenant_id, guardian, PersonKind.STAFF, "STAFF")
+            person = _ensure_person(tenant_id, guardian, PersonKind.STAFF, "GUARDIAN")
             _flush_and_attach(guardian, person)
             stats["guardians"] += 1
 
