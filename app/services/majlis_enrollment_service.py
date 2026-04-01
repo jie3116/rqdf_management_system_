@@ -4,6 +4,7 @@ from sqlalchemy import or_
 
 from app.extensions import db
 from app.models import (
+    AcademicYear,
     ClassRoom,
     EnrollmentStatus,
     GroupMembership,
@@ -13,6 +14,8 @@ from app.models import (
     PersonKind,
     Program,
     ProgramEnrollment,
+    Tenant,
+    User,
     local_today,
 )
 
@@ -184,4 +187,96 @@ def sync_majlis_participant_profile(participant, full_name, phone, address):
         person.phone = phone
         person.address = address or None
 
+    return participant
+
+
+def _default_tenant():
+    return Tenant.query.filter_by(is_default=True).first()
+
+
+def _active_academic_year():
+    return AcademicYear.query.filter_by(is_active=True).first()
+
+
+def _majlis_program(tenant_id):
+    return Program.query.filter_by(tenant_id=tenant_id, code="MAJLIS_TALIM", is_deleted=False).first()
+
+
+def _ensure_person_for_majlis_user(user, full_name, phone, address):
+    person = user.person
+    tenant_id = user.tenant_id
+    if tenant_id is None:
+        tenant = _default_tenant()
+        tenant_id = tenant.id if tenant else None
+        user.tenant_id = tenant_id
+
+    if tenant_id is None:
+        raise RuntimeError("Tenant default tidak ditemukan untuk peserta majlis.")
+
+    if person is None:
+        person = Person.query.filter_by(tenant_id=tenant_id, user_id=user.id, is_deleted=False).first()
+
+    if person is None:
+        person = Person(
+            tenant_id=tenant_id,
+            user_id=user.id,
+            person_code=f"EXTERNAL-{user.id}",
+            person_kind=PersonKind.EXTERNAL,
+        )
+        db.session.add(person)
+
+    person.full_name = full_name
+    person.phone = phone
+    person.address = address or None
+    person.is_active = True
+    db.session.flush()
+    return person
+
+
+def ensure_majlis_participant_acceptance(user, full_name, phone, address, job=None, class_id=None, join_date=None):
+    participant = user.majlis_profile
+    if participant is None:
+        participant = MajlisParticipant(user_id=user.id)
+        db.session.add(participant)
+
+    participant.full_name = full_name
+    participant.phone = phone
+    participant.address = address or None
+    participant.job = job or None
+    participant.join_date = join_date or participant.join_date or local_today()
+    participant.majlis_class_id = class_id
+
+    person = _ensure_person_for_majlis_user(user, full_name, phone, address)
+    participant.person_id = person.id
+
+    program = _majlis_program(user.tenant_id)
+    if program is None:
+        raise RuntimeError("Program MAJLIS_TALIM belum tersedia.")
+
+    enrollment = get_active_majlis_enrollment(user.tenant_id, person.id)
+    if enrollment is None:
+        enrollment = ProgramEnrollment(
+            tenant_id=user.tenant_id,
+            person_id=person.id,
+            program_id=program.id,
+        )
+        db.session.add(enrollment)
+
+    target_class = None
+    if class_id:
+        target_class = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+
+    active_year = _active_academic_year()
+    enrollment.academic_year_id = (
+        target_class.academic_year_id
+        if target_class and target_class.academic_year_id
+        else (active_year.id if active_year else None)
+    )
+    enrollment.status = EnrollmentStatus.ACTIVE
+    enrollment.join_date = join_date or participant.join_date or local_today()
+    enrollment.origin_type = "PPDB_ACCEPT"
+    enrollment.notes = "Sinkron dari penerimaan PPDB majlis"
+    db.session.flush()
+
+    assign_majlis_class(participant.id, class_id)
     return participant
