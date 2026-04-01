@@ -7,7 +7,11 @@ from itsdangerous import URLSafeSerializer, BadSignature
 from app.extensions import db
 from app.decorators import role_required
 from app.forms import PaymentForm, StudentForm  # Pastikan import ini ada
-from app.services.majlis_enrollment_service import assign_majlis_class, list_active_majlis_participants
+from app.services.majlis_enrollment_service import (
+    assign_majlis_class,
+    list_active_majlis_participants,
+    sync_majlis_participant_profile,
+)
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType,
@@ -682,11 +686,14 @@ def edit_majlis_participant(participant_id):
                 return redirect(url_for('staff.edit_majlis_participant', participant_id=participant.id))
             participant.user.username = phone
 
-        participant.full_name = full_name
-        participant.phone = phone
-        participant.address = address or None
+        sync_majlis_participant_profile(
+            participant=participant,
+            full_name=full_name,
+            phone=phone,
+            address=address,
+        )
         participant.job = job or None
-        participant.majlis_class_id = new_class_id
+        assign_majlis_class(participant.id, new_class_id)
 
         db.session.commit()
         flash('Data peserta Majlis berhasil diperbarui.', 'success')
