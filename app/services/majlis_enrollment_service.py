@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from sqlalchemy import or_
 
+from app.extensions import db
 from app.models import (
     ClassRoom,
     EnrollmentStatus,
@@ -12,6 +13,7 @@ from app.models import (
     PersonKind,
     Program,
     ProgramEnrollment,
+    local_today,
 )
 
 
@@ -116,8 +118,51 @@ def list_active_majlis_participants(search=None):
                 full_name=enrollment.person.full_name,
                 phone=enrollment.person.phone,
                 address=enrollment.person.address,
+                majlis_class_id=majlis_class.id if majlis_class else None,
                 majlis_class=majlis_class,
             )
         )
 
     return rows
+
+
+def assign_majlis_class(participant_id, class_id):
+    participant = MajlisParticipant.query.filter_by(id=participant_id, is_deleted=False).first()
+    if participant is None:
+        return False
+
+    target_class = None
+    if class_id:
+        target_class = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+
+    participant.majlis_class_id = class_id
+
+    if not participant.person_id:
+        return True
+
+    enrollment = get_active_majlis_enrollment(participant.user.tenant_id if participant.user else None, participant.person_id)
+    if enrollment is None:
+        return True
+
+    membership = get_active_majlis_membership(enrollment.tenant_id, enrollment.person_id)
+
+    if target_class is None or not target_class.program_group_id:
+        if membership is not None:
+            membership.status = MembershipStatus.LEFT
+            membership.end_date = local_today()
+        return True
+
+    if membership is None:
+        membership = GroupMembership(
+            tenant_id=enrollment.tenant_id,
+            enrollment_id=enrollment.id,
+            group_id=target_class.program_group_id,
+        )
+        db.session.add(membership)
+
+    membership.group_id = target_class.program_group_id
+    membership.status = MembershipStatus.ACTIVE
+    membership.start_date = local_today()
+    membership.end_date = None
+    membership.is_primary = True
+    return True
