@@ -6,8 +6,11 @@ from app.models import (
     ClassRoom,
     EnrollmentStatus,
     GroupMembership,
+    MajlisParticipant,
     MembershipStatus,
     Person,
+    PersonKind,
+    Program,
     ProgramEnrollment,
 )
 
@@ -20,8 +23,8 @@ def _active_majlis_enrollment_query(tenant_id, person_id):
             ProgramEnrollment.person_id == person_id,
             ProgramEnrollment.status == EnrollmentStatus.ACTIVE,
             ProgramEnrollment.is_deleted.is_(False),
+            Program.code == "MAJLIS_TALIM",
         )
-        .filter_by(code="MAJLIS_TALIM")
         .order_by(ProgramEnrollment.join_date.desc(), ProgramEnrollment.id.desc())
     )
 
@@ -70,11 +73,17 @@ def list_active_majlis_participants(search=None):
     query = (
         ProgramEnrollment.query.join(ProgramEnrollment.program)
         .join(Person, Person.id == ProgramEnrollment.person_id)
-        .filter_by(code="MAJLIS_TALIM")
+        .outerjoin(
+            MajlisParticipant,
+            (MajlisParticipant.person_id == ProgramEnrollment.person_id)
+            & (MajlisParticipant.is_deleted.is_(False)),
+        )
         .filter(
+            Program.code == "MAJLIS_TALIM",
             ProgramEnrollment.status == EnrollmentStatus.ACTIVE,
             ProgramEnrollment.is_deleted.is_(False),
             Person.is_deleted.is_(False),
+            Person.person_kind == PersonKind.EXTERNAL,
         )
         .order_by(Person.full_name.asc(), ProgramEnrollment.id.asc())
     )
@@ -103,7 +112,7 @@ def list_active_majlis_participants(search=None):
         majlis_class = resolve_majlis_classroom(enrollment.tenant_id, enrollment.person_id)
         rows.append(
             SimpleNamespace(
-                id=enrollment.person_id,
+                id=enrollment.person.user.majlis_profile.id if enrollment.person.user and enrollment.person.user.majlis_profile else None,
                 full_name=enrollment.person.full_name,
                 phone=enrollment.person.phone,
                 address=enrollment.person.address,
