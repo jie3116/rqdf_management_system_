@@ -8,6 +8,7 @@ from sqlalchemy import func, or_, and_
 from openpyxl import load_workbook
 from app.extensions import db
 from app.decorators import role_required
+from app.services.majlis_enrollment_service import list_active_majlis_participants
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
@@ -810,7 +811,6 @@ def list_students():
     active_category = (request.args.get('category') or 'all').strip().lower()
 
     students_query = Student.query.filter_by(is_deleted=False).outerjoin(ClassRoom, Student.current_class_id == ClassRoom.id)
-    majlis_query = MajlisParticipant.query.filter_by(is_deleted=False)
 
     if query:
         students_query = students_query.outerjoin(Parent, Student.parent_id == Parent.id).filter(
@@ -820,15 +820,6 @@ def list_students():
                 Parent.full_name.ilike(f'%{query}%'),
                 Parent.phone.ilike(f'%{query}%'),
                 ClassRoom.name.ilike(f'%{query}%')
-            )
-        )
-
-    if query_majlis:
-        majlis_query = majlis_query.outerjoin(ClassRoom, MajlisParticipant.majlis_class_id == ClassRoom.id).filter(
-            db.or_(
-                MajlisParticipant.full_name.ilike(f'%{query_majlis}%'),
-                MajlisParticipant.phone.ilike(f'%{query_majlis}%'),
-                ClassRoom.name.ilike(f'%{query_majlis}%')
             )
         )
 
@@ -905,7 +896,7 @@ def list_students():
         )
 
     students = students_query.order_by(Student.id.desc()).all()
-    majlis_participants = majlis_query.order_by(MajlisParticipant.id.desc()).all()
+    majlis_participants = list_active_majlis_participants(search=query_majlis)
 
     return render_template(
         'student/list_students.html',

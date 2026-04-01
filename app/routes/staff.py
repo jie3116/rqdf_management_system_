@@ -7,6 +7,7 @@ from itsdangerous import URLSafeSerializer, BadSignature
 from app.extensions import db
 from app.decorators import role_required
 from app.forms import PaymentForm, StudentForm  # Pastikan import ini ada
+from app.services.majlis_enrollment_service import list_active_majlis_participants
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType,
@@ -509,7 +510,6 @@ def list_students():
     active_category = (request.args.get('category') or 'all').strip().lower()
 
     students_query = Student.query.filter_by(is_deleted=False).outerjoin(ClassRoom, Student.current_class_id == ClassRoom.id)
-    majlis_query = MajlisParticipant.query.filter_by(is_deleted=False)
 
     if query:
         students_query = students_query.outerjoin(Parent, Student.parent_id == Parent.id).filter(
@@ -519,15 +519,6 @@ def list_students():
                 Parent.full_name.ilike(f'%{query}%'),
                 Parent.phone.ilike(f'%{query}%'),
                 ClassRoom.name.ilike(f'%{query}%')
-            )
-        )
-
-    if query_majlis:
-        majlis_query = majlis_query.outerjoin(ClassRoom, MajlisParticipant.majlis_class_id == ClassRoom.id).filter(
-            db.or_(
-                MajlisParticipant.full_name.ilike(f'%{query_majlis}%'),
-                MajlisParticipant.phone.ilike(f'%{query_majlis}%'),
-                ClassRoom.name.ilike(f'%{query_majlis}%')
             )
         )
 
@@ -604,7 +595,7 @@ def list_students():
         )
 
     students = students_query.order_by(Student.id.desc()).all()
-    majlis_participants = majlis_query.order_by(MajlisParticipant.id.desc()).all()
+    majlis_participants = list_active_majlis_participants(search=query_majlis)
 
     return render_template(
         'student/list_students.html',
