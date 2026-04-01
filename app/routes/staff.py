@@ -7,7 +7,7 @@ from itsdangerous import URLSafeSerializer, BadSignature
 from app.extensions import db
 from app.decorators import role_required
 from app.forms import PaymentForm, StudentForm  # Pastikan import ini ada
-from app.services.majlis_enrollment_service import list_active_majlis_participants
+from app.services.majlis_enrollment_service import assign_majlis_class, list_active_majlis_participants
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType,
@@ -612,16 +612,7 @@ def list_students():
 @role_required(UserRole.TU)
 def assign_majlis_classes():
     query = (request.args.get('q') or '').strip()
-    participants_query = MajlisParticipant.query.filter_by(is_deleted=False)
-    if query:
-        participants_query = participants_query.filter(
-            or_(
-                MajlisParticipant.full_name.ilike(f'%{query}%'),
-                MajlisParticipant.phone.ilike(f'%{query}%')
-            )
-        )
-
-    majlis_participants = participants_query.order_by(MajlisParticipant.full_name).all()
+    majlis_participants = list_active_majlis_participants(search=query)
     majlis_classes = ClassRoom.query.filter_by(is_deleted=False, class_type=ClassType.MAJLIS_TALIM).order_by(ClassRoom.name).all()
 
     # Fallback: jika belum ada class_type khusus, tetap izinkan pilih semua kelas agar operasional tidak terblokir
@@ -634,7 +625,7 @@ def assign_majlis_classes():
             class_id_raw = request.form.get(f'class_{participant.id}', '').strip()
             new_class_id = int(class_id_raw) if class_id_raw else None
             if participant.majlis_class_id != new_class_id:
-                participant.majlis_class_id = new_class_id
+                assign_majlis_class(participant.id, new_class_id)
                 updated += 1
 
         db.session.commit()
