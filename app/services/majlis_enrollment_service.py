@@ -166,3 +166,22 @@ def assign_majlis_class(participant_id, class_id):
     membership.end_date = None
     membership.is_primary = True
     return True
+
+
+def sync_majlis_participant_profile(participant, full_name, phone, address):
+    participant.full_name = full_name
+    participant.phone = phone
+    participant.address = address or None
+
+    person = None
+    if participant.person_id:
+        person = Person.query.filter_by(id=participant.person_id, is_deleted=False).first()
+    elif participant.user and participant.user.person:
+        person = participant.user.person
+
+    if person:
+        person.full_name = full_name
+        person.phone = phone
+        person.address = address or None
+
+    return participant
