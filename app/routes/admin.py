@@ -12,6 +12,7 @@ from app.services.majlis_enrollment_service import ensure_majlis_participant_acc
 from app.services.rumah_quran_service import (
     apply_rumah_quran_student_filter,
     assign_student_rumah_quran_class,
+    ensure_rumah_quran_program_group,
     get_student_rumah_quran_classroom,
     list_rumah_quran_classes,
 )
@@ -581,6 +582,8 @@ def manage_classes():
             education_level=education_level
         )
         db.session.add(new_class)
+        db.session.flush()
+        ensure_rumah_quran_program_group(new_class)
         db.session.commit()
         flash('Kelas berhasil dibuat.', 'success')
         return redirect(url_for('admin.manage_classes'))
@@ -628,6 +631,7 @@ def edit_class(class_id):
         class_room.homeroom_teacher_id = homeroom_id if homeroom_id else None
 
         try:
+            ensure_rumah_quran_program_group(class_room)
             db.session.commit()
             flash(f'Kelas {class_room.name} berhasil diperbarui.', 'success')
             return redirect(url_for('admin.manage_classes'))

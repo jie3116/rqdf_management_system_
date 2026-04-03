@@ -4,10 +4,12 @@ from app.models import (
     ClassRoom,
     EnrollmentStatus,
     GroupMembership,
+    GroupType,
     MembershipStatus,
     Person,
     Program,
     ProgramEnrollment,
+    ProgramGroup,
     Tenant,
     ProgramType,
     Student,
@@ -102,6 +104,60 @@ def list_rumah_quran_classes():
     )
 
 
+def ensure_rumah_quran_program_group(class_room):
+    if class_room is None or class_room.is_deleted:
+        return None
+
+    if class_room.program_type not in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ):
+        return None
+
+    tenant = _default_tenant()
+    if tenant is None:
+        return None
+
+    program = Program.query.filter_by(
+        tenant_id=tenant.id,
+        code="RUMAH_QURAN",
+        is_deleted=False,
+    ).first()
+    if program is None:
+        return None
+
+    group = None
+    if class_room.program_group_id:
+        group = ProgramGroup.query.filter_by(
+            id=class_room.program_group_id,
+            tenant_id=tenant.id,
+            is_deleted=False,
+        ).first()
+
+    if group is None:
+        group = ProgramGroup.query.filter_by(
+            tenant_id=tenant.id,
+            program_id=program.id,
+            academic_year_id=class_room.academic_year_id,
+            name=class_room.name,
+            is_deleted=False,
+        ).first()
+
+    if group is None:
+        group = ProgramGroup(
+            tenant_id=tenant.id,
+            program_id=program.id,
+            academic_year_id=class_room.academic_year_id,
+            name=class_room.name,
+        )
+        db.session.add(group)
+
+    group.group_type = GroupType.HALAQAH
+    group.level_label = str(class_room.grade_level) if class_room.grade_level else None
+    group.is_active = True
+    db.session.flush()
+
+    class_room.program_group_id = group.id
+    return group
+
+
 def get_student_rumah_quran_classroom(student):
     tenant_id = _resolve_student_tenant_id(student)
     if not tenant_id or not student.person_id:
@@ -136,6 +192,7 @@ def assign_student_rumah_quran_class(student, class_id):
     target_class = None
     if class_id:
         target_class = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+        ensure_rumah_quran_program_group(target_class)
 
     is_rumah_quran_class = (
         target_class is not None
