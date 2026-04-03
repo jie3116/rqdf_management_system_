@@ -104,6 +104,13 @@ def list_rumah_quran_classes():
     )
 
 
+def is_rumah_quran_classroom(class_room):
+    return (
+        class_room is not None
+        and class_room.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ)
+    )
+
+
 def ensure_rumah_quran_program_group(class_room):
     if class_room is None or class_room.is_deleted:
         return None
@@ -156,6 +163,43 @@ def ensure_rumah_quran_program_group(class_room):
 
     class_room.program_group_id = group.id
     return group
+
+
+def list_rumah_quran_students_for_class(class_id):
+    return (
+        Student.query.join(Person, Person.id == Student.person_id)
+        .join(
+            ProgramEnrollment,
+            (ProgramEnrollment.person_id == Student.person_id)
+            & (ProgramEnrollment.status == EnrollmentStatus.ACTIVE)
+            & (ProgramEnrollment.is_deleted.is_(False)),
+        )
+        .join(
+            Program,
+            (Program.id == ProgramEnrollment.program_id)
+            & (Program.code == "RUMAH_QURAN")
+            & (Program.is_deleted.is_(False)),
+        )
+        .join(
+            GroupMembership,
+            (GroupMembership.enrollment_id == ProgramEnrollment.id)
+            & (GroupMembership.status == MembershipStatus.ACTIVE)
+            & (GroupMembership.is_deleted.is_(False)),
+        )
+        .join(
+            ClassRoom,
+            (ClassRoom.program_group_id == GroupMembership.group_id)
+            & (ClassRoom.is_deleted.is_(False)),
+        )
+        .filter(
+            ClassRoom.id == class_id,
+            Student.is_deleted.is_(False),
+            Person.is_deleted.is_(False),
+        )
+        .order_by(Student.full_name.asc())
+        .distinct()
+        .all()
+    )
 
 
 def get_student_rumah_quran_classroom(student):
