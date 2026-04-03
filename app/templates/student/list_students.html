@@ -1,6 +1,25 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% set current_category = active_category or 'all' %}
+{% set base_route = url_for('admin.list_students') if current_user.has_role('admin') else url_for('staff.list_students') %}
+{% set majlis_query = query_majlis or '' %}
+{% set category_title_map = {
+    'all': 'Semua Santri',
+    'sbq_sd': 'Santri SBQ SD',
+    'sbq_smp': 'Santri SBQ SMP',
+    'sbq_sma': 'Santri SBQ SMA',
+    'reguler': 'Peserta Rumah Qur\'an Reguler',
+    'takhosus': 'Peserta Rumah Qur\'an Takhosus'
+} %}
+{% set category_desc_map = {
+    'all': 'Satu tampilan untuk jalur formal dan non-formal yang masih aktif.',
+    'sbq_sd': 'Kelompok formal Sekolah Bina Qur\'an jenjang SD.',
+    'sbq_smp': 'Kelompok formal Sekolah Bina Qur\'an jenjang SMP.',
+    'sbq_sma': 'Kelompok formal Sekolah Bina Qur\'an jenjang SMA.',
+    'reguler': 'Shell UI khusus untuk peserta Rumah Qur\'an jalur reguler sore.',
+    'takhosus': 'Shell UI khusus untuk peserta Rumah Qur\'an jalur takhosus tahfidz.'
+} %}
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
     <h1 class="h3 mb-0 text-gray-800">Data Santri</h1>
     
@@ -14,6 +33,43 @@
             </button>
         </div>
     {% endif %}
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-7">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-start justify-content-between gap-3">
+                    <div>
+                        <div class="text-uppercase small text-muted mb-2">Data Aktif</div>
+                        <h5 class="mb-1">{{ category_title_map.get(current_category, 'Data Santri') }}</h5>
+                        <p class="mb-0 text-muted">{{ category_desc_map.get(current_category, 'Tampilan data peserta aktif.') }}</p>
+                    </div>
+                    {% if current_category in ['reguler', 'takhosus'] %}
+                    <span class="badge rounded-pill bg-warning text-dark px-3 py-2">Rumah Qur'an</span>
+                    {% elif current_category in ['sbq_sd', 'sbq_smp', 'sbq_sma'] %}
+                    <span class="badge rounded-pill bg-primary px-3 py-2">SBQ Formal</span>
+                    {% else %}
+                    <span class="badge rounded-pill bg-secondary px-3 py-2">Lintas Program</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="text-uppercase small text-muted mb-2">Segmentasi UI</div>
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-sm {% if current_category == 'sbq_sd' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ base_route }}?category=sbq_sd{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">SBQ SD</a>
+                    <a class="btn btn-sm {% if current_category == 'sbq_smp' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ base_route }}?category=sbq_smp{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">SBQ SMP</a>
+                    <a class="btn btn-sm {% if current_category == 'sbq_sma' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ base_route }}?category=sbq_sma{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">SBQ SMA</a>
+                    <a class="btn btn-sm {% if current_category == 'reguler' %}btn-warning text-dark{% else %}btn-outline-warning{% endif %}" href="{{ base_route }}?category=reguler{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Rumah Qur'an Reguler</a>
+                    <a class="btn btn-sm {% if current_category == 'takhosus' %}btn-warning text-dark{% else %}btn-outline-warning{% endif %}" href="{{ base_route }}?category=takhosus{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Rumah Qur'an Takhosus</a>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 {% if current_user.has_role('admin') %}
@@ -45,14 +101,10 @@
 {% endif %}
 
 <div class="card shadow mb-4">
-    <div class="card-header py-3 bg-primary text-white">
-        <h6 class="m-0 fw-bold"><i class="fas fa-users me-2"></i>Daftar Santri Aktif</h6>
+    <div class="card-header py-3 {% if current_category in ['reguler', 'takhosus'] %}bg-warning text-dark{% else %}bg-primary text-white{% endif %}">
+        <h6 class="m-0 fw-bold"><i class="fas fa-users me-2"></i>{{ category_title_map.get(current_category, 'Daftar Santri Aktif') }}</h6>
     </div>
     <div class="card-body">
-        {% set base_route = url_for('admin.list_students') if current_user.has_role('admin') else url_for('staff.list_students') %}
-        {% set current_category = active_category or 'all' %}
-        {% set majlis_query = query_majlis or '' %}
-
         <ul class="nav nav-tabs mb-3">
             <li class="nav-item">
                 <a class="nav-link {% if current_category == 'all' %}active{% endif %}" href="{{ base_route }}?category=all{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Semua</a>
@@ -67,10 +119,10 @@
                 <a class="nav-link {% if current_category == 'sbq_sma' %}active{% endif %}" href="{{ base_route }}?category=sbq_sma{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">SBQ SMA</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {% if current_category == 'reguler' %}active{% endif %}" href="{{ base_route }}?category=reguler{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Reguler</a>
+                <a class="nav-link {% if current_category == 'reguler' %}active{% endif %}" href="{{ base_route }}?category=reguler{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Rumah Qur'an Reguler</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {% if current_category == 'takhosus' %}active{% endif %}" href="{{ base_route }}?category=takhosus{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Takhosus</a>
+                <a class="nav-link {% if current_category == 'takhosus' %}active{% endif %}" href="{{ base_route }}?category=takhosus{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Rumah Qur'an Takhosus</a>
             </li>
         </ul>
         
@@ -79,10 +131,10 @@
             <input type="hidden" name="q_majlis" value="{{ majlis_query }}">
             <div class="row g-2 justify-content-end">
                 <div class="col-md-4">
-                    <input type="text" name="q" class="form-control form-control-sm" placeholder="Cari santri (nama, NIS, wali, kelas, no WA)..." value="{{ query or '' }}">
+                    <input type="text" name="q" class="form-control form-control-sm" placeholder="{% if current_category in ['reguler', 'takhosus'] %}Cari peserta Rumah Qur'an (nama, NIS, wali, halaqah, no WA)...{% else %}Cari santri (nama, NIS, wali, kelas, no WA)...{% endif %}" value="{{ query or '' }}">
                 </div>
                 <div class="col-auto">
-                    <button type="submit" class="btn btn-sm btn-primary">
+                    <button type="submit" class="btn btn-sm {% if current_category in ['reguler', 'takhosus'] %}btn-warning text-dark{% else %}btn-primary{% endif %}">
                         <i class="fas fa-search me-1"></i>Cari
                     </button>
                     {% if query %}
@@ -100,7 +152,7 @@
                     <tr>
                         <th>NIS</th>
                         <th>Nama Lengkap</th>
-                        <th>Kelas</th>
+                        <th>{% if current_category in ['reguler', 'takhosus'] %}Halaqah / Kelas RQ{% else %}Kelas{% endif %}</th>
                         <th>Wali Murid</th>
                         <th style="width: 15%;">Aksi</th>
                     </tr>
