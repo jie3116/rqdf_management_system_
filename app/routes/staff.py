@@ -14,7 +14,12 @@ from app.services.majlis_enrollment_service import (
     list_active_majlis_participants,
     sync_majlis_participant_profile,
 )
-from app.services.rumah_quran_service import apply_rumah_quran_student_filter, sync_student_rumah_quran_membership
+from app.services.rumah_quran_service import (
+    apply_rumah_quran_student_filter,
+    assign_student_rumah_quran_class,
+    get_student_rumah_quran_classroom,
+    list_rumah_quran_classes,
+)
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType,
@@ -698,6 +703,8 @@ def edit_student(student_id):
     """TU bertugas menempatkan siswa ke kelas dan input NISN"""
     student = Student.query.get_or_404(student_id)
     classes = ClassRoom.query.all()
+    rumah_quran_classes = list_rumah_quran_classes()
+    rumah_quran_class = get_student_rumah_quran_classroom(student)
 
     if request.method == 'POST':
         student.full_name = request.form.get('full_name')
@@ -705,6 +712,11 @@ def edit_student(student_id):
 
         class_id = request.form.get('class_id')
         student.current_class_id = int(class_id) if class_id else None
+        rumah_quran_class_id = request.form.get('rumah_quran_class_id')
+        rumah_quran_class_id = int(rumah_quran_class_id) if rumah_quran_class_id else None
+
+        if student.current_class and student.current_class.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ):
+            rumah_quran_class_id = student.current_class.id
 
         # TU juga bisa update SPP Khusus jika ada negosiasi
         spp_input = request.form.get('custom_spp')
@@ -714,7 +726,7 @@ def edit_student(student_id):
             student.custom_spp_fee = None
 
         try:
-            sync_student_rumah_quran_membership(student)
+            assign_student_rumah_quran_class(student, rumah_quran_class_id)
             db.session.commit()
             flash('Data siswa berhasil diupdate.', 'success')
             return redirect(url_for('staff.list_students'))
@@ -724,7 +736,9 @@ def edit_student(student_id):
 
     return render_template('staff/edit_student.html',
                            student=student,
-                           classes=classes,)
+                           classes=classes,
+                           rumah_quran_classes=rumah_quran_classes,
+                           rumah_quran_class=rumah_quran_class)
 
 
 
