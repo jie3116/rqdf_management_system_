@@ -11,6 +11,7 @@ from app.models import (
     BehaviorReport, BehaviorReportType, Announcement, BoardingAttendance
 )
 from app.decorators import role_required
+from app.services.rumah_quran_service import is_rumah_quran_classroom, list_rumah_quran_students_for_class
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
 from app.utils.timezone import local_day_bounds_utc_naive, local_today, utc_now_naive
 
@@ -80,15 +81,28 @@ def _get_teacher_tahfidz_classes(teacher):
 
 
 def _get_class_participants(class_id):
-    students = Student.query.filter_by(
-        current_class_id=class_id,
-        is_deleted=False
-    ).order_by(Student.full_name).all()
+    class_room = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+    if is_rumah_quran_classroom(class_room):
+        students = list_rumah_quran_students_for_class(class_id)
+    else:
+        students = Student.query.filter_by(
+            current_class_id=class_id,
+            is_deleted=False
+        ).order_by(Student.full_name).all()
     majlis_participants = MajlisParticipant.query.filter_by(
         majlis_class_id=class_id,
         is_deleted=False
     ).order_by(MajlisParticipant.full_name).all()
     return students, majlis_participants
+
+
+def _count_teacher_students(classes):
+    student_ids = set()
+    for class_room in classes:
+        students, _ = _get_class_participants(class_room.id)
+        for student in students:
+            student_ids.add(student.id)
+    return len(student_ids)
 
 
 def _parse_participant_key(participant_key):
@@ -181,10 +195,7 @@ def dashboard():
     my_classes = _get_teacher_classes(teacher)
     class_ids = [c.id for c in my_classes]
 
-    total_students = Student.query.filter(
-        Student.current_class_id.in_(class_ids),
-        Student.is_deleted == False
-    ).count() if class_ids else 0
+    total_students = _count_teacher_students(my_classes) if class_ids else 0
 
     today = local_today()
     today_name_map = {0: 'Senin', 1: 'Selasa', 2: 'Rabu', 3: 'Kamis', 4: 'Jumat', 5: 'Sabtu', 6: 'Minggu'}
@@ -1269,10 +1280,13 @@ def homeroom_students():
     selected_class_id = request.args.get('class_id', type=int) or homeroom_classes[0].id
     selected_class = next((c for c in homeroom_classes if c.id == selected_class_id), homeroom_classes[0])
 
-    students = Student.query.filter_by(
-        current_class_id=selected_class.id,
-        is_deleted=False
-    ).order_by(Student.full_name).all()
+    if is_rumah_quran_classroom(selected_class):
+        students = list_rumah_quran_students_for_class(selected_class.id)
+    else:
+        students = Student.query.filter_by(
+            current_class_id=selected_class.id,
+            is_deleted=False
+        ).order_by(Student.full_name).all()
     majlis_participants = MajlisParticipant.query.filter_by(
         majlis_class_id=selected_class.id,
         is_deleted=False
