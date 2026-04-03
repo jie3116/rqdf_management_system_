@@ -98,7 +98,7 @@
                             </td>
                             <td>{{ c.homeroom_teacher.full_name if c.homeroom_teacher else '-' }}</td>
                             <td>
-                                <span class="badge bg-secondary">{{ c.students|length }} Siswa</span>
+                                <span class="badge bg-secondary">{{ class_student_counts.get(c.id, 0) }} Siswa</span>
                             </td>
                             <td>
                                 <a href="{{ url_for('admin.edit_class', class_id=c.id) }}" class="btn btn-sm btn-warning" title="Edit Kelas"><i class="fas fa-edit"></i></a>
