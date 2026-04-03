@@ -194,6 +194,11 @@ def _default_tenant():
     return Tenant.query.filter_by(is_default=True).first()
 
 
+def get_default_tenant_id():
+    tenant = _default_tenant()
+    return tenant.id if tenant else None
+
+
 def _active_academic_year():
     return AcademicYear.query.filter_by(is_active=True).first()
 

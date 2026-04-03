@@ -10,6 +10,7 @@ from app.forms import PaymentForm, StudentForm  # Pastikan import ini ada
 from app.services.majlis_enrollment_service import (
     assign_majlis_class,
     ensure_majlis_participant_acceptance,
+    get_default_tenant_id,
     list_active_majlis_participants,
     sync_majlis_participant_profile,
 )
@@ -795,7 +796,11 @@ def accept_candidate(candidate_id):
 
             majlis_user = User.query.filter_by(username=nomor_majelis).first()
             if not majlis_user:
+                default_tenant_id = get_default_tenant_id()
+                if default_tenant_id is None:
+                    raise ValueError('Tenant default tidak ditemukan.')
                 majlis_user = User(
+                    tenant_id=default_tenant_id,
                     username=nomor_majelis,
                     email=f"majlis.{calon.id}@sekolah.id",
                     password_hash=generate_password_hash("123456"),

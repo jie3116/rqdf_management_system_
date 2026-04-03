@@ -8,7 +8,7 @@ from sqlalchemy import func, or_, and_
 from openpyxl import load_workbook
 from app.extensions import db
 from app.decorators import role_required
-from app.services.majlis_enrollment_service import ensure_majlis_participant_acceptance, list_active_majlis_participants
+from app.services.majlis_enrollment_service import ensure_majlis_participant_acceptance, get_default_tenant_id, list_active_majlis_participants
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
@@ -1234,7 +1234,11 @@ def accept_candidate(candidate_id):
 
             majlis_user = User.query.filter_by(username=nomor_majelis).first()
             if not majlis_user:
+                default_tenant_id = get_default_tenant_id()
+                if default_tenant_id is None:
+                    raise ValueError('Tenant default tidak ditemukan.')
                 majlis_user = User(
+                    tenant_id=default_tenant_id,
                     username=nomor_majelis,
                     email=f"majlis.{calon.id}@sekolah.id",
                     password_hash=generate_password_hash(nomor_majelis or "123456"),
