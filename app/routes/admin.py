@@ -9,7 +9,7 @@ from openpyxl import load_workbook
 from app.extensions import db
 from app.decorators import role_required
 from app.services.majlis_enrollment_service import ensure_majlis_participant_acceptance, get_default_tenant_id, list_active_majlis_participants
-from app.services.rumah_quran_service import apply_rumah_quran_student_filter
+from app.services.rumah_quran_service import apply_rumah_quran_student_filter, sync_student_rumah_quran_membership
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
@@ -791,6 +791,7 @@ def edit_student(student_id):
             student.custom_spp_fee = None
 
         try:
+            sync_student_rumah_quran_membership(student)
             student.save()  # Menggunakan method save() dari BaseModel
             flash('Data siswa diupdate.', 'success')
             return redirect(url_for('admin.list_students'))
