@@ -54,6 +54,22 @@
                             {% endfor %}
                         </select>
                     </div>
+
+                    <div class="mb-3">
+                        <label class="small fw-bold text-muted">Kelas Rumah Qur'an Tambahan</label>
+                        <select name="rumah_quran_class_id" class="form-select border-warning">
+                            <option value="">-- Tidak ikut Rumah Qur'an tambahan --</option>
+                            {% for c in rumah_quran_classes %}
+                                <option value="{{ c.id }}" {% if rumah_quran_class and rumah_quran_class.id == c.id %}selected{% endif %}>
+                                    {{ c.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted" style="font-size:10px;">
+                            POC multi-program: siswa formal bisa tetap di kelas formal sambil masuk halaqah Rumah Qur'an.
+                            Jika kelas utama siswa sudah kelas Rumah Qur'an, field ini akan mengikuti kelas utama saat disimpan.
+                        </small>
+                    </div>
                 </div>
             </div>
 

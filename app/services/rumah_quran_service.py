@@ -91,17 +91,56 @@ def _active_rumah_quran_enrollment(tenant_id, person_id):
     )
 
 
-def sync_student_rumah_quran_membership(student):
+def list_rumah_quran_classes():
+    return (
+        ClassRoom.query.filter(
+            ClassRoom.is_deleted.is_(False),
+            ClassRoom.program_type.in_([ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ]),
+        )
+        .order_by(ClassRoom.program_type.asc(), ClassRoom.name.asc())
+        .all()
+    )
+
+
+def get_student_rumah_quran_classroom(student):
+    tenant_id = _resolve_student_tenant_id(student)
+    if not tenant_id or not student.person_id:
+        return None
+
+    enrollment = _active_rumah_quran_enrollment(tenant_id, student.person_id)
+    if enrollment is None:
+        return None
+
+    membership = (
+        GroupMembership.query.filter_by(
+            tenant_id=tenant_id,
+            enrollment_id=enrollment.id,
+            status=MembershipStatus.ACTIVE,
+            is_deleted=False,
+        )
+        .order_by(GroupMembership.is_primary.desc(), GroupMembership.start_date.desc(), GroupMembership.id.desc())
+        .first()
+    )
+    if membership is None:
+        return None
+
+    return ClassRoom.query.filter_by(program_group_id=membership.group_id, is_deleted=False).first()
+
+
+def assign_student_rumah_quran_class(student, class_id):
     tenant_id = _resolve_student_tenant_id(student)
     if not tenant_id or not student.person_id:
         return False
 
     enrollment = _active_rumah_quran_enrollment(tenant_id, student.person_id)
-    current_class = student.current_class
+    target_class = None
+    if class_id:
+        target_class = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+
     is_rumah_quran_class = (
-        current_class is not None
-        and current_class.program_group_id is not None
-        and current_class.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ)
+        target_class is not None
+        and target_class.program_group_id is not None
+        and target_class.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ)
     )
 
     if enrollment is None and is_rumah_quran_class:
@@ -116,13 +155,13 @@ def sync_student_rumah_quran_membership(student):
         )
         db.session.add(enrollment)
 
-    if enrollment is None:
+    if enrollment is None and not is_rumah_quran_class:
         return False
 
     active_year = _active_academic_year()
     enrollment.academic_year_id = (
-        current_class.academic_year_id
-        if current_class and current_class.academic_year_id
+        target_class.academic_year_id
+        if target_class and target_class.academic_year_id
         else (active_year.id if active_year else None)
     )
     enrollment.status = EnrollmentStatus.ACTIVE
@@ -151,13 +190,24 @@ def sync_student_rumah_quran_membership(student):
         membership = GroupMembership(
             tenant_id=tenant_id,
             enrollment_id=enrollment.id,
-            group_id=current_class.program_group_id,
+            group_id=target_class.program_group_id,
         )
         db.session.add(membership)
 
-    membership.group_id = current_class.program_group_id
+    membership.group_id = target_class.program_group_id
     membership.status = MembershipStatus.ACTIVE
     membership.start_date = local_today()
     membership.end_date = None
     membership.is_primary = True
     return True
+
+
+def sync_student_rumah_quran_membership(student):
+    current_class = student.current_class
+    target_class_id = (
+        current_class.id
+        if current_class
+        and current_class.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ)
+        else None
+    )
+    return assign_student_rumah_quran_class(student, target_class_id)
