@@ -9,6 +9,7 @@ from openpyxl import load_workbook
 from app.extensions import db
 from app.decorators import role_required
 from app.services.majlis_enrollment_service import ensure_majlis_participant_acceptance, get_default_tenant_id, list_active_majlis_participants
+from app.services.rumah_quran_service import apply_rumah_quran_student_filter
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
@@ -872,28 +873,9 @@ def list_students():
             )
         )
     elif active_category == 'reguler':
-        students_query = students_query.filter(
-            or_(
-                ClassRoom.program_type == ProgramType.RQDF_SORE,
-                and_(
-                    ClassRoom.program_type.is_(None),
-                    or_(
-                        ClassRoom.name.ilike('%reguler%'),
-                        ClassRoom.name.ilike('%rqdf%')
-                    )
-                )
-            )
-        )
+        students_query = apply_rumah_quran_student_filter(students_query, track='reguler')
     elif active_category == 'takhosus':
-        students_query = students_query.filter(
-            or_(
-                ClassRoom.program_type == ProgramType.TAKHOSUS_TAHFIDZ,
-                and_(
-                    ClassRoom.program_type.is_(None),
-                    ClassRoom.name.ilike('%takhosus%')
-                )
-            )
-        )
+        students_query = apply_rumah_quran_student_filter(students_query, track='takhosus')
 
     students = students_query.order_by(Student.id.desc()).all()
     majlis_participants = list_active_majlis_participants(search=query_majlis)

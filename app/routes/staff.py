@@ -14,6 +14,7 @@ from app.services.majlis_enrollment_service import (
     list_active_majlis_participants,
     sync_majlis_participant_profile,
 )
+from app.services.rumah_quran_service import apply_rumah_quran_student_filter
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType,
@@ -577,28 +578,9 @@ def list_students():
             )
         )
     elif active_category == 'reguler':
-        students_query = students_query.filter(
-            or_(
-                ClassRoom.program_type == ProgramType.RQDF_SORE,
-                and_(
-                    ClassRoom.program_type.is_(None),
-                    or_(
-                        ClassRoom.name.ilike('%reguler%'),
-                        ClassRoom.name.ilike('%rqdf%')
-                    )
-                )
-            )
-        )
+        students_query = apply_rumah_quran_student_filter(students_query, track='reguler')
     elif active_category == 'takhosus':
-        students_query = students_query.filter(
-            or_(
-                ClassRoom.program_type == ProgramType.TAKHOSUS_TAHFIDZ,
-                and_(
-                    ClassRoom.program_type.is_(None),
-                    ClassRoom.name.ilike('%takhosus%')
-                )
-            )
-        )
+        students_query = apply_rumah_quran_student_filter(students_query, track='takhosus')
 
     students = students_query.order_by(Student.id.desc()).all()
     majlis_participants = list_active_majlis_participants(search=query_majlis)
