@@ -14,7 +14,9 @@ from app.services.rumah_quran_service import (
     assign_student_rumah_quran_class,
     ensure_rumah_quran_program_group,
     get_student_rumah_quran_classroom,
+    is_rumah_quran_classroom,
     list_rumah_quran_classes,
+    list_rumah_quran_students_for_class,
 )
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
@@ -599,10 +601,17 @@ def manage_classes():
         )
 
     classes = classes_query.order_by(ClassRoom.name.asc()).all()
+    class_student_counts = {}
+    for class_room in classes:
+        if is_rumah_quran_classroom(class_room):
+            class_student_counts[class_room.id] = len(list_rumah_quran_students_for_class(class_room.id))
+        else:
+            class_student_counts[class_room.id] = len(class_room.students)
     teachers = Teacher.query.filter_by(is_deleted=False).all()  # Untuk dropdown
     return render_template(
         'admin/academic/classes.html',
         classes=classes,
+        class_student_counts=class_student_counts,
         teachers=teachers,
         query=query,
         ProgramType=ProgramType,
