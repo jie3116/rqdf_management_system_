@@ -14,7 +14,7 @@ from app.services.majlis_enrollment_service import (
     list_active_majlis_participants,
     sync_majlis_participant_profile,
 )
-from app.services.rumah_quran_service import apply_rumah_quran_student_filter
+from app.services.rumah_quran_service import apply_rumah_quran_student_filter, sync_student_rumah_quran_membership
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType,
@@ -714,6 +714,7 @@ def edit_student(student_id):
             student.custom_spp_fee = None
 
         try:
+            sync_student_rumah_quran_membership(student)
             db.session.commit()
             flash('Data siswa berhasil diupdate.', 'success')
             return redirect(url_for('staff.list_students'))
