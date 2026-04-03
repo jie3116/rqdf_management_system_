@@ -711,12 +711,14 @@ def edit_student(student_id):
         student.nisn = (request.form.get('nisn') or '').strip() or None
 
         class_id = request.form.get('class_id')
-        student.current_class_id = int(class_id) if class_id else None
+        selected_class_id = int(class_id) if class_id else None
+        student.current_class_id = selected_class_id
         rumah_quran_class_id = request.form.get('rumah_quran_class_id')
         rumah_quran_class_id = int(rumah_quran_class_id) if rumah_quran_class_id else None
 
-        if student.current_class and student.current_class.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ):
-            rumah_quran_class_id = student.current_class.id
+        selected_class = ClassRoom.query.filter_by(id=selected_class_id, is_deleted=False).first() if selected_class_id else None
+        if selected_class and selected_class.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ):
+            rumah_quran_class_id = selected_class.id
 
         # TU juga bisa update SPP Khusus jika ada negosiasi
         spp_input = request.form.get('custom_spp')
