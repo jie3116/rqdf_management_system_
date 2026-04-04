@@ -96,6 +96,13 @@ def _get_class_participants(class_id):
     return students, majlis_participants
 
 
+def _student_belongs_to_class(student, class_id):
+    if not student or not class_id:
+        return False
+    students, _ = _get_class_participants(class_id)
+    return any(item.id == student.id for item in students)
+
+
 def _count_teacher_students(classes):
     student_ids = set()
     for class_room in classes:
@@ -852,7 +859,7 @@ def input_recitation():
             if not student:
                 flash("Data siswa tidak ditemukan.", "danger")
                 return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
-            if active_class_id and student.current_class_id != active_class_id:
+            if active_class_id and not _student_belongs_to_class(student, active_class_id):
                 flash("Siswa tidak berada pada kelas yang dipilih.", "danger")
                 return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
         else:
@@ -1008,7 +1015,7 @@ def input_tahfidz_evaluation():
             if not student:
                 flash("Data siswa tidak ditemukan.", "danger")
                 return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
-            if active_class_id and student.current_class_id != active_class_id:
+            if active_class_id and not _student_belongs_to_class(student, active_class_id):
                 flash("Siswa tidak berada pada kelas yang dipilih.", "danger")
                 return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
         else:
@@ -1117,7 +1124,13 @@ def input_behavior_report():
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
         if selected_class in my_classes:
-            students_query = Student.query.filter_by(current_class_id=selected_class_id, is_deleted=False)
+            if is_rumah_quran_classroom(selected_class):
+                students_query = Student.query.filter(
+                    Student.id.in_([student.id for student in list_rumah_quran_students_for_class(selected_class_id)]),
+                    Student.is_deleted == False,
+                )
+            else:
+                students_query = Student.query.filter_by(current_class_id=selected_class_id, is_deleted=False)
             if query:
                 students_query = students_query.filter(
                     db.or_(
@@ -1153,8 +1166,8 @@ def input_behavior_report():
             flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
             return redirect(url_for('teacher.input_behavior_report'))
 
-        student = Student.query.filter_by(id=student_id, current_class_id=class_id, is_deleted=False).first()
-        if not student:
+        student = Student.query.filter_by(id=student_id, is_deleted=False).first()
+        if not student or not _student_belongs_to_class(student, class_id):
             flash("Siswa tidak ditemukan pada kelas yang dipilih.", "danger")
             return redirect(url_for('teacher.input_behavior_report', class_id=class_id))
 
