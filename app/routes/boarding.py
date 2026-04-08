@@ -6,6 +6,7 @@ from flask_login import login_required, current_user
 from app.decorators import role_required
 from app.utils.timezone import local_today
 from app.extensions import db
+from app.services.pesantren_service import list_students_for_dormitory, sync_student_dormitory_membership
 from app.models import (
     User,
     UserRole,
@@ -227,6 +228,7 @@ def manage_dormitories():
                 new_dormitory_id = submitted_assignments.get(student.id)
                 if student.boarding_dormitory_id != new_dormitory_id:
                     student.boarding_dormitory_id = new_dormitory_id
+                    sync_student_dormitory_membership(student, new_dormitory_id)
                     updated += 1
 
             db.session.commit()
@@ -468,10 +470,7 @@ def dashboard():
     dormitories = BoardingDormitory.query.filter_by(guardian_user_id=current_user.id).order_by(BoardingDormitory.name).all()
     dormitory_ids = [item.id for item in dormitories]
 
-    total_students = Student.query.filter(
-        Student.boarding_dormitory_id.in_(dormitory_ids),
-        Student.is_deleted == False
-    ).count() if dormitory_ids else 0
+    total_students = sum(len(list_students_for_dormitory(dormitory.id)) for dormitory in dormitories)
 
     attendance_today = BoardingAttendance.query.filter(
         BoardingAttendance.dormitory_id.in_(dormitory_ids),
@@ -534,8 +533,7 @@ def input_attendance():
         selected_schedule_id = schedules[0].id
 
     selected_schedule = next((item for item in schedules if item.id == selected_schedule_id), None)
-    students = Student.query.filter_by(boarding_dormitory_id=selected_dormitory_id, is_deleted=False) \
-        .order_by(Student.full_name.asc()).all() if selected_dormitory else []
+    students = list_students_for_dormitory(selected_dormitory_id) if selected_dormitory else []
 
     existing_attendance = {}
     if selected_schedule and students:
