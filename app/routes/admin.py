@@ -26,6 +26,7 @@ from app.services.bahasa_service import (
     list_bahasa_classes,
     list_bahasa_students_for_class,
 )
+from app.services.staff_assignment_service import display_assignment_role
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
@@ -390,7 +391,10 @@ def teacher_assignments(id):
             grouped_assignments.append(grouped_map[program_key])
 
         row = {
-            'role': assignment.assignment_role.value if assignment.assignment_role else '-',
+            'role': display_assignment_role(
+                assignment.assignment_role,
+                program.code,
+            ),
             'group_name': assignment.group.name if assignment.group else '-',
             'academic_year': assignment.academic_year.name if assignment.academic_year else '-',
             'start_date': assignment.start_date,
@@ -402,10 +406,14 @@ def teacher_assignments(id):
         if row['is_active']:
             grouped_map[program_key]['active_count'] += 1
 
-    role_summary = {role.value: 0 for role in AssignmentRole}
+    role_summary = {}
     for assignment in assignment_rows:
         if assignment.assignment_role:
-            role_summary[assignment.assignment_role.value] += 1
+            label = display_assignment_role(
+                assignment.assignment_role,
+                assignment.program.code if assignment.program else None,
+            )
+            role_summary[label] = role_summary.get(label, 0) + 1
 
     return render_template(
         'admin/hr/teacher_assignments.html',
