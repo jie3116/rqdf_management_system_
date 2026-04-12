@@ -12,6 +12,7 @@ from app.models import (
 )
 from app.decorators import role_required
 from app.services.rumah_quran_service import is_rumah_quran_classroom, list_rumah_quran_students_for_class
+from app.services.bahasa_service import is_bahasa_classroom, list_bahasa_students_for_class
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
 from app.utils.timezone import local_day_bounds_utc_naive, local_today, utc_now_naive
 
@@ -84,6 +85,8 @@ def _get_class_participants(class_id):
     class_room = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
     if is_rumah_quran_classroom(class_room):
         students = list_rumah_quran_students_for_class(class_id)
+    elif is_bahasa_classroom(class_room):
+        students = list_bahasa_students_for_class(class_id)
     else:
         students = Student.query.filter_by(
             current_class_id=class_id,
@@ -1293,17 +1296,7 @@ def homeroom_students():
     selected_class_id = request.args.get('class_id', type=int) or homeroom_classes[0].id
     selected_class = next((c for c in homeroom_classes if c.id == selected_class_id), homeroom_classes[0])
 
-    if is_rumah_quran_classroom(selected_class):
-        students = list_rumah_quran_students_for_class(selected_class.id)
-    else:
-        students = Student.query.filter_by(
-            current_class_id=selected_class.id,
-            is_deleted=False
-        ).order_by(Student.full_name).all()
-    majlis_participants = MajlisParticipant.query.filter_by(
-        majlis_class_id=selected_class.id,
-        is_deleted=False
-    ).order_by(MajlisParticipant.full_name).all()
+    students, majlis_participants = _get_class_participants(selected_class.id)
 
     return render_template('teacher/homeroom_students.html',
                          teacher=teacher,
