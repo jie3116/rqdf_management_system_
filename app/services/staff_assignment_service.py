@@ -236,6 +236,13 @@ def list_teacher_assignment_groups_from_assignments(teacher):
 
 
 def display_assignment_role(assignment_role, program_code=None):
+    """
+    Keep UI labels generic for SaaS readiness.
+
+    We retain richer internal enums such as MURABBI/PEMBINA so the domain can
+    evolve later, but the default product vocabulary shown to users stays
+    neutral and tenant-agnostic.
+    """
     if assignment_role is None:
         return "-"
 
