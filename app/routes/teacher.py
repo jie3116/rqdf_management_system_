@@ -65,6 +65,18 @@ def _is_tahfidz_related_schedule(schedule):
 def _get_teacher_tahfidz_classes(teacher):
     classes = []
     seen_ids = set()
+
+    # Kelas non-formal yang memang diampu guru sebagai wali/homeroom tetap
+    # harus bisa dioperasikan meski jadwalnya belum dibuat.
+    if teacher.homeroom_class and not teacher.homeroom_class.is_deleted:
+        homeroom_class = teacher.homeroom_class
+        if (
+            is_rumah_quran_classroom(homeroom_class)
+            or is_bahasa_classroom(homeroom_class)
+        ):
+            seen_ids.add(homeroom_class.id)
+            classes.append(homeroom_class)
+
     schedules = Schedule.query.filter_by(
         teacher_id=teacher.id,
         is_deleted=False,
@@ -1130,6 +1142,11 @@ def input_behavior_report():
             if is_rumah_quran_classroom(selected_class):
                 students_query = Student.query.filter(
                     Student.id.in_([student.id for student in list_rumah_quran_students_for_class(selected_class_id)]),
+                    Student.is_deleted == False,
+                )
+            elif is_bahasa_classroom(selected_class):
+                students_query = Student.query.filter(
+                    Student.id.in_([student.id for student in list_bahasa_students_for_class(selected_class_id)]),
                     Student.is_deleted == False,
                 )
             else:
