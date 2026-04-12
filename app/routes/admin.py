@@ -27,6 +27,7 @@ from app.services.bahasa_service import (
     list_bahasa_students_for_class,
 )
 from app.services.staff_assignment_service import display_assignment_role
+from app.services.staff_assignment_service import ensure_assignment_label_configs
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
@@ -174,6 +175,7 @@ def manage_app_config():
         flash('Konfigurasi tersimpan.', 'success')
         return redirect(url_for('admin.manage_app_config'))
 
+    ensure_assignment_label_configs()
     query = (request.args.get('q') or '').strip()
     configs_query = AppConfig.query
     if query:
