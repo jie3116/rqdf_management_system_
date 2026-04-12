@@ -23,10 +23,18 @@ from app.utils.timezone import local_day_bounds_utc_naive, local_today, utc_now_
 teacher_bp = Blueprint('teacher', __name__)
 
 
+def _dedupe_classes(classes):
+    deduped = {}
+    for class_room in classes or []:
+        if class_room and class_room.id not in deduped:
+            deduped[class_room.id] = class_room
+    return list(deduped.values())
+
+
 def _get_teacher_homeroom_classes(teacher):
     classes = list_teacher_homeroom_classes_from_assignments(teacher)
     if classes:
-        return sorted(classes, key=lambda item: item.name or "")
+        return sorted(_dedupe_classes(classes), key=lambda item: item.name or "")
     return (
         ClassRoom.query.filter_by(homeroom_teacher_id=teacher.id, is_deleted=False)
         .order_by(ClassRoom.name.asc())
@@ -89,7 +97,7 @@ def _collect_teacher_assignment_summary(teacher):
             'subject_assignments': [],
         }
 
-    for class_room in _get_teacher_homeroom_classes(teacher):
+    for class_room in _dedupe_classes(_get_teacher_homeroom_classes(teacher)):
         group_key = _class_program_group(class_room)
         grouped_assignments[group_key]['homeroom_classes'].append(class_room)
 
@@ -185,14 +193,14 @@ def build_teacher_sidebar_groups(teacher):
 
 def _get_teacher_classes(teacher):
     """Helper: Ambil semua kelas yang diajar atau dibina guru ini."""
-    classes = set()
+    classes_by_id = {}
 
     # 1. Kelas sebagai Wali Kelas/Pembimbing utama
     for homeroom_class in _get_teacher_homeroom_classes(teacher):
-        classes.add(homeroom_class)
+        classes_by_id[homeroom_class.id] = homeroom_class
 
     for assigned_class in list_teacher_subject_classes_from_assignments(teacher):
-        classes.add(assigned_class)
+        classes_by_id[assigned_class.id] = assigned_class
     
     # 2. Kelas dari jadwal mengajar guru
     teaching_class_ids = db.session.query(Schedule.class_id).filter(
@@ -204,9 +212,9 @@ def _get_teacher_classes(teacher):
         class_id = row[0]
         target_class = ClassRoom.query.get(class_id)
         if target_class and not target_class.is_deleted:
-            classes.add(target_class)
+            classes_by_id[target_class.id] = target_class
     
-    return list(classes)
+    return list(classes_by_id.values())
 
 
 def _is_tahfidz_related_schedule(schedule):
