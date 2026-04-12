@@ -119,6 +119,7 @@ class ProgramType(enum.Enum):
     SEKOLAH_FULLDAY = "Sekolah Bina Qur'an"
     TAKHOSUS_TAHFIDZ = "Takhosus Tahfidz"
     MAJLIS_TALIM = "Majelis Ta'lim"  # BARU
+    BAHASA = "Program Bahasa"
 
 
 class EducationLevel(enum.Enum):
