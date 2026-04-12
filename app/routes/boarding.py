@@ -247,11 +247,16 @@ def manage_dormitories():
 
     guardians = BoardingGuardian.query.order_by(BoardingGuardian.full_name.asc()).all()
     dormitories = BoardingDormitory.query.order_by(BoardingDormitory.name.asc()).all()
+    dormitory_student_counts = {
+        dormitory.id: len(list_students_for_dormitory(dormitory.id))
+        for dormitory in dormitories
+    }
     students = students_query.order_by(Student.full_name.asc()).all()
 
     return render_template(
         'boarding/admin_dormitories.html',
         dormitories=dormitories,
+        dormitory_student_counts=dormitory_student_counts,
         guardians=guardians,
         students=students,
         query=student_query,

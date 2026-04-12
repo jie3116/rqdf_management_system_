@@ -88,7 +88,7 @@
                                     {% endfor %}
                                 </select>
                             </td>
-                            <td>{{ dorm.students|length }}</td>
+                            <td>{{ dormitory_student_counts.get(dorm.id, 0) }}</td>
                             <td>
                                 <input type="text" name="description" class="form-control form-control-sm mb-2" value="{{ dorm.description or '' }}" placeholder="Deskripsi">
                                 <button class="btn btn-sm btn-outline-primary w-100" type="submit">Simpan</button>
