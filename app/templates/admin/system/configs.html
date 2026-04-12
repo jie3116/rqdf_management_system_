@@ -72,8 +72,12 @@
                             <td>{{ c.value }}</td>
                             <td class="small text-muted">{{ c.description }}</td>
                             <td>
-                                <button class="btn btn-sm btn-outline-warning" 
-                                        onclick="editConfig('{{ c.key }}', '{{ c.value }}', '{{ c.description }}')">
+                                <button
+                                    class="btn btn-sm btn-outline-warning js-edit-config"
+                                    type="button"
+                                    data-key="{{ c.key }}"
+                                    data-value="{{ c.value }}"
+                                    data-description="{{ c.description or '' }}">
                                     <i class="fas fa-edit"></i>
                                 </button>
                             </td>
@@ -89,12 +93,14 @@
 </div>
 
 <script>
-function editConfig(key, value, desc) {
-    document.querySelector('input[name="key"]').value = key;
-    // Kunci Key agar tidak bisa diedit saat mode edit (Opsional, tapi lebih aman)
-    // document.querySelector('input[name="key"]').readOnly = true; 
-    document.querySelector('input[name="value"]').value = value;
-    document.querySelector('textarea[name="description"]').value = desc;
-}
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.js-edit-config').forEach(function (button) {
+        button.addEventListener('click', function () {
+            document.querySelector('input[name="key"]').value = this.dataset.key || '';
+            document.querySelector('input[name="value"]').value = this.dataset.value || '';
+            document.querySelector('textarea[name="description"]').value = this.dataset.description || '';
+        });
+    });
+});
 </script>
 {% endblock %}
