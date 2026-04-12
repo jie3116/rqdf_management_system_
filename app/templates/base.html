@@ -128,12 +128,22 @@
                 {% endif %}
 
                 {% if active_role_value == 'teacher' %}
-                    <div class="nav-header">Akademik</div>
-                    <li><a href="{{ url_for('teacher.input_tahfidz') }}"><i class="fas fa-quran me-2"></i> Input Tahfidz</a></li>
-                    <li><a href="{{ url_for('teacher.input_recitation') }}"><i class="fas fa-book-reader me-2"></i> Input Bacaan</a></li>
-                    <li><a href="{{ url_for('teacher.input_tahfidz_evaluation') }}"><i class="fas fa-clipboard-check me-2"></i> Evaluasi Tahfidz</a></li>
-                    <li><a href="{{ url_for('teacher.input_behavior_report') }}"><i class="fas fa-user-shield me-2"></i> Laporan Perilaku</a></li>
-                    <li><a href="{{ url_for('teacher.class_announcements') }}"><i class="fas fa-bullhorn me-2"></i> Pengumuman Kelas</a></li>
+                    {% for group in teacher_sidebar_groups %}
+                    <div class="nav-header d-flex justify-content-between align-items-center">
+                        <span><i class="{{ group.icon }} me-2"></i>{{ group.title }}</span>
+                        <span class="badge bg-secondary">{{ group.class_count + group.subject_count }}</span>
+                    </div>
+                    <li class="px-3 pb-1 small text-white-50">
+                        {{ group.class_count }} kelas, {{ group.subject_count }} assignment mapel
+                    </li>
+                    {% for item in group.items %}
+                    <li>
+                        <a href="{{ url_for(item.endpoint) }}" class="{% if request.endpoint == item.endpoint %}active{% endif %}">
+                            <i class="{{ item.icon }} me-2"></i>{{ item.label }}
+                        </a>
+                    </li>
+                    {% endfor %}
+                    {% endfor %}
                 {% endif %}
 
                 {% if active_role_value == 'tata_usaha' %}

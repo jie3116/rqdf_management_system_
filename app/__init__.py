@@ -21,6 +21,8 @@ def create_app(config_class=Config):
         from datetime import datetime
         import locale
         from flask_login import current_user
+        from app.models import Teacher
+        from app.routes.teacher import build_teacher_sidebar_groups
         from app.utils.roles import get_active_role, role_label
         from app.utils.timezone import local_now, local_today
         try:
@@ -29,6 +31,10 @@ def create_app(config_class=Config):
         except:
             pass
         active_role = get_active_role(current_user) if current_user.is_authenticated else None
+        teacher_sidebar_groups = []
+        if current_user.is_authenticated and active_role and active_role.value == 'teacher':
+            teacher = Teacher.query.filter_by(user_id=current_user.id, is_deleted=False).first()
+            teacher_sidebar_groups = build_teacher_sidebar_groups(teacher)
         return {
             'datetime': datetime,
             'local_now': local_now,
@@ -36,6 +42,7 @@ def create_app(config_class=Config):
             'active_role': active_role,
             'active_role_value': active_role.value if active_role else None,
             'active_role_label': role_label(active_role) if active_role else '-',
+            'teacher_sidebar_groups': teacher_sidebar_groups,
         }
 
     # 3. Import Models (Penting agar db.create_all mendeteksi tabel)
