@@ -1,6 +1,7 @@
 from app.extensions import db
 from app.models import (
     AcademicYear,
+    AppConfig,
     AssignmentRole,
     ClassRoom,
     EducationLevel,
@@ -13,6 +14,14 @@ from app.models import (
     Tenant,
     local_today,
 )
+
+ASSIGNMENT_LABEL_DEFAULTS = {
+    "assignment_label.formal_homeroom": ("Wali Kelas", "Label untuk penanggung jawab kelas program formal."),
+    "assignment_label.nonformal_homeroom": ("Pembimbing Kelas", "Label untuk penanggung jawab kelas program non-formal."),
+    "assignment_label.subject_teacher": ("Guru Mapel", "Label untuk assignment guru mata pelajaran."),
+    "assignment_label.program_companion": ("Pendamping Program", "Label umum untuk pendamping atau pembina program."),
+    "assignment_label.boarding_supervisor": ("Pembina Asrama", "Label untuk assignment pengasuhan/asrama."),
+}
 
 
 def _default_tenant():
@@ -235,6 +244,25 @@ def list_teacher_assignment_groups_from_assignments(teacher):
     return groups
 
 
+def ensure_assignment_label_configs():
+    created = 0
+    for key, (default_value, description) in ASSIGNMENT_LABEL_DEFAULTS.items():
+        existing = AppConfig.query.filter_by(key=key, is_deleted=False).first()
+        if existing is None:
+            db.session.add(AppConfig(key=key, value=default_value, description=description))
+            created += 1
+    if created:
+        db.session.commit()
+    return created
+
+
+def _assignment_label_config(key):
+    config = AppConfig.query.filter_by(key=key, is_deleted=False).first()
+    if config and config.value:
+        return config.value.strip()
+    return ASSIGNMENT_LABEL_DEFAULTS[key][0]
+
+
 def display_assignment_role(assignment_role, program_code=None):
     """
     Keep UI labels generic for SaaS readiness.
@@ -247,21 +275,21 @@ def display_assignment_role(assignment_role, program_code=None):
         return "-"
 
     if assignment_role == AssignmentRole.SUBJECT_TEACHER:
-        return "Guru Mapel"
+        return _assignment_label_config("assignment_label.subject_teacher")
 
     if assignment_role == AssignmentRole.HOMEROOM:
         if program_code and program_code.startswith("SEKOLAH_"):
-            return "Wali Kelas"
-        return "Penanggung Jawab Kelas"
+            return _assignment_label_config("assignment_label.formal_homeroom")
+        return _assignment_label_config("assignment_label.nonformal_homeroom")
 
     if assignment_role == AssignmentRole.MURABBI:
-        return "Pendamping Program"
+        return _assignment_label_config("assignment_label.program_companion")
 
     if assignment_role == AssignmentRole.MUSYRIF:
-        return "Pembina Asrama"
+        return _assignment_label_config("assignment_label.boarding_supervisor")
 
     if assignment_role == AssignmentRole.PEMBINA:
-        return "Pendamping Program"
+        return _assignment_label_config("assignment_label.program_companion")
 
     return assignment_role.value
 
