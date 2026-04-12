@@ -65,10 +65,10 @@
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="card border-left-success shadow h-100 py-2">
                 <div class="card-body">
-                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Wali Kelas</div>
-                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ homeroom_class.name if homeroom_class else 'Tidak Menjabat' }}</div>
-                    {% if homeroom_class and homeroom_class.program_type %}
-                    <div class="small text-muted">{{ homeroom_class.program_type.value }}</div>
+                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Kelas Binaan</div>
+                    <div class="h5 mb-0 font-weight-bold text-gray-800">{{ homeroom_classes|length }} Kelas</div>
+                    {% if homeroom_classes %}
+                    <div class="small text-muted">{{ homeroom_classes[0].name }}{% if homeroom_classes|length > 1 %} +{{ homeroom_classes|length - 1 }} lainnya{% endif %}</div>
                     {% endif %}
                 </div>
             </div>
@@ -108,10 +108,10 @@
                 <i class="fas fa-history me-1"></i> Riwayat
             </a>
         </li>
-        {% if homeroom_class %}
+        {% if homeroom_classes %}
         <li class="nav-item me-2 mb-2">
             <a class="nav-link {% if main_tab == 'perwalian' %}active{% endif %}" href="{{ url_for('teacher.dashboard', top_tab='main', main_tab='perwalian') }}">
-                <i class="fas fa-user-graduate me-1"></i> Perwalian
+                <i class="fas fa-user-graduate me-1"></i> Kelas Binaan
             </a>
         </li>
         {% endif %}
@@ -328,34 +328,88 @@
             </div>
         </div>
     </div>
-    {% elif main_tab == 'perwalian' and homeroom_class %}
+    {% elif main_tab == 'perwalian' and homeroom_classes %}
     <div class="card shadow mb-4">
         <div class="card-header py-3 bg-warning text-dark">
-            <h6 class="m-0 fw-bold"><i class="fas fa-user-graduate me-2"></i>Menu Perwalian: {{ homeroom_class.name }}</h6>
+            <h6 class="m-0 fw-bold"><i class="fas fa-user-graduate me-2"></i>Menu Kelas Binaan</h6>
         </div>
         <div class="card-body">
             <div class="row">
-                <div class="col-md-6 mb-3">
-                    <a href="{{ url_for('teacher.homeroom_students') }}" class="btn btn-outline-primary w-100 text-start">
-                        <i class="fas fa-users me-2"></i>Data Siswa & Peserta Majlis Perwalian
-                    </a>
+                {% for cls in homeroom_classes %}
+                <div class="col-lg-6 mb-3">
+                    <div class="card border-left-warning shadow-sm h-100">
+                        <div class="card-body">
+                            <div class="text-xs text-uppercase fw-bold text-warning mb-1">{{ cls.program_type.value if cls.program_type else 'Sekolah Formal' }}</div>
+                            <div class="fw-bold mb-3">{{ cls.name }}</div>
+                            <div class="d-grid gap-2">
+                                <a href="{{ url_for('teacher.homeroom_students', class_id=cls.id) }}" class="btn btn-outline-primary text-start">
+                                    <i class="fas fa-users me-2"></i>Data Peserta Kelas
+                                </a>
+                                <a href="{{ url_for('teacher.class_announcements', class_id=cls.id) }}" class="btn btn-outline-info text-start">
+                                    <i class="fas fa-bullhorn me-2"></i>Pengumuman Kelas
+                                </a>
+                                <a href="{{ url_for('teacher.input_behavior_report', class_id=cls.id) }}" class="btn btn-outline-danger text-start">
+                                    <i class="fas fa-heart-broken me-2"></i>Laporan Perilaku
+                                </a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="col-md-6 mb-3">
-                    <a href="{{ url_for('teacher.class_announcements', class_id=homeroom_class.id) }}" class="btn btn-outline-info w-100 text-start">
-                        <i class="fas fa-bullhorn me-2"></i>Buat Pengumuman Kelas
-                    </a>
-                </div>
-                <div class="col-md-6 mb-3">
-                    <a href="{{ url_for('teacher.input_behavior_report') }}" class="btn btn-outline-danger w-100 text-start">
-                        <i class="fas fa-heart-broken me-2"></i>Input Laporan Perilaku
-                    </a>
-                </div>
+                {% endfor %}
             </div>
         </div>
     </div>
     {% else %}
     <div class="row">
         <div class="col-lg-8">
+            {% if assignment_groups %}
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-white">
+                    <h6 class="m-0 fw-bold text-primary"><i class="fas fa-sitemap me-2"></i>Peta Assignment Guru</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for group in assignment_groups %}
+                        <div class="col-lg-6 mb-3">
+                            <div class="card border-left-primary h-100 shadow-sm">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div>
+                                            <div class="fw-bold"><i class="{{ group.icon }} me-2"></i>{{ group.title }}</div>
+                                            <div class="small text-muted">{{ group.description }}</div>
+                                        </div>
+                                        <span class="badge bg-primary">{{ group.badge }}</span>
+                                    </div>
+                                    <div class="small mb-2">
+                                        <strong>Kelas binaan:</strong> {{ group.homeroom_classes|length }}<br>
+                                        <strong>Assignment mapel:</strong> {{ group.subject_assignments|length }}
+                                    </div>
+                                    {% if group.homeroom_classes %}
+                                    <div class="small text-muted mb-2">
+                                        {% for cls in group.homeroom_classes %}
+                                        <div>{{ cls.name }}</div>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                    {% if group.subject_assignments %}
+                                    <div class="small text-muted">
+                                        {% for item in group.subject_assignments[:3] %}
+                                        <div>{{ item.class_name }} - {{ item.assignment_name }}</div>
+                                        {% endfor %}
+                                        {% if group.subject_assignments|length > 3 %}
+                                        <div>+{{ group.subject_assignments|length - 3 }} assignment lain</div>
+                                        {% endif %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
             <div class="card shadow mb-4">
                 <div class="card-header py-3 bg-white d-flex flex-row align-items-center justify-content-between">
                     <h6 class="m-0 fw-bold text-primary"><i class="fas fa-calendar-check me-2"></i>Agenda Hari Ini</h6>
@@ -412,9 +466,9 @@
                         <a href="{{ url_for('teacher.dashboard', top_tab='main', main_tab='riwayat') }}" class="btn btn-outline-success">
                             <i class="fas fa-history me-2"></i>Buka Tab Riwayat
                         </a>
-                        {% if homeroom_class %}
+                        {% if homeroom_classes %}
                         <a href="{{ url_for('teacher.dashboard', top_tab='main', main_tab='perwalian') }}" class="btn btn-outline-warning">
-                            <i class="fas fa-user-graduate me-2"></i>Buka Tab Perwalian
+                            <i class="fas fa-user-graduate me-2"></i>Buka Tab Kelas Binaan
                         </a>
                         {% endif %}
                     </div>
