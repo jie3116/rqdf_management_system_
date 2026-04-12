@@ -222,6 +222,22 @@ def sync_class_homeroom_assignment(class_room):
         assignment_role=AssignmentRole.HOMEROOM,
         notes="Class homeroom sync",
     )
+
+    duplicate_assignments = (
+        StaffAssignment.query.filter(
+            StaffAssignment.tenant_id == tenant.id,
+            StaffAssignment.person_id == person_id,
+            StaffAssignment.program_id == program.id,
+            StaffAssignment.group_id == group.id,
+            StaffAssignment.assignment_role == AssignmentRole.HOMEROOM,
+            StaffAssignment.is_deleted.is_(False),
+            StaffAssignment.end_date.is_(None),
+        )
+        .order_by(StaffAssignment.id.desc())
+        .all()
+    )
+    for assignment in duplicate_assignments[1:]:
+        assignment.end_date = local_today()
     return True, None
 
 
