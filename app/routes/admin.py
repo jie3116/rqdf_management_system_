@@ -26,8 +26,13 @@ from app.services.bahasa_service import (
     list_bahasa_classes,
     list_bahasa_students_for_class,
 )
-from app.services.staff_assignment_service import display_assignment_role
-from app.services.staff_assignment_service import ensure_assignment_label_configs
+from app.services.staff_assignment_service import (
+    create_teacher_staff_assignment,
+    deactivate_teacher_staff_assignment,
+    display_assignment_role,
+    ensure_assignment_label_configs,
+    get_assignable_teacher_classes,
+)
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
@@ -353,11 +358,56 @@ def manage_teachers():
     return render_template('admin/hr/teachers.html', teachers=teachers, query=query)
 
 
-@admin_bp.route('/sdm/guru/<int:id>/assignments')
+@admin_bp.route('/sdm/guru/<int:id>/assignments', methods=['GET', 'POST'])
 @login_required
 @role_required(UserRole.ADMIN)
 def teacher_assignments(id):
     teacher = Teacher.query.get_or_404(id)
+    assignable_classes = get_assignable_teacher_classes()
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+
+        if action == 'add':
+            class_id = request.form.get('class_id', type=int)
+            assignment_role_name = (request.form.get('assignment_role') or '').strip()
+            notes = (request.form.get('notes') or '').strip()
+
+            class_room = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first() if class_id else None
+            try:
+                assignment_role = AssignmentRole[assignment_role_name]
+            except KeyError:
+                assignment_role = None
+
+            if class_room is None or assignment_role is None:
+                flash('Kelas atau role assignment belum valid.', 'warning')
+                return redirect(url_for('admin.teacher_assignments', id=id))
+
+            success, error_message = create_teacher_staff_assignment(
+                teacher=teacher,
+                class_room=class_room,
+                assignment_role=assignment_role,
+                notes=notes,
+            )
+            if success:
+                db.session.commit()
+                flash('Assignment guru berhasil ditambahkan.', 'success')
+            else:
+                db.session.rollback()
+                flash(error_message or 'Gagal menambahkan assignment guru.', 'warning')
+            return redirect(url_for('admin.teacher_assignments', id=id))
+
+        if action == 'deactivate':
+            assignment_id = request.form.get('assignment_id', type=int)
+            success, error_message = deactivate_teacher_staff_assignment(teacher, assignment_id)
+            if success:
+                db.session.commit()
+                flash('Assignment guru dinonaktifkan.', 'success')
+            else:
+                db.session.rollback()
+                flash(error_message or 'Gagal menonaktifkan assignment guru.', 'warning')
+            return redirect(url_for('admin.teacher_assignments', id=id))
+
     assignment_rows = (
         StaffAssignment.query
         .outerjoin(Program, StaffAssignment.program_id == Program.id)
@@ -393,6 +443,7 @@ def teacher_assignments(id):
             grouped_assignments.append(grouped_map[program_key])
 
         row = {
+            'id': assignment.id,
             'role': display_assignment_role(
                 assignment.assignment_role,
                 program.code,
@@ -423,6 +474,13 @@ def teacher_assignments(id):
         grouped_assignments=grouped_assignments,
         total_assignments=len(assignment_rows),
         role_summary=role_summary,
+        assignable_classes=assignable_classes,
+        assignment_role_options=[
+            ('HOMEROOM', 'Wali/Pembimbing Kelas'),
+            ('SUBJECT_TEACHER', 'Guru Mapel'),
+            ('PEMBINA', 'Pendamping Program'),
+            ('MUSYRIF', 'Pembina Asrama'),
+        ],
     )
 
 

@@ -80,6 +80,17 @@ def _group_for_class(class_room):
     ).first()
 
 
+def get_assignable_teacher_classes():
+    return (
+        ClassRoom.query.filter(
+            ClassRoom.is_deleted.is_(False),
+            ClassRoom.program_group_id.isnot(None),
+        )
+        .order_by(ClassRoom.name.asc())
+        .all()
+    )
+
+
 def _ensure_staff_assignment(person_id, tenant_id, program_id, group_id, academic_year_id, assignment_role, notes):
     if not (person_id and tenant_id and program_id):
         return False
@@ -113,6 +124,74 @@ def _ensure_staff_assignment(person_id, tenant_id, program_id, group_id, academi
     assignment.end_date = None
     assignment.notes = notes
     return assignment.id is None
+
+
+def create_teacher_staff_assignment(teacher, class_room, assignment_role, notes=None):
+    tenant = _default_tenant()
+    person_id = _teacher_person_id(teacher)
+    if teacher is None or class_room is None or tenant is None or not person_id:
+        return False, "Data guru atau kelas belum lengkap."
+
+    if class_room.program_group_id is None:
+        return False, "Kelas belum terhubung ke program group."
+
+    program = _program_for_class(class_room, tenant.id)
+    group = _group_for_class(class_room)
+    if program is None or group is None:
+        return False, "Program atau group kelas belum valid."
+
+    existing = (
+        StaffAssignment.query.filter_by(
+            tenant_id=tenant.id,
+            person_id=person_id,
+            program_id=program.id,
+            group_id=group.id,
+            academic_year_id=class_room.academic_year_id,
+            assignment_role=assignment_role,
+            is_deleted=False,
+        )
+        .order_by(StaffAssignment.id.desc())
+        .first()
+    )
+    if existing and existing.end_date is None:
+        return False, "Assignment aktif yang sama sudah ada."
+
+    if existing is None:
+        existing = StaffAssignment(
+            tenant_id=tenant.id,
+            person_id=person_id,
+            program_id=program.id,
+            group_id=group.id,
+            academic_year_id=class_room.academic_year_id,
+            assignment_role=assignment_role,
+        )
+        db.session.add(existing)
+
+    existing.start_date = local_today()
+    existing.end_date = None
+    existing.notes = notes or "Admin assignment"
+    db.session.flush()
+    return True, None
+
+
+def deactivate_teacher_staff_assignment(teacher, assignment_id):
+    tenant = _default_tenant()
+    person_id = _teacher_person_id(teacher)
+    if teacher is None or tenant is None or not person_id:
+        return False, "Data guru belum lengkap."
+
+    assignment = StaffAssignment.query.filter_by(
+        id=assignment_id,
+        tenant_id=tenant.id,
+        person_id=person_id,
+        is_deleted=False,
+    ).first()
+    if assignment is None:
+        return False, "Assignment tidak ditemukan."
+
+    if assignment.end_date is None:
+        assignment.end_date = local_today()
+    return True, None
 
 
 def sync_teacher_staff_assignments(teacher):
