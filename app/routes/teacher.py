@@ -8,7 +8,7 @@ from app.models import (
     TahfidzEvaluation, TahfidzType, RecitationSource, ParticipantType, Grade,
     EvaluationPeriod,
     GradeType, Subject, MajlisSubject, Attendance, AttendanceStatus, AcademicYear, Schedule, db, UserRole, MajlisParticipant,
-    BehaviorReport, BehaviorReportType, Announcement, BoardingAttendance
+    BehaviorReport, BehaviorReportType, Announcement, BoardingAttendance, ProgramType
 )
 from app.decorators import role_required
 from app.services.rumah_quran_service import is_rumah_quran_classroom, list_rumah_quran_students_for_class
