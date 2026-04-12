@@ -243,26 +243,18 @@ def display_assignment_role(assignment_role, program_code=None):
         return "Guru Mapel"
 
     if assignment_role == AssignmentRole.HOMEROOM:
-        if program_code == "RUMAH_QURAN":
-            return "Murabbi"
-        if program_code == "MAJLIS_TALIM":
-            return "Pembimbing Majlis"
-        if program_code == "BAHASA":
-            return "Pembimbing Bahasa"
-        return "Wali Kelas"
+        if program_code and program_code.startswith("SEKOLAH_"):
+            return "Wali Kelas"
+        return "Penanggung Jawab Kelas"
 
     if assignment_role == AssignmentRole.MURABBI:
-        return "Murabbi"
+        return "Pendamping Program"
 
     if assignment_role == AssignmentRole.MUSYRIF:
-        return "Musyrif Asrama"
+        return "Pembina Asrama"
 
     if assignment_role == AssignmentRole.PEMBINA:
-        if program_code == "MAJLIS_TALIM":
-            return "Pembimbing Majlis"
-        if program_code == "BAHASA":
-            return "Pembimbing Bahasa"
-        return "Pembina"
+        return "Pendamping Program"
 
     return assignment_role.value
 
