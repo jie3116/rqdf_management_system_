@@ -70,6 +70,22 @@
                             Jika kelas utama siswa sudah kelas Rumah Qur'an, field ini akan mengikuti kelas utama saat disimpan.
                         </small>
                     </div>
+
+                    <div class="mb-3">
+                        <label class="small fw-bold text-muted">Kelas Bahasa Tambahan</label>
+                        <select name="bahasa_class_id" class="form-select border-info">
+                            <option value="">-- Tidak ikut Kelas Bahasa tambahan --</option>
+                            {% for c in bahasa_classes %}
+                                <option value="{{ c.id }}" {% if bahasa_class and bahasa_class.id == c.id %}selected{% endif %}>
+                                    {{ c.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted" style="font-size:10px;">
+                            Fast-track multi-program: siswa formal bisa tetap di kelas formal sambil ikut kelas Bahasa.
+                            Jika kelas utama siswa sudah kelas Bahasa, field ini akan mengikuti kelas utama saat disimpan.
+                        </small>
+                    </div>
                 </div>
             </div>
 

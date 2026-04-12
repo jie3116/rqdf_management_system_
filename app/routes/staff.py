@@ -20,6 +20,11 @@ from app.services.rumah_quran_service import (
     get_student_rumah_quran_classroom,
     list_rumah_quran_classes,
 )
+from app.services.bahasa_service import (
+    assign_student_bahasa_class,
+    get_student_bahasa_classroom,
+    list_bahasa_classes,
+)
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType,
@@ -705,6 +710,8 @@ def edit_student(student_id):
     classes = ClassRoom.query.all()
     rumah_quran_classes = list_rumah_quran_classes()
     rumah_quran_class = get_student_rumah_quran_classroom(student)
+    bahasa_classes = list_bahasa_classes()
+    bahasa_class = get_student_bahasa_classroom(student)
 
     if request.method == 'POST':
         student.full_name = request.form.get('full_name')
@@ -715,10 +722,14 @@ def edit_student(student_id):
         student.current_class_id = selected_class_id
         rumah_quran_class_id = request.form.get('rumah_quran_class_id')
         rumah_quran_class_id = int(rumah_quran_class_id) if rumah_quran_class_id else None
+        bahasa_class_id = request.form.get('bahasa_class_id')
+        bahasa_class_id = int(bahasa_class_id) if bahasa_class_id else None
 
         selected_class = ClassRoom.query.filter_by(id=selected_class_id, is_deleted=False).first() if selected_class_id else None
         if selected_class and selected_class.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ):
             rumah_quran_class_id = selected_class.id
+        if selected_class and selected_class.program_type == ProgramType.BAHASA:
+            bahasa_class_id = selected_class.id
 
         # TU juga bisa update SPP Khusus jika ada negosiasi
         spp_input = request.form.get('custom_spp')
@@ -729,6 +740,7 @@ def edit_student(student_id):
 
         try:
             assign_student_rumah_quran_class(student, rumah_quran_class_id)
+            assign_student_bahasa_class(student, bahasa_class_id)
             db.session.commit()
             flash('Data siswa berhasil diupdate.', 'success')
             return redirect(url_for('staff.list_students'))
@@ -740,7 +752,9 @@ def edit_student(student_id):
                            student=student,
                            classes=classes,
                            rumah_quran_classes=rumah_quran_classes,
-                           rumah_quran_class=rumah_quran_class)
+                           rumah_quran_class=rumah_quran_class,
+                           bahasa_classes=bahasa_classes,
+                           bahasa_class=bahasa_class)
 
 
 
