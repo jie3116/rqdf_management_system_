@@ -111,7 +111,9 @@ def ensure_bahasa_program_group(class_room):
         )
         db.session.add(group)
 
+    group.name = class_room.name
     group.group_type = GroupType.CLASS
+    group.academic_year_id = class_room.academic_year_id
     group.level_label = str(class_room.grade_level) if class_room.grade_level else None
     group.is_active = True
     db.session.flush()
