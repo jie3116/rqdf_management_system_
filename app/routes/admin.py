@@ -32,6 +32,7 @@ from app.services.staff_assignment_service import (
     display_assignment_role,
     ensure_assignment_label_configs,
     get_assignable_teacher_classes,
+    sync_class_homeroom_assignment,
 )
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
@@ -382,6 +383,9 @@ def teacher_assignments(id):
             if class_room is None or assignment_role is None:
                 flash('Kelas atau role assignment belum valid.', 'warning')
                 return redirect(url_for('admin.teacher_assignments', id=id))
+            if assignment_role == AssignmentRole.HOMEROOM:
+                flash('Wali kelas atau pembimbing kelas utama diatur dari menu edit data kelas.', 'warning')
+                return redirect(url_for('admin.teacher_assignments', id=id))
 
             success, error_message = create_teacher_staff_assignment(
                 teacher=teacher,
@@ -476,7 +480,6 @@ def teacher_assignments(id):
         role_summary=role_summary,
         assignable_classes=assignable_classes,
         assignment_role_options=[
-            ('HOMEROOM', 'Wali/Pembimbing Kelas'),
             ('SUBJECT_TEACHER', 'Guru Mapel'),
             ('PEMBINA', 'Pendamping Program'),
             ('MUSYRIF', 'Pembina Asrama'),
@@ -729,6 +732,7 @@ def manage_classes():
         db.session.flush()
         ensure_rumah_quran_program_group(new_class)
         ensure_bahasa_program_group(new_class)
+        sync_class_homeroom_assignment(new_class)
         db.session.commit()
         flash('Kelas berhasil dibuat.', 'success')
         return redirect(url_for('admin.manage_classes'))
@@ -787,6 +791,7 @@ def edit_class(class_id):
         try:
             ensure_rumah_quran_program_group(class_room)
             ensure_bahasa_program_group(class_room)
+            sync_class_homeroom_assignment(class_room)
             db.session.commit()
             flash(f'Kelas {class_room.name} berhasil diperbarui.', 'success')
             return redirect(url_for('admin.manage_classes'))
