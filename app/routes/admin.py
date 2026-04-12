@@ -18,6 +18,14 @@ from app.services.rumah_quran_service import (
     list_rumah_quran_classes,
     list_rumah_quran_students_for_class,
 )
+from app.services.bahasa_service import (
+    assign_student_bahasa_class,
+    ensure_bahasa_program_group,
+    get_student_bahasa_classroom,
+    is_bahasa_classroom,
+    list_bahasa_classes,
+    list_bahasa_students_for_class,
+)
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
@@ -586,6 +594,7 @@ def manage_classes():
         db.session.add(new_class)
         db.session.flush()
         ensure_rumah_quran_program_group(new_class)
+        ensure_bahasa_program_group(new_class)
         db.session.commit()
         flash('Kelas berhasil dibuat.', 'success')
         return redirect(url_for('admin.manage_classes'))
@@ -605,6 +614,8 @@ def manage_classes():
     for class_room in classes:
         if is_rumah_quran_classroom(class_room):
             class_student_counts[class_room.id] = len(list_rumah_quran_students_for_class(class_room.id))
+        elif is_bahasa_classroom(class_room):
+            class_student_counts[class_room.id] = len(list_bahasa_students_for_class(class_room.id))
         else:
             class_student_counts[class_room.id] = len(class_room.students)
     teachers = Teacher.query.filter_by(is_deleted=False).all()  # Untuk dropdown
@@ -641,6 +652,7 @@ def edit_class(class_id):
 
         try:
             ensure_rumah_quran_program_group(class_room)
+            ensure_bahasa_program_group(class_room)
             db.session.commit()
             flash(f'Kelas {class_room.name} berhasil diperbarui.', 'success')
             return redirect(url_for('admin.manage_classes'))
@@ -792,6 +804,8 @@ def edit_student(student_id):
     classes = ClassRoom.query.filter_by(is_deleted=False).all()
     rumah_quran_classes = list_rumah_quran_classes()
     rumah_quran_class = get_student_rumah_quran_classroom(student)
+    bahasa_classes = list_bahasa_classes()
+    bahasa_class = get_student_bahasa_classroom(student)
 
     if request.method == 'POST':
         # Update Data Dasar
@@ -805,10 +819,14 @@ def edit_student(student_id):
         student.current_class_id = selected_class_id
         rumah_quran_class_id = request.form.get('rumah_quran_class_id')
         rumah_quran_class_id = int(rumah_quran_class_id) if rumah_quran_class_id else None
+        bahasa_class_id = request.form.get('bahasa_class_id')
+        bahasa_class_id = int(bahasa_class_id) if bahasa_class_id else None
 
         selected_class = ClassRoom.query.filter_by(id=selected_class_id, is_deleted=False).first() if selected_class_id else None
         if selected_class and selected_class.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ):
             rumah_quran_class_id = selected_class.id
+        if selected_class and selected_class.program_type == ProgramType.BAHASA:
+            bahasa_class_id = selected_class.id
 
         # Update SPP Khusus
         spp = request.form.get('custom_spp')
@@ -819,6 +837,7 @@ def edit_student(student_id):
 
         try:
             assign_student_rumah_quran_class(student, rumah_quran_class_id)
+            assign_student_bahasa_class(student, bahasa_class_id)
             student.save()  # Menggunakan method save() dari BaseModel
             flash('Data siswa diupdate.', 'success')
             return redirect(url_for('admin.list_students'))
@@ -830,7 +849,9 @@ def edit_student(student_id):
                            student=student,
                            classes=classes,
                            rumah_quran_classes=rumah_quran_classes,
-                           rumah_quran_class=rumah_quran_class)
+                           rumah_quran_class=rumah_quran_class,
+                           bahasa_classes=bahasa_classes,
+                           bahasa_class=bahasa_class)
 
 
 @admin_bp.route('/daftar-student')
