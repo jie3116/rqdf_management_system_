@@ -47,6 +47,7 @@
                             <td><span class="badge bg-info text-dark">{{ t.specialty }}</span></td>
                             <td><span class="badge bg-success">Aktif</span></td>
                             <td class="d-flex gap-1">
+                                <a href="{{ url_for('admin.teacher_assignments', id=t.id) }}" class="btn btn-sm btn-info" title="Assignment"><i class="fas fa-sitemap"></i></a>
                                 <a href="{{ url_for('admin.edit_teacher', id=t.id) }}" class="btn btn-sm btn-warning" title="Edit"><i class="fas fa-edit"></i></a>
                                 <form method="POST" action="{{ url_for('admin.delete_teacher', id=t.id) }}" onsubmit="return confirm('Yakin hapus data guru ini?')">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>

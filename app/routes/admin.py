@@ -30,11 +30,11 @@ from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
     # Base & Enums
-    UserRole, Gender, PaymentStatus, RegistrationStatus, ProgramType, EducationLevel,
+    UserRole, Gender, PaymentStatus, RegistrationStatus, ProgramType, EducationLevel, AssignmentRole,
     # Users
     User, UserRoleAssignment, Student, Parent, Teacher, Staff, MajlisParticipant, BoardingGuardian,
     # Academic
-    AcademicYear, ClassRoom, Subject, Schedule,
+    AcademicYear, ClassRoom, Subject, Schedule, Program, ProgramGroup, StaffAssignment,
     # Finance
     FeeType, Invoice, Transaction,
     # Student Related
@@ -348,6 +348,72 @@ def manage_teachers():
 
     teachers = teachers_query.order_by(Teacher.full_name.asc()).all()
     return render_template('admin/hr/teachers.html', teachers=teachers, query=query)
+
+
+@admin_bp.route('/sdm/guru/<int:id>/assignments')
+@login_required
+@role_required(UserRole.ADMIN)
+def teacher_assignments(id):
+    teacher = Teacher.query.get_or_404(id)
+    assignment_rows = (
+        StaffAssignment.query
+        .outerjoin(Program, StaffAssignment.program_id == Program.id)
+        .outerjoin(ProgramGroup, StaffAssignment.group_id == ProgramGroup.id)
+        .filter(
+            StaffAssignment.person_id == teacher.person_id,
+            StaffAssignment.is_deleted == False,
+        )
+        .order_by(
+            StaffAssignment.end_date.isnot(None),
+            Program.code.asc(),
+            StaffAssignment.assignment_role.asc(),
+            ProgramGroup.name.asc(),
+            StaffAssignment.id.asc(),
+        )
+        .all()
+    )
+
+    grouped_assignments = []
+    grouped_map = {}
+    for assignment in assignment_rows:
+        program = assignment.program
+        if program is None:
+            continue
+        program_key = program.code
+        if program_key not in grouped_map:
+            grouped_map[program_key] = {
+                'program_code': program.code,
+                'program_name': program.name,
+                'assignments': [],
+                'active_count': 0,
+            }
+            grouped_assignments.append(grouped_map[program_key])
+
+        row = {
+            'role': assignment.assignment_role.value if assignment.assignment_role else '-',
+            'group_name': assignment.group.name if assignment.group else '-',
+            'academic_year': assignment.academic_year.name if assignment.academic_year else '-',
+            'start_date': assignment.start_date,
+            'end_date': assignment.end_date,
+            'notes': assignment.notes or '-',
+            'is_active': assignment.end_date is None,
+        }
+        grouped_map[program_key]['assignments'].append(row)
+        if row['is_active']:
+            grouped_map[program_key]['active_count'] += 1
+
+    role_summary = {role.value: 0 for role in AssignmentRole}
+    for assignment in assignment_rows:
+        if assignment.assignment_role:
+            role_summary[assignment.assignment_role.value] += 1
+
+    return render_template(
+        'admin/hr/teacher_assignments.html',
+        teacher=teacher,
+        grouped_assignments=grouped_assignments,
+        total_assignments=len(assignment_rows),
+        role_summary=role_summary,
+    )
 
 
 @admin_bp.route('/sdm/guru/hapus/<int:id>', methods=['POST'])
