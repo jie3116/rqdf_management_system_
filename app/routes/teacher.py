@@ -19,13 +19,62 @@ from app.utils.timezone import local_day_bounds_utc_naive, local_today, utc_now_
 teacher_bp = Blueprint('teacher', __name__)
 
 
+def _get_teacher_homeroom_classes(teacher):
+    return (
+        ClassRoom.query.filter_by(homeroom_teacher_id=teacher.id, is_deleted=False)
+        .order_by(ClassRoom.name.asc())
+        .all()
+    )
+
+
+def _class_program_group(class_room):
+    if not class_room or not class_room.program_type:
+        return 'formal'
+    if class_room.program_type == ProgramType.BAHASA:
+        return 'bahasa'
+    if class_room.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ):
+        return 'rumah_quran'
+    if class_room.program_type == ProgramType.MAJLIS_TALIM:
+        return 'majlis'
+    return 'formal'
+
+
+def _assignment_group_catalog():
+    return {
+        'formal': {
+            'title': 'Sekolah Formal',
+            'badge': 'Formal',
+            'icon': 'fas fa-school',
+            'description': 'Wali kelas dan pengampu mapel sekolah formal.',
+        },
+        'rumah_quran': {
+            'title': "Rumah Qur'an",
+            'badge': 'Rumah Qur\'an',
+            'icon': 'fas fa-quran',
+            'description': 'Halaqah reguler dan takhosus tahfidz.',
+        },
+        'bahasa': {
+            'title': 'Program Bahasa',
+            'badge': 'Bahasa',
+            'icon': 'fas fa-language',
+            'description': 'Kelas bahasa tambahan lintas program.',
+        },
+        'majlis': {
+            'title': "Majlis Ta'lim",
+            'badge': 'Majlis',
+            'icon': 'fas fa-users',
+            'description': 'Kelas pembinaan majlis ta\'lim.',
+        },
+    }
+
+
 def _get_teacher_classes(teacher):
     """Helper: Ambil semua kelas yang diajar atau dibina guru ini."""
     classes = set()
-    
-    # 1. Kelas sebagai Wali Kelas
-    if teacher.homeroom_class:
-        classes.add(teacher.homeroom_class)
+
+    # 1. Kelas sebagai Wali Kelas/Pembimbing utama
+    for homeroom_class in _get_teacher_homeroom_classes(teacher):
+        classes.add(homeroom_class)
     
     # 2. Kelas dari jadwal mengajar guru
     teaching_class_ids = db.session.query(Schedule.class_id).filter(
@@ -68,8 +117,7 @@ def _get_teacher_tahfidz_classes(teacher):
 
     # Kelas non-formal yang memang diampu guru sebagai wali/homeroom tetap
     # harus bisa dioperasikan meski jadwalnya belum dibuat.
-    if teacher.homeroom_class and not teacher.homeroom_class.is_deleted:
-        homeroom_class = teacher.homeroom_class
+    for homeroom_class in _get_teacher_homeroom_classes(teacher):
         if (
             is_rumah_quran_classroom(homeroom_class)
             or is_bahasa_classroom(homeroom_class)
@@ -215,6 +263,7 @@ def dashboard():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
 
     my_classes = _get_teacher_classes(teacher)
+    homeroom_classes = _get_teacher_homeroom_classes(teacher)
     class_ids = [c.id for c in my_classes]
     nonformal_classes = [
         c for c in my_classes
@@ -227,6 +276,7 @@ def dashboard():
     ]
 
     total_students = _count_teacher_students(my_classes) if class_ids else 0
+    homeroom_class = homeroom_classes[0] if homeroom_classes else None
 
     today = local_today()
     today_name_map = {0: 'Senin', 1: 'Selasa', 2: 'Rabu', 3: 'Kamis', 4: 'Jumat', 5: 'Sabtu', 6: 'Minggu'}
@@ -240,6 +290,23 @@ def dashboard():
 
     teaching_assignments = []
     seen_assignments = set()
+    grouped_assignments = {}
+    catalog = _assignment_group_catalog()
+    for key, meta in catalog.items():
+        grouped_assignments[key] = {
+            'key': key,
+            'title': meta['title'],
+            'badge': meta['badge'],
+            'icon': meta['icon'],
+            'description': meta['description'],
+            'homeroom_classes': [],
+            'subject_assignments': [],
+        }
+
+    for class_room in homeroom_classes:
+        group_key = _class_program_group(class_room)
+        grouped_assignments[group_key]['homeroom_classes'].append(class_room)
+
     all_teacher_schedules = Schedule.query.filter_by(teacher_id=teacher.id, is_deleted=False).all()
     for sch in all_teacher_schedules:
         if not sch.class_room:
@@ -254,6 +321,13 @@ def dashboard():
         if key in seen_assignments:
             continue
         seen_assignments.add(key)
+        assignment_item = {
+            'class_id': sch.class_id,
+            'class_name': sch.class_room.name,
+            'subject_id': sch.subject_id,
+            'majlis_subject_id': sch.majlis_subject_id,
+            'assignment_name': assignment_name
+        }
         teaching_assignments.append((
             sch.class_id,
             sch.class_room.name,
@@ -261,8 +335,11 @@ def dashboard():
             sch.majlis_subject_id,
             assignment_name
         ))
+        group_key = _class_program_group(sch.class_room)
+        grouped_assignments[group_key]['subject_assignments'].append(assignment_item)
 
-    homeroom_class = teacher.homeroom_class
+    assignment_groups = [group for group in grouped_assignments.values() if group['homeroom_classes'] or group['subject_assignments']]
+
     top_tab = (request.args.get('top_tab') or 'main').strip().lower()
     main_tab = (request.args.get('main_tab') or 'ringkas').strip().lower()
     allowed_main_tabs = {'ringkas', 'input', 'riwayat', 'perwalian'}
@@ -333,9 +410,11 @@ def dashboard():
     return render_template('teacher/dashboard.html',
                          teacher=teacher,
                          my_classes=my_classes,
+                         homeroom_classes=homeroom_classes,
                          nonformal_classes=nonformal_classes,
                          bahasa_classes=bahasa_classes,
                          rumah_quran_classes=rumah_quran_classes,
+                         assignment_groups=assignment_groups,
                          main_tab=main_tab,
                          total_students=total_students,
                          today_tahfidz=today_tahfidz,
