@@ -235,6 +235,38 @@ def list_teacher_assignment_groups_from_assignments(teacher):
     return groups
 
 
+def display_assignment_role(assignment_role, program_code=None):
+    if assignment_role is None:
+        return "-"
+
+    if assignment_role == AssignmentRole.SUBJECT_TEACHER:
+        return "Guru Mapel"
+
+    if assignment_role == AssignmentRole.HOMEROOM:
+        if program_code == "RUMAH_QURAN":
+            return "Murabbi"
+        if program_code == "MAJLIS_TALIM":
+            return "Pembimbing Majlis"
+        if program_code == "BAHASA":
+            return "Pembimbing Bahasa"
+        return "Wali Kelas"
+
+    if assignment_role == AssignmentRole.MURABBI:
+        return "Murabbi"
+
+    if assignment_role == AssignmentRole.MUSYRIF:
+        return "Musyrif Asrama"
+
+    if assignment_role == AssignmentRole.PEMBINA:
+        if program_code == "MAJLIS_TALIM":
+            return "Pembimbing Majlis"
+        if program_code == "BAHASA":
+            return "Pembimbing Bahasa"
+        return "Pembina"
+
+    return assignment_role.value
+
+
 def backfill_all_teacher_staff_assignments():
     summary = {"teachers": 0, "created": 0, "skipped": 0}
     teachers = Teacher.query.filter_by(is_deleted=False).order_by(Teacher.id.asc()).all()
