@@ -68,6 +68,114 @@ def _assignment_group_catalog():
     }
 
 
+def _collect_teacher_assignment_summary(teacher):
+    grouped_assignments = {}
+    catalog = _assignment_group_catalog()
+    for key, meta in catalog.items():
+        grouped_assignments[key] = {
+            'key': key,
+            'title': meta['title'],
+            'badge': meta['badge'],
+            'icon': meta['icon'],
+            'description': meta['description'],
+            'homeroom_classes': [],
+            'subject_assignments': [],
+        }
+
+    for class_room in _get_teacher_homeroom_classes(teacher):
+        group_key = _class_program_group(class_room)
+        grouped_assignments[group_key]['homeroom_classes'].append(class_room)
+
+    teaching_assignments = []
+    seen_assignments = set()
+    all_teacher_schedules = Schedule.query.filter_by(teacher_id=teacher.id, is_deleted=False).all()
+    for sch in all_teacher_schedules:
+        if not sch.class_room:
+            continue
+        if not sch.subject and not sch.majlis_subject:
+            continue
+
+        assignment_type = 'SUBJECT' if sch.subject_id else 'MAJLIS_SUBJECT'
+        assignment_id = sch.subject_id if sch.subject_id else sch.majlis_subject_id
+        assignment_name = sch.subject.name if sch.subject else sch.majlis_subject.name
+        key = (sch.class_id, assignment_type, assignment_id)
+        if key in seen_assignments:
+            continue
+        seen_assignments.add(key)
+        assignment_item = {
+            'class_id': sch.class_id,
+            'class_name': sch.class_room.name,
+            'subject_id': sch.subject_id,
+            'majlis_subject_id': sch.majlis_subject_id,
+            'assignment_name': assignment_name,
+        }
+        teaching_assignments.append((
+            sch.class_id,
+            sch.class_room.name,
+            sch.subject_id,
+            sch.majlis_subject_id,
+            assignment_name
+        ))
+        group_key = _class_program_group(sch.class_room)
+        grouped_assignments[group_key]['subject_assignments'].append(assignment_item)
+
+    assignment_groups = [
+        group for group in grouped_assignments.values()
+        if group['homeroom_classes'] or group['subject_assignments']
+    ]
+    return assignment_groups, teaching_assignments
+
+
+def build_teacher_sidebar_groups(teacher):
+    if not teacher:
+        return []
+
+    assignment_groups, _ = _collect_teacher_assignment_summary(teacher)
+    group_items = {
+        'formal': [
+            {'endpoint': 'teacher.homeroom_students', 'label': 'Data Peserta Kelas', 'icon': 'fas fa-users'},
+            {'endpoint': 'teacher.input_grades', 'label': 'Input Nilai', 'icon': 'fas fa-pen-alt'},
+            {'endpoint': 'teacher.input_attendance', 'label': 'Input Absensi', 'icon': 'fas fa-clipboard-check'},
+            {'endpoint': 'teacher.input_behavior_report', 'label': 'Laporan Perilaku', 'icon': 'fas fa-user-shield'},
+            {'endpoint': 'teacher.class_announcements', 'label': 'Pengumuman Kelas', 'icon': 'fas fa-bullhorn'},
+        ],
+        'rumah_quran': [
+            {'endpoint': 'teacher.input_tahfidz', 'label': 'Input Tahfidz', 'icon': 'fas fa-quran'},
+            {'endpoint': 'teacher.input_recitation', 'label': 'Input Bacaan', 'icon': 'fas fa-book-reader'},
+            {'endpoint': 'teacher.input_tahfidz_evaluation', 'label': 'Evaluasi Tahfidz', 'icon': 'fas fa-clipboard-check'},
+            {'endpoint': 'teacher.input_attendance', 'label': 'Input Absensi', 'icon': 'fas fa-calendar-check'},
+            {'endpoint': 'teacher.input_behavior_report', 'label': 'Laporan Perilaku', 'icon': 'fas fa-user-shield'},
+            {'endpoint': 'teacher.class_announcements', 'label': 'Pengumuman Kelas', 'icon': 'fas fa-bullhorn'},
+        ],
+        'bahasa': [
+            {'endpoint': 'teacher.input_attendance', 'label': 'Input Absensi', 'icon': 'fas fa-calendar-check'},
+            {'endpoint': 'teacher.input_behavior_report', 'label': 'Laporan Perilaku', 'icon': 'fas fa-user-shield'},
+            {'endpoint': 'teacher.class_announcements', 'label': 'Pengumuman Kelas', 'icon': 'fas fa-bullhorn'},
+        ],
+        'majlis': [
+            {'endpoint': 'teacher.input_tahfidz', 'label': 'Input Tahfidz', 'icon': 'fas fa-quran'},
+            {'endpoint': 'teacher.input_recitation', 'label': 'Input Bacaan', 'icon': 'fas fa-book-reader'},
+            {'endpoint': 'teacher.input_tahfidz_evaluation', 'label': 'Evaluasi Tahfidz', 'icon': 'fas fa-clipboard-check'},
+            {'endpoint': 'teacher.input_attendance', 'label': 'Input Absensi', 'icon': 'fas fa-calendar-check'},
+            {'endpoint': 'teacher.input_behavior_report', 'label': 'Laporan Perilaku', 'icon': 'fas fa-user-shield'},
+            {'endpoint': 'teacher.class_announcements', 'label': 'Pengumuman Kelas', 'icon': 'fas fa-bullhorn'},
+        ],
+    }
+
+    sidebar_groups = []
+    for group in assignment_groups:
+        sidebar_groups.append({
+            'key': group['key'],
+            'title': group['title'],
+            'icon': group['icon'],
+            'description': group['description'],
+            'class_count': len(group['homeroom_classes']),
+            'subject_count': len(group['subject_assignments']),
+            'items': group_items.get(group['key'], []),
+        })
+    return sidebar_groups
+
+
 def _get_teacher_classes(teacher):
     """Helper: Ambil semua kelas yang diajar atau dibina guru ini."""
     classes = set()
@@ -277,6 +385,7 @@ def dashboard():
 
     total_students = _count_teacher_students(my_classes) if class_ids else 0
     homeroom_class = homeroom_classes[0] if homeroom_classes else None
+    assignment_groups, teaching_assignments = _collect_teacher_assignment_summary(teacher)
 
     today = local_today()
     today_name_map = {0: 'Senin', 1: 'Selasa', 2: 'Rabu', 3: 'Kamis', 4: 'Jumat', 5: 'Sabtu', 6: 'Minggu'}
@@ -288,57 +397,12 @@ def dashboard():
         is_deleted=False
     ).order_by(Schedule.start_time).all()
 
-    teaching_assignments = []
-    seen_assignments = set()
-    grouped_assignments = {}
-    catalog = _assignment_group_catalog()
-    for key, meta in catalog.items():
-        grouped_assignments[key] = {
-            'key': key,
-            'title': meta['title'],
-            'badge': meta['badge'],
-            'icon': meta['icon'],
-            'description': meta['description'],
-            'homeroom_classes': [],
-            'subject_assignments': [],
-        }
-
-    for class_room in homeroom_classes:
-        group_key = _class_program_group(class_room)
-        grouped_assignments[group_key]['homeroom_classes'].append(class_room)
-
     all_teacher_schedules = Schedule.query.filter_by(teacher_id=teacher.id, is_deleted=False).all()
     for sch in all_teacher_schedules:
         if not sch.class_room:
             continue
         if not sch.subject and not sch.majlis_subject:
             continue
-
-        assignment_type = 'SUBJECT' if sch.subject_id else 'MAJLIS_SUBJECT'
-        assignment_id = sch.subject_id if sch.subject_id else sch.majlis_subject_id
-        assignment_name = sch.subject.name if sch.subject else sch.majlis_subject.name
-        key = (sch.class_id, assignment_type, assignment_id)
-        if key in seen_assignments:
-            continue
-        seen_assignments.add(key)
-        assignment_item = {
-            'class_id': sch.class_id,
-            'class_name': sch.class_room.name,
-            'subject_id': sch.subject_id,
-            'majlis_subject_id': sch.majlis_subject_id,
-            'assignment_name': assignment_name
-        }
-        teaching_assignments.append((
-            sch.class_id,
-            sch.class_room.name,
-            sch.subject_id,
-            sch.majlis_subject_id,
-            assignment_name
-        ))
-        group_key = _class_program_group(sch.class_room)
-        grouped_assignments[group_key]['subject_assignments'].append(assignment_item)
-
-    assignment_groups = [group for group in grouped_assignments.values() if group['homeroom_classes'] or group['subject_assignments']]
 
     top_tab = (request.args.get('top_tab') or 'main').strip().lower()
     main_tab = (request.args.get('main_tab') or 'ringkas').strip().lower()
