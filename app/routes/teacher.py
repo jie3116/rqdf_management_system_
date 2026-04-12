@@ -13,6 +13,10 @@ from app.models import (
 from app.decorators import role_required
 from app.services.rumah_quran_service import is_rumah_quran_classroom, list_rumah_quran_students_for_class
 from app.services.bahasa_service import is_bahasa_classroom, list_bahasa_students_for_class
+from app.services.staff_assignment_service import (
+    list_teacher_homeroom_classes_from_assignments,
+    list_teacher_subject_classes_from_assignments,
+)
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
 from app.utils.timezone import local_day_bounds_utc_naive, local_today, utc_now_naive
 
@@ -20,6 +24,9 @@ teacher_bp = Blueprint('teacher', __name__)
 
 
 def _get_teacher_homeroom_classes(teacher):
+    classes = list_teacher_homeroom_classes_from_assignments(teacher)
+    if classes:
+        return sorted(classes, key=lambda item: item.name or "")
     return (
         ClassRoom.query.filter_by(homeroom_teacher_id=teacher.id, is_deleted=False)
         .order_by(ClassRoom.name.asc())
@@ -183,6 +190,9 @@ def _get_teacher_classes(teacher):
     # 1. Kelas sebagai Wali Kelas/Pembimbing utama
     for homeroom_class in _get_teacher_homeroom_classes(teacher):
         classes.add(homeroom_class)
+
+    for assigned_class in list_teacher_subject_classes_from_assignments(teacher):
+        classes.add(assigned_class)
     
     # 2. Kelas dari jadwal mengajar guru
     teaching_class_ids = db.session.query(Schedule.class_id).filter(
