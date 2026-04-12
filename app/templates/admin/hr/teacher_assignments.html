@@ -31,48 +31,9 @@
     {% endfor %}
 </div>
 
-<div class="card shadow mb-4">
-    <div class="card-header py-3 bg-white">
-        <h6 class="m-0 fw-bold text-primary"><i class="fas fa-plus-circle me-2"></i>Tambah Assignment</h6>
-    </div>
-    <div class="card-body">
-        <div class="alert alert-info small">
-            Wali kelas atau pembimbing kelas utama diatur dari menu edit data kelas. Form ini dipakai untuk assignment tambahan seperti guru mapel, pendamping program, atau pembina asrama.
-        </div>
-        <form method="POST" class="row g-3">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <input type="hidden" name="action" value="add"/>
-            <div class="col-md-4">
-                <label class="form-label fw-bold small">Role Assignment</label>
-                <select name="assignment_role" class="form-select" required>
-                    <option value="">-- Pilih Role --</option>
-                    {% for role_value, role_label in assignment_role_options %}
-                    <option value="{{ role_value }}">{{ role_label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-5">
-                <label class="form-label fw-bold small">Kelas / Group</label>
-                <select name="class_id" class="form-select" required>
-                    <option value="">-- Pilih Kelas --</option>
-                    {% for class_room in assignable_classes %}
-                    <option value="{{ class_room.id }}">
-                        {{ class_room.name }}{% if class_room.program_type %} - {{ class_room.program_type.value }}{% endif %}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label fw-bold small">Catatan</label>
-                <input type="text" name="notes" class="form-control" placeholder="Opsional">
-            </div>
-            <div class="col-12">
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-save me-2"></i>Simpan Assignment
-                </button>
-            </div>
-        </form>
-    </div>
+<div class="alert alert-info mb-4">
+    <i class="fas fa-info-circle me-2"></i>
+    Halaman ini dipakai untuk audit assignment guru. Wali kelas atau pembimbing kelas utama diatur dari menu edit data kelas, dan guru mapel diatur dari jadwal pelajaran.
 </div>
 
 {% if grouped_assignments %}
@@ -96,7 +57,6 @@
                                 <th>Group</th>
                                 <th>Tahun Ajaran</th>
                                 <th>Status</th>
-                                <th>Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -104,7 +64,9 @@
                             <tr>
                                 <td>
                                     <div class="fw-bold">{{ row.role }}</div>
+                                    {% if row.notes %}
                                     <small class="text-muted">{{ row.notes }}</small>
+                                    {% endif %}
                                 </td>
                                 <td>{{ row.group_name }}</td>
                                 <td>
@@ -117,20 +79,6 @@
                                     {% else %}
                                     <span class="badge bg-secondary">Selesai</span>
                                     <div><small class="text-muted">{{ row.end_date.strftime('%d-%m-%Y') if row.end_date else '-' }}</small></div>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if row.is_active %}
-                                    <form method="POST" onsubmit="return confirm('Nonaktifkan assignment ini?')">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                        <input type="hidden" name="action" value="deactivate"/>
-                                        <input type="hidden" name="assignment_id" value="{{ row.id }}"/>
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            <i class="fas fa-ban"></i>
-                                        </button>
-                                    </form>
-                                    {% else %}
-                                    <span class="text-muted small">-</span>
                                     {% endif %}
                                 </td>
                             </tr>
