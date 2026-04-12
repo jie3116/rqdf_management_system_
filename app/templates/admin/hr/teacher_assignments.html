@@ -36,6 +36,9 @@
         <h6 class="m-0 fw-bold text-primary"><i class="fas fa-plus-circle me-2"></i>Tambah Assignment</h6>
     </div>
     <div class="card-body">
+        <div class="alert alert-info small">
+            Wali kelas atau pembimbing kelas utama diatur dari menu edit data kelas. Form ini dipakai untuk assignment tambahan seperti guru mapel, pendamping program, atau pembina asrama.
+        </div>
         <form method="POST" class="row g-3">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="add"/>

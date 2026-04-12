@@ -80,6 +80,12 @@ def _group_for_class(class_room):
     ).first()
 
 
+def _teacher_by_id(teacher_id):
+    if not teacher_id:
+        return None
+    return Teacher.query.filter_by(id=teacher_id, is_deleted=False).first()
+
+
 def get_assignable_teacher_classes():
     return (
         ClassRoom.query.filter(
@@ -171,6 +177,51 @@ def create_teacher_staff_assignment(teacher, class_room, assignment_role, notes=
     existing.end_date = None
     existing.notes = notes or "Admin assignment"
     db.session.flush()
+    return True, None
+
+
+def sync_class_homeroom_assignment(class_room):
+    tenant = _default_tenant()
+    if class_room is None or tenant is None:
+        return False, "Data kelas belum lengkap."
+
+    program = _program_for_class(class_room, tenant.id)
+    group = _group_for_class(class_room)
+    if program is None or group is None:
+        return False, None
+
+    teacher = _teacher_by_id(class_room.homeroom_teacher_id)
+    person_id = _teacher_person_id(teacher)
+
+    active_assignments = (
+        StaffAssignment.query.filter(
+            StaffAssignment.tenant_id == tenant.id,
+            StaffAssignment.program_id == program.id,
+            StaffAssignment.group_id == group.id,
+            StaffAssignment.assignment_role == AssignmentRole.HOMEROOM,
+            StaffAssignment.is_deleted.is_(False),
+            StaffAssignment.end_date.is_(None),
+        )
+        .order_by(StaffAssignment.id.asc())
+        .all()
+    )
+
+    for assignment in active_assignments:
+        if person_id is None or assignment.person_id != person_id:
+            assignment.end_date = local_today()
+
+    if teacher is None or person_id is None:
+        return True, None
+
+    _ensure_staff_assignment(
+        person_id=person_id,
+        tenant_id=tenant.id,
+        program_id=program.id,
+        group_id=group.id,
+        academic_year_id=class_room.academic_year_id,
+        assignment_role=AssignmentRole.HOMEROOM,
+        notes="Class homeroom sync",
+    )
     return True, None
 
 

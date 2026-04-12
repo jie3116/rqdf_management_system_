@@ -137,6 +137,8 @@ def ensure_rumah_quran_program_group(class_room):
             tenant_id=tenant.id,
             is_deleted=False,
         ).first()
+        if group is not None and group.program_id != program.id:
+            group = None
 
     if group is None:
         group = ProgramGroup.query.filter_by(
