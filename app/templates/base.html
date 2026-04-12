@@ -136,7 +136,7 @@
                     <li class="px-3 pb-1 small text-white-50">
                         {{ group.class_count }} kelas, {{ group.subject_count }} assignment mapel
                     </li>
-                    {% for item in group.items %}
+                    {% for item in group['items'] %}
                     <li>
                         <a href="{{ url_for(item.endpoint) }}" class="{% if request.endpoint == item.endpoint %}active{% endif %}">
                             <i class="{{ item.icon }} me-2"></i>{{ item.label }}
