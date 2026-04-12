@@ -216,6 +216,15 @@ def dashboard():
 
     my_classes = _get_teacher_classes(teacher)
     class_ids = [c.id for c in my_classes]
+    nonformal_classes = [
+        c for c in my_classes
+        if c and c.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ, ProgramType.BAHASA, ProgramType.MAJLIS_TALIM)
+    ]
+    bahasa_classes = [c for c in nonformal_classes if c.program_type == ProgramType.BAHASA]
+    rumah_quran_classes = [
+        c for c in nonformal_classes
+        if c.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ)
+    ]
 
     total_students = _count_teacher_students(my_classes) if class_ids else 0
 
@@ -324,6 +333,9 @@ def dashboard():
     return render_template('teacher/dashboard.html',
                          teacher=teacher,
                          my_classes=my_classes,
+                         nonformal_classes=nonformal_classes,
+                         bahasa_classes=bahasa_classes,
+                         rumah_quran_classes=rumah_quran_classes,
                          main_tab=main_tab,
                          total_students=total_students,
                          today_tahfidz=today_tahfidz,
