@@ -53,14 +53,25 @@ def _active_bahasa_enrollment(tenant_id, person_id):
 
 
 def list_bahasa_classes():
-    return (
-        ClassRoom.query.filter(
+    classes = (
+        ClassRoom.query.outerjoin(ProgramGroup, ProgramGroup.id == ClassRoom.program_group_id)
+        .outerjoin(Program, Program.id == ProgramGroup.program_id)
+        .filter(
             ClassRoom.is_deleted.is_(False),
-            ClassRoom.program_type == ProgramType.BAHASA,
+            Program.is_deleted.is_(False),
+            Program.code == "BAHASA",
         )
         .order_by(ClassRoom.name.asc())
         .all()
     )
+    if classes:
+        return classes
+
+    return [
+        class_room
+        for class_room in ClassRoom.query.filter(ClassRoom.is_deleted.is_(False)).order_by(ClassRoom.name.asc()).all()
+        if class_room.program_type == ProgramType.BAHASA
+    ]
 
 
 def is_bahasa_classroom(class_room):

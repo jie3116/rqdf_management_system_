@@ -836,13 +836,17 @@ def accept_candidate(candidate_id):
             flash(f'Peserta Majelis {calon.full_name} berhasil diterima.', 'success')
             return redirect(url_for('staff.ppdb_detail', candidate_id=candidate_id))
 
+        tenant_id = current_user.tenant_id or get_default_tenant_id()
+        if tenant_id is None:
+            raise ValueError('Tenant default tidak ditemukan.')
+
         # --- 1. PROSES AKUN ---
         nis_baru = generate_nis()
 
         # User Wali
         user_wali = User.query.filter_by(username=calon.parent_phone).first()
         if not user_wali:
-            user_wali = User(username=calon.parent_phone, email=f"wali.{nis_baru}@sekolah.id",
+            user_wali = User(tenant_id=tenant_id, username=calon.parent_phone, email=f"wali.{nis_baru}@sekolah.id",
                              password_hash=generate_password_hash(calon.parent_phone or "123456"),
                              role=UserRole.WALI_MURID,
                              must_change_password=True)
@@ -856,7 +860,7 @@ def accept_candidate(candidate_id):
             parent_profile = user_wali.parent_profile
 
         # User Siswa
-        user_siswa = User(username=nis_baru, email=f"{nis_baru}@sekolah.id",
+        user_siswa = User(tenant_id=tenant_id, username=nis_baru, email=f"{nis_baru}@sekolah.id",
                           password_hash=generate_password_hash("123456"), role=UserRole.SISWA,
                           must_change_password=True)
         db.session.add(user_siswa)

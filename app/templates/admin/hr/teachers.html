@@ -9,7 +9,9 @@
             <div class="card-body">
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <div class="mb-3"><label>NIP / Username Login</label><input type="text" name="nip" class="form-control" required></div>
+                    <div class="alert alert-info py-2 small">
+                        <i class="fas fa-info-circle me-1"></i> NIP dan username login guru akan digenerate otomatis oleh sistem.
+                    </div>
                     <div class="mb-3"><label>Nama Lengkap & Gelar</label><input type="text" name="full_name" class="form-control" required></div>
                     <div class="mb-3"><label>Spesialisasi (Mapel)</label><input type="text" name="specialty" class="form-control" placeholder="Cth: Matematika, Tahfidz"></div>
                     <div class="mb-3"><label>No. WhatsApp</label><input type="text" name="phone" class="form-control" placeholder="08xxx"></div>

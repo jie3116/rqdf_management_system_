@@ -36,7 +36,7 @@ class LoginForm(FlaskForm):
 
 class StudentForm(FlaskForm):
     # Data Siswa
-    nis = StringField('NIS', validators=[DataRequired()])
+    nis = StringField('NIS', validators=[Optional()])
     full_name = StringField('Nama Lengkap Siswa', validators=[DataRequired()])
 
     # Untuk data email database, tetap WAJIB format email

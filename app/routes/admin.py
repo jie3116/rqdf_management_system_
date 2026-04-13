@@ -55,7 +55,7 @@ from app.models import (
     # Config
     AppConfig
 )
-from app.utils.nis import generate_nis
+from app.utils.nis import generate_nip, generate_nis
 from app.utils.roles import validate_role_combination, role_label, ROLE_PRIORITY
 from app.utils.money import to_rupiah_int
 
@@ -305,8 +305,13 @@ def edit_subject(subject_id):
 @role_required(UserRole.ADMIN)
 def manage_teachers():
     if request.method == 'POST':
+        tenant_id = current_user.tenant_id or get_default_tenant_id()
+        if tenant_id is None:
+            flash('Tenant default tidak ditemukan.', 'danger')
+            return redirect(url_for('admin.manage_teachers'))
+
         # 1. Buat User Login
-        username = request.form.get('nip')
+        username = generate_nip()
         password = request.form.get('password') or "guru123"
         full_name = request.form.get('full_name')
         phone = request.form.get('phone')
@@ -314,6 +319,7 @@ def manage_teachers():
 
         try:
             user = User(
+                tenant_id=tenant_id,
                 username=username,
                 email=f"{username}@sekolah.id",
                 password_hash=generate_password_hash(password),
@@ -333,7 +339,7 @@ def manage_teachers():
             )
             db.session.add(teacher)
             db.session.commit()
-            flash('Data Guru berhasil ditambahkan.', 'success')
+            flash(f'Data Guru berhasil ditambahkan. NIP/Login: {username}', 'success')
         except Exception as e:
             db.session.rollback()
             flash(f'Error: {e}', 'danger')
@@ -812,14 +818,21 @@ def add_student():
 
     if form.validate_on_submit():
         try:
+            tenant_id = current_user.tenant_id or get_default_tenant_id()
+            if tenant_id is None:
+                raise ValueError('Tenant default tidak ditemukan.')
+
+            nis = (form.nis.data or '').strip() or generate_nis()
+
             # A. CEK DUPLIKASI (Penting!)
-            if User.query.filter_by(username=form.nis.data).first():
+            if User.query.filter_by(username=nis).first():
                 flash('NIS sudah terdaftar sebagai User.', 'warning')
                 return render_template('admin/add_student.html', form=form)
 
             # B. BUAT USER SISWA
             student_user = User(
-                username=form.nis.data,  # Login pakai NIS
+                tenant_id=tenant_id,
+                username=nis,  # Login pakai NIS
                 email=form.email.data,  # Pakai email dari inputan form
                 role=UserRole.SISWA
             )
@@ -830,7 +843,7 @@ def add_student():
             # C. BUAT PROFIL SISWA
             new_student = Student(
                 user_id=student_user.id,
-                nis=form.nis.data,
+                nis=nis,
                 full_name=form.full_name.data,
                 gender=Gender[form.gender.data],  # Konversi string 'L'/'P' ke Enum
                 place_of_birth=form.place_of_birth.data,
@@ -847,6 +860,7 @@ def add_student():
             if not parent_user:
                 # Buat Akun Wali Baru
                 parent_user = User(
+                    tenant_id=tenant_id,
                     username=form.parent_phone.data,  # Login pakai No WA
                     email=f"{form.parent_phone.data}@wali.sekolah.id",  # Email dummy
                     role=UserRole.WALI_MURID
@@ -883,7 +897,7 @@ def add_student():
             new_student.parent_id = parent_profile.id
 
             db.session.commit()
-            flash(f'Siswa {form.full_name.data} berhasil ditambahkan!', 'success')
+            flash(f'Siswa {form.full_name.data} berhasil ditambahkan. NIS/Login: {nis}', 'success')
             return redirect(url_for('admin.list_students'))
 
         except Exception as e:
@@ -1391,13 +1405,17 @@ def accept_candidate(candidate_id):
             flash(f"Peserta Majelis {calon.full_name} berhasil diterima.", 'success')
             return redirect(url_for('admin.ppdb_list'))
 
+        tenant_id = current_user.tenant_id or get_default_tenant_id()
+        if tenant_id is None:
+            raise ValueError('Tenant default tidak ditemukan.')
+
         # --- 1. PROSES AKUN ---
         nis_baru = generate_nis()
 
         # User Wali
         user_wali = User.query.filter_by(username=calon.parent_phone).first()
         if not user_wali:
-            user_wali = User(username=calon.parent_phone, email=f"wali.{nis_baru}@sekolah.id",
+            user_wali = User(tenant_id=tenant_id, username=calon.parent_phone, email=f"wali.{nis_baru}@sekolah.id",
                              password_hash=generate_password_hash(calon.parent_phone or "123456"),
                              role=UserRole.WALI_MURID,
                              must_change_password=True)
@@ -1411,7 +1429,7 @@ def accept_candidate(candidate_id):
             parent_profile = user_wali.parent_profile
 
         # User Siswa
-        user_siswa = User(username=nis_baru, email=f"{nis_baru}@sekolah.id",
+        user_siswa = User(tenant_id=tenant_id, username=nis_baru, email=f"{nis_baru}@sekolah.id",
                           password_hash=generate_password_hash(nis_baru), role=UserRole.SISWA,
                           must_change_password=True)
         db.session.add(user_siswa)
