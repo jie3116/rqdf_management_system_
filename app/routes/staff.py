@@ -25,6 +25,7 @@ from app.services.bahasa_service import (
     get_student_bahasa_classroom,
     list_bahasa_classes,
 )
+from app.services.formal_service import sync_student_formal_class_membership
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType,
@@ -739,6 +740,7 @@ def edit_student(student_id):
             student.custom_spp_fee = None
 
         try:
+            sync_student_formal_class_membership(student, selected_class_id)
             assign_student_rumah_quran_class(student, rumah_quran_class_id)
             assign_student_bahasa_class(student, bahasa_class_id)
             db.session.commit()

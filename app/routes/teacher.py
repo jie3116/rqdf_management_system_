@@ -13,6 +13,7 @@ from app.models import (
 from app.decorators import role_required
 from app.services.rumah_quran_service import is_rumah_quran_classroom, list_rumah_quran_students_for_class
 from app.services.bahasa_service import is_bahasa_classroom, list_bahasa_students_for_class
+from app.services.formal_service import is_formal_classroom, list_formal_students_for_class
 from app.services.staff_assignment_service import (
     list_teacher_homeroom_classes_from_assignments,
     list_teacher_subject_classes_from_assignments,
@@ -273,6 +274,8 @@ def _get_class_participants(class_id):
         students = list_rumah_quran_students_for_class(class_id)
     elif is_bahasa_classroom(class_room):
         students = list_bahasa_students_for_class(class_id)
+    elif is_formal_classroom(class_room):
+        students = list_formal_students_for_class(class_id)
     else:
         students = Student.query.filter_by(
             current_class_id=class_id,

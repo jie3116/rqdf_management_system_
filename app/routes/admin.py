@@ -26,6 +26,11 @@ from app.services.bahasa_service import (
     list_bahasa_classes,
     list_bahasa_students_for_class,
 )
+from app.services.formal_service import (
+    ensure_formal_program_group,
+    list_formal_students_for_class,
+    sync_student_formal_class_membership,
+)
 from app.services.staff_assignment_service import (
     display_assignment_role,
     ensure_assignment_label_configs,
@@ -694,6 +699,7 @@ def manage_classes():
         )
         db.session.add(new_class)
         db.session.flush()
+        ensure_formal_program_group(new_class)
         ensure_rumah_quran_program_group(new_class)
         ensure_bahasa_program_group(new_class)
         sync_class_homeroom_assignment(new_class)
@@ -718,6 +724,8 @@ def manage_classes():
             class_student_counts[class_room.id] = len(list_rumah_quran_students_for_class(class_room.id))
         elif is_bahasa_classroom(class_room):
             class_student_counts[class_room.id] = len(list_bahasa_students_for_class(class_room.id))
+        elif class_room.program_group_id:
+            class_student_counts[class_room.id] = len(list_formal_students_for_class(class_room.id))
         else:
             class_student_counts[class_room.id] = len(class_room.students)
     teachers = Teacher.query.filter_by(is_deleted=False).all()  # Untuk dropdown
@@ -753,6 +761,7 @@ def edit_class(class_id):
         class_room.homeroom_teacher_id = homeroom_id if homeroom_id else None
 
         try:
+            ensure_formal_program_group(class_room)
             ensure_rumah_quran_program_group(class_room)
             ensure_bahasa_program_group(class_room)
             sync_class_homeroom_assignment(class_room)
@@ -896,6 +905,7 @@ def add_student():
             # Sambungkan Siswa ke Wali
             new_student.parent_id = parent_profile.id
 
+            sync_student_formal_class_membership(new_student, new_student.current_class_id)
             db.session.commit()
             flash(f'Siswa {form.full_name.data} berhasil ditambahkan. NIS/Login: {nis}', 'success')
             return redirect(url_for('admin.list_students'))
@@ -947,6 +957,7 @@ def edit_student(student_id):
             student.custom_spp_fee = None
 
         try:
+            sync_student_formal_class_membership(student, selected_class_id)
             assign_student_rumah_quran_class(student, rumah_quran_class_id)
             assign_student_bahasa_class(student, bahasa_class_id)
             student.save()  # Menggunakan method save() dari BaseModel
