@@ -171,7 +171,7 @@
                         <div class="col mr-2">
                             <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Kelas</div>
                             <div class="h6 mb-0 font-weight-bold text-gray-800">
-                                {{ student.current_class.name if student.current_class else 'Belum ditentukan' }}
+                                {{ formal_class.name if formal_class else (student.current_class.name if student.current_class else 'Belum ditentukan') }}
                             </div>
                         </div>
                         <div class="col-auto"><i class="fas fa-school fa-2x text-gray-300"></i></div>

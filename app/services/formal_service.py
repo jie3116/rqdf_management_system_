@@ -237,6 +237,49 @@ def _active_formal_enrollment(tenant_id, person_id, class_room):
     )
 
 
+def get_student_formal_classroom(student):
+    if student is None:
+        return None
+
+    tenant_id = _student_tenant_id(student)
+    person_id = student.person_id
+    current_class = student.current_class
+
+    if not tenant_id or not person_id:
+        return current_class if is_formal_classroom(current_class) else None
+
+    membership = (
+        GroupMembership.query.join(GroupMembership.enrollment)
+        .join(ProgramEnrollment.program)
+        .filter(
+            ProgramEnrollment.tenant_id == tenant_id,
+            ProgramEnrollment.person_id == person_id,
+            ProgramEnrollment.status == EnrollmentStatus.ACTIVE,
+            ProgramEnrollment.is_deleted.is_(False),
+            Program.code.in_(FORMAL_PROGRAM_CODES),
+            Program.is_deleted.is_(False),
+            GroupMembership.status == MembershipStatus.ACTIVE,
+            GroupMembership.is_deleted.is_(False),
+        )
+        .order_by(
+            GroupMembership.is_primary.desc(),
+            GroupMembership.start_date.desc(),
+            GroupMembership.id.desc(),
+        )
+        .first()
+    )
+
+    if membership is not None:
+        class_room = ClassRoom.query.filter_by(
+            program_group_id=membership.group_id,
+            is_deleted=False,
+        ).first()
+        if class_room is not None:
+            return class_room
+
+    return current_class if is_formal_classroom(current_class) else None
+
+
 def sync_student_formal_class_membership(student, class_id=None):
     if student is None:
         return False

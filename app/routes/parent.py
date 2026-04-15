@@ -10,6 +10,7 @@ from app.models import (
     BoardingAttendance, BoardingActivitySchedule
 )
 from app.decorators import role_required
+from app.services.formal_service import get_student_formal_classroom
 from app.utils.timezone import local_now, local_today
 from app.extensions import db
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
@@ -153,10 +154,12 @@ def dashboard():
     target_ids = [current_user.id]
     if student and student.user_id:
         target_ids.append(student.user_id)
-    class_program = student.current_class.program_type.name if student and student.current_class and student.current_class.program_type else None
+    formal_class = get_student_formal_classroom(student)
+    active_class_id = formal_class.id if formal_class else student.current_class_id
+    class_program = formal_class.program_type.name if formal_class and formal_class.program_type else None
     announcements, unread_announcements_count = get_announcements_for_dashboard(
         current_user,
-        class_ids=[student.current_class_id if student else None],
+        class_ids=[active_class_id] if active_class_id else [],
         user_ids=target_ids,
         program_types=[class_program] if class_program else [],
         show_all=show_all_announcements
@@ -169,14 +172,14 @@ def dashboard():
     today_name = today_name_map[local_now().weekday()]
 
     todays_schedules = []
-    if student.current_class_id:
+    if active_class_id:
         todays_schedules = Schedule.query.filter_by(
-            class_id=student.current_class_id, day=today_name
+            class_id=active_class_id, day=today_name
         ).order_by(Schedule.start_time).all()
 
     weekly_schedule = {day: [] for day in ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']}
-    if student.current_class_id:
-        all_schedules = Schedule.query.filter_by(class_id=student.current_class_id).all()
+    if active_class_id:
+        all_schedules = Schedule.query.filter_by(class_id=active_class_id).all()
         for sch in all_schedules:
             if sch.day in weekly_schedule:
                 weekly_schedule[sch.day].append(sch)
@@ -245,6 +248,7 @@ def dashboard():
                            parent=parent,
                            children=children,
                            student=student,
+                           formal_class=formal_class,
                            summary=summary,
                            recent_tahfidz=recent_tahfidz,
                            recent_recitation=recent_recitation,

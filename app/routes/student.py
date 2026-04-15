@@ -12,6 +12,7 @@ from app.models import (
     Attendance, ParticipantType, AttendanceStatus, BoardingAttendance, BoardingActivitySchedule
 )
 from app.decorators import role_required
+from app.services.formal_service import get_student_formal_classroom
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
 from app.utils.timezone import local_now, local_today
 
@@ -48,14 +49,17 @@ def dashboard():
         .order_by(RecitationRecord.date.desc()) \
         .limit(5).all()
 
+    formal_class = get_student_formal_classroom(student)
+    active_class_id = formal_class.id if formal_class else student.current_class_id
+
     top_tab = (request.args.get('top_tab') or 'main').strip().lower()
     show_all_announcements = (request.args.get('ann') or '').strip().lower() == 'all'
-    class_program = student.current_class.program_type.name if student.current_class and student.current_class.program_type else None
+    class_program = formal_class.program_type.name if formal_class and formal_class.program_type else None
     program_types = [class_program] if class_program else []
 
     announcements, unread_announcements_count = get_announcements_for_dashboard(
         current_user,
-        class_ids=[student.current_class_id],
+        class_ids=[active_class_id] if active_class_id else [],
         user_ids=[current_user.id],
         program_types=program_types,
         show_all=show_all_announcements
@@ -71,24 +75,28 @@ def dashboard():
 
     # Jadwal Hari Ini
     # [OPTIMASI] Tambahkan joinedload untuk Subject & Teacher
-    todays_schedules = Schedule.query \
-        .options(
-        joinedload(Schedule.subject),
-        joinedload(Schedule.teacher)
-    ) \
-        .filter_by(
-        class_id=student.current_class_id,
-        day=today_name
-    ).order_by(Schedule.start_time).all()
+    todays_schedules = []
+    if active_class_id:
+        todays_schedules = Schedule.query \
+            .options(
+            joinedload(Schedule.subject),
+            joinedload(Schedule.teacher)
+        ) \
+            .filter_by(
+            class_id=active_class_id,
+            day=today_name
+        ).order_by(Schedule.start_time).all()
 
     # Jadwal Lengkap (Senin - Minggu)
     # [OPTIMASI] Tambahkan joinedload agar loop di HTML cepat
-    all_schedules = Schedule.query \
-        .options(
-        joinedload(Schedule.subject),
-        joinedload(Schedule.teacher)
-    ) \
-        .filter_by(class_id=student.current_class_id).all()
+    all_schedules = []
+    if active_class_id:
+        all_schedules = Schedule.query \
+            .options(
+            joinedload(Schedule.subject),
+            joinedload(Schedule.teacher)
+        ) \
+            .filter_by(class_id=active_class_id).all()
 
     # Logic pengelompokan Python (Tidak berubah, ini sudah oke)
     weekly_schedule = {day: [] for day in ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']}
@@ -193,6 +201,7 @@ def dashboard():
 
     return render_template('student/dashboard.html',
                            student=student,
+                           formal_class=formal_class,
                            summary=summary,
                            recent_tahfidz=recent_tahfidz,
                            recent_tahfidz_evaluations=recent_tahfidz_evaluations,
