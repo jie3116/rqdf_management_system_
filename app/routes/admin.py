@@ -32,6 +32,7 @@ from app.services.formal_service import (
     sync_student_formal_class_membership,
 )
 from app.services.staff_assignment_service import (
+    cleanup_rumah_quran_subject_data,
     display_assignment_role,
     ensure_assignment_label_configs,
     sync_class_homeroom_assignment,
@@ -1602,21 +1603,40 @@ def manage_schedules():
     # Ambil parameter filter kelas dari URL (misal: ?class_id=1)
     selected_class_id = request.args.get('class_id', type=int)
 
+    # Pastikan data lama "guru mapel Rumah Qur'an" ditutup.
+    cleanup_stats = cleanup_rumah_quran_subject_data()
+    if cleanup_stats["closed_assignments"] or cleanup_stats["deleted_schedules"]:
+        db.session.commit()
+
     # Dropdown Data
-    classes = ClassRoom.query.filter_by(is_deleted=False).all()
+    classes = ClassRoom.query.filter(
+        ClassRoom.is_deleted.is_(False),
+        or_(
+            ClassRoom.program_type.is_(None),
+            ~ClassRoom.program_type.in_([ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ]),
+        ),
+    ).all()
     subjects = Subject.query.filter_by(is_deleted=False).all()
     teachers = Teacher.query.filter_by(is_deleted=False).all()
 
     # Jika user mengirim Form Tambah Jadwal
     if request.method == 'POST':
-        class_id = request.form.get('class_id')
-        subject_id = request.form.get('subject_id')
-        teacher_id = request.form.get('teacher_id')
+        class_id = request.form.get('class_id', type=int)
+        subject_id = request.form.get('subject_id', type=int)
+        teacher_id = request.form.get('teacher_id', type=int)
         day = request.form.get('day')
         start_time_str = request.form.get('start_time')
         end_time_str = request.form.get('end_time')
 
         try:
+            target_class = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+            if target_class is None:
+                flash('Kelas tidak valid.', 'warning')
+                return redirect(url_for('admin.manage_schedules'))
+            if is_rumah_quran_classroom(target_class):
+                flash("Kelas Rumah Qur'an tidak menggunakan jadwal mapel.", 'warning')
+                return redirect(url_for('admin.manage_schedules', class_id=class_id))
+
             # 1. Konversi String jam "07:00" menjadi object Time python
             start_time = datetime.strptime(start_time_str, '%H:%M').time()
             end_time = datetime.strptime(end_time_str, '%H:%M').time()
@@ -1688,6 +1708,9 @@ def manage_schedules():
 
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
+        if selected_class and is_rumah_quran_classroom(selected_class):
+            flash("Kelas Rumah Qur'an tidak menggunakan jadwal mapel.", 'warning')
+            return redirect(url_for('admin.manage_schedules'))
         # Urutkan berdasarkan Hari (Senin-Jumat) dan Jam Mulai
         schedules = Schedule.query.filter_by(class_id=selected_class_id) \
             .order_by(Schedule.day, Schedule.start_time).all()
@@ -1709,16 +1732,30 @@ def manage_schedules():
 @role_required(UserRole.ADMIN)
 def edit_schedule(id):
     schedule = Schedule.query.get_or_404(id)
-    class_id = request.form.get('class_id') or schedule.class_id  # Fallback
+    class_id = request.form.get('class_id', type=int) or schedule.class_id  # Fallback
+
+    if schedule.class_room and is_rumah_quran_classroom(schedule.class_room):
+        schedule.is_deleted = True
+        db.session.commit()
+        flash("Jadwal mapel kelas Rumah Qur'an telah dinonaktifkan.", 'warning')
+        return redirect(url_for('admin.manage_schedules', class_id=schedule.class_id))
 
     # Ambil data dari form
-    subject_id = request.form.get('subject_id')
-    teacher_id = request.form.get('teacher_id')
+    subject_id = request.form.get('subject_id', type=int)
+    teacher_id = request.form.get('teacher_id', type=int)
     day = request.form.get('day')
     start_time_str = request.form.get('start_time')
     end_time_str = request.form.get('end_time')
 
     try:
+        target_class = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+        if target_class is None:
+            flash('Kelas tidak valid.', 'warning')
+            return redirect(url_for('admin.manage_schedules', class_id=class_id))
+        if is_rumah_quran_classroom(target_class):
+            flash("Kelas Rumah Qur'an tidak menggunakan jadwal mapel.", 'warning')
+            return redirect(url_for('admin.manage_schedules', class_id=class_id))
+
         start_time = datetime.strptime(start_time_str, '%H:%M').time()
         end_time = datetime.strptime(end_time_str, '%H:%M').time()
 
