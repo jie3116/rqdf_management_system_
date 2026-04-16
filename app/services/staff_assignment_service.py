@@ -303,6 +303,9 @@ def sync_teacher_staff_assignments(teacher):
     for schedule in schedules:
         if not schedule.class_room:
             continue
+        if schedule.class_room.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ):
+            # Rumah Qur'an tidak memakai assignment guru mapel.
+            continue
         program = _program_for_class(schedule.class_room, tenant.id)
         group = _group_for_class(schedule.class_room)
         if program is None:
@@ -374,6 +377,8 @@ def list_teacher_subject_classes_from_assignments(teacher):
             program_group_id=assignment.group_id,
             is_deleted=False,
         ).first()
+        if class_room and class_room.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ):
+            continue
         if class_room and class_room.id not in seen_ids:
             seen_ids.add(class_room.id)
             classes.append(class_room)
@@ -449,3 +454,42 @@ def backfill_all_teacher_staff_assignments():
         summary["created"] += result["created"]
         summary["skipped"] += result["skipped"]
     return summary
+
+
+def cleanup_rumah_quran_subject_data():
+    """
+    Rumah Qur'an tidak menggunakan guru mapel.
+    Data SUBJECT_TEACHER dan jadwal mapel pada kelas Rumah Qur'an ditutup/disembunyikan.
+    """
+    today = local_today()
+
+    assignments = (
+        StaffAssignment.query.join(StaffAssignment.program)
+        .filter(
+            Program.code == "RUMAH_QURAN",
+            Program.is_deleted.is_(False),
+            StaffAssignment.assignment_role == AssignmentRole.SUBJECT_TEACHER,
+            StaffAssignment.is_deleted.is_(False),
+            StaffAssignment.end_date.is_(None),
+        )
+        .all()
+    )
+    for assignment in assignments:
+        assignment.end_date = today
+
+    schedules = (
+        Schedule.query.join(Schedule.class_room)
+        .filter(
+            ClassRoom.program_type.in_([ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ]),
+            Schedule.subject_id.isnot(None),
+            Schedule.is_deleted.is_(False),
+        )
+        .all()
+    )
+    for schedule in schedules:
+        schedule.is_deleted = True
+
+    return {
+        "closed_assignments": len(assignments),
+        "deleted_schedules": len(schedules),
+    }

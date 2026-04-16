@@ -108,6 +108,8 @@ def _collect_teacher_assignment_summary(teacher):
     for sch in all_teacher_schedules:
         if not sch.class_room:
             continue
+        if is_rumah_quran_classroom(sch.class_room):
+            continue
         if not sch.subject and not sch.majlis_subject:
             continue
 
@@ -201,6 +203,8 @@ def _get_teacher_classes(teacher):
         classes_by_id[homeroom_class.id] = homeroom_class
 
     for assigned_class in list_teacher_subject_classes_from_assignments(teacher):
+        if is_rumah_quran_classroom(assigned_class):
+            continue
         classes_by_id[assigned_class.id] = assigned_class
     
     # 2. Kelas dari jadwal mengajar guru
@@ -213,6 +217,8 @@ def _get_teacher_classes(teacher):
         class_id = row[0]
         target_class = ClassRoom.query.get(class_id)
         if target_class and not target_class.is_deleted:
+            if is_rumah_quran_classroom(target_class):
+                continue
             classes_by_id[target_class.id] = target_class
     
     return list(classes_by_id.values())
@@ -242,22 +248,45 @@ def _get_teacher_tahfidz_classes(teacher):
     classes = []
     seen_ids = set()
 
-    # Kelas non-formal yang memang diampu guru sebagai wali/homeroom tetap
-    # harus bisa dioperasikan meski jadwalnya belum dibuat.
-    for homeroom_class in _get_teacher_homeroom_classes(teacher):
-        if (
-            is_rumah_quran_classroom(homeroom_class)
-            or is_bahasa_classroom(homeroom_class)
-        ):
-            seen_ids.add(homeroom_class.id)
-            classes.append(homeroom_class)
+    # Rumah Qur'an: akses tahfidz hanya untuk pembimbing/wali kelas yang melekat
+    # pada kelas tersebut (homeroom_teacher_id).
+    strict_rumah_quran_classes = (
+        ClassRoom.query.filter(
+            ClassRoom.homeroom_teacher_id == teacher.id,
+            ClassRoom.program_type.in_([ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ]),
+            ClassRoom.is_deleted.is_(False),
+        )
+        .order_by(ClassRoom.name.asc())
+        .all()
+    )
+    for homeroom_class in strict_rumah_quran_classes:
+        seen_ids.add(homeroom_class.id)
+        classes.append(homeroom_class)
 
-    schedules = Schedule.query.filter_by(
-        teacher_id=teacher.id,
-        is_deleted=False,
-    ).order_by(Schedule.day.asc(), Schedule.start_time.asc()).all()
+    # Kelas tahfidz non-RQ: ambil hanya dari assignment guru mapel yang masih aktif.
+    # Ini mencegah akses dari jadwal lama/stale yang belum relevan.
+    assigned_subject_class_ids = {
+        class_room.id
+        for class_room in _dedupe_classes(list_teacher_subject_classes_from_assignments(teacher))
+        if class_room and not class_room.is_deleted
+    }
+    schedules = []
+    if assigned_subject_class_ids:
+        schedules = (
+            Schedule.query.filter(
+                Schedule.teacher_id == teacher.id,
+                Schedule.is_deleted.is_(False),
+                Schedule.class_id.in_(assigned_subject_class_ids),
+            )
+            .order_by(Schedule.day.asc(), Schedule.start_time.asc())
+            .all()
+        )
+
     for schedule in schedules:
         if not schedule.class_room or schedule.class_room.is_deleted:
+            continue
+        if is_rumah_quran_classroom(schedule.class_room):
+            # Rumah Qur'an tidak memakai akses berbasis jadwal mapel.
             continue
         if not _is_tahfidz_related_schedule(schedule):
             continue
@@ -265,6 +294,32 @@ def _get_teacher_tahfidz_classes(teacher):
             continue
         seen_ids.add(schedule.class_id)
         classes.append(schedule.class_room)
+    return classes
+
+
+def _teacher_can_access_tahfidz_class(teacher, class_id):
+    if not teacher or not class_id:
+        return False
+
+    class_room = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+    if class_room is None:
+        return False
+
+    if is_rumah_quran_classroom(class_room):
+        # Hard rule: hanya pembimbing/wali kelas Rumah Qur'an yang boleh akses.
+        return class_room.homeroom_teacher_id == teacher.id
+
+    return any(item.id == class_id for item in _get_teacher_tahfidz_classes(teacher))
+
+
+def _get_teacher_tahfidz_classes_legacy(teacher):
+    classes = []
+    seen_ids = set()
+
+    for homeroom_class in _get_teacher_homeroom_classes(teacher):
+        if is_rumah_quran_classroom(homeroom_class):
+            seen_ids.add(homeroom_class.id)
+            classes.append(homeroom_class)
     return classes
 
 
@@ -302,6 +357,12 @@ def _count_teacher_students(classes):
         for student in students:
             student_ids.add(student.id)
     return len(student_ids)
+
+
+def _teacher_can_access_class(teacher, class_id):
+    if not teacher or not class_id:
+        return False
+    return any(class_room.id == class_id for class_room in _get_teacher_classes(teacher))
 
 
 def _parse_participant_key(participant_key):
@@ -451,11 +512,12 @@ def dashboard():
     recent_recitation = RecitationRecord.query.filter_by(teacher_id=teacher.id)        .order_by(RecitationRecord.date.desc()).limit(5).all()
     boarding_student_ids = []
     if class_ids:
-        boarding_student_ids = [row[0] for row in db.session.query(Student.id).filter(
-            Student.current_class_id.in_(class_ids),
-            Student.boarding_dormitory_id.isnot(None),
-            Student.is_deleted == False
-        ).all()]
+        for class_room in my_classes:
+            students, _ = _get_class_participants(class_room.id)
+            for student in students:
+                if student.boarding_dormitory_id:
+                    boarding_student_ids.append(student.id)
+        boarding_student_ids = list(set(boarding_student_ids))
 
     boarding_attendance_stats = {'hadir': 0, 'sakit': 0, 'izin': 0, 'alpa': 0, 'belum_input': 0}
     if boarding_student_ids:
@@ -893,6 +955,7 @@ def attendance_history():
 def input_tahfidz():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
     my_classes = _get_teacher_tahfidz_classes(teacher)
+    my_class_ids = {class_room.id for class_room in my_classes}
 
     selected_class_id = request.args.get('class_id', type=int)
     students = []
@@ -901,12 +964,27 @@ def input_tahfidz():
 
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
-        if selected_class in my_classes:
+        if (
+            selected_class
+            and selected_class_id in my_class_ids
+            and _teacher_can_access_tahfidz_class(teacher, selected_class_id)
+        ):
             students, majlis_participants = _get_class_participants(selected_class_id)
         else:
             flash("Anda tidak memiliki akses ke halaqoh tersebut.", "danger")
+            selected_class = None
 
     if request.method == 'POST':
+        form_class_id = request.form.get('class_id', type=int)
+        active_class_id = form_class_id or selected_class_id
+        if (
+            not active_class_id
+            or active_class_id not in my_class_ids
+            or not _teacher_can_access_tahfidz_class(teacher, active_class_id)
+        ):
+            flash("Kelas tidak valid atau Anda tidak memiliki akses.", "danger")
+            return redirect(url_for('teacher.input_tahfidz'))
+
         participant_type, participant_id = _parse_participant_key(request.form.get('student_id'))
         jenis_setoran = request.form.get('jenis_setoran') or request.form.get('type')  # backward-compatible
 
@@ -918,7 +996,7 @@ def input_tahfidz():
 
         if not start_surah or not ayat_start or not ayat_end:
             flash("Surat dan ayat wajib diisi.", "warning")
-            return redirect(url_for('teacher.input_tahfidz', class_id=selected_class_id))
+            return redirect(url_for('teacher.input_tahfidz', class_id=active_class_id))
 
         try:
             final_ayat_start = int(ayat_start)
@@ -928,28 +1006,45 @@ def input_tahfidz():
             tahfidz_errors = int(request.form.get('tahfidz_errors') or 0)
         except ValueError:
             flash("Ayat dan jumlah kesalahan harus berupa angka.", "warning")
-            return redirect(url_for('teacher.input_tahfidz', class_id=selected_class_id))
+            return redirect(url_for('teacher.input_tahfidz', class_id=active_class_id))
 
         if final_ayat_start < 1 or final_ayat_end < 1:
             flash("Ayat awal/akhir minimal bernilai 1.", "warning")
-            return redirect(url_for('teacher.input_tahfidz', class_id=selected_class_id))
+            return redirect(url_for('teacher.input_tahfidz', class_id=active_class_id))
 
         # Validasi urutan ayat hanya berlaku jika surat awal dan akhir sama.
         is_same_surah = (not end_surah) or (start_surah == end_surah)
         if is_same_surah and final_ayat_end < final_ayat_start:
             flash("Ayat akhir tidak boleh lebih kecil dari ayat awal jika suratnya sama.", "warning")
-            return redirect(url_for('teacher.input_tahfidz', class_id=selected_class_id))
+            return redirect(url_for('teacher.input_tahfidz', class_id=active_class_id))
 
         if not participant_id or not participant_type:
             flash("Silakan pilih peserta terlebih dahulu.", "warning")
-            return redirect(url_for('teacher.input_tahfidz', class_id=selected_class_id))
+            return redirect(url_for('teacher.input_tahfidz', class_id=active_class_id))
 
         student_id = participant_id if participant_type == ParticipantType.STUDENT else None
         majlis_participant_id = participant_id if participant_type == ParticipantType.EXTERNAL_MAJLIS else None
 
         if jenis_setoran not in [t.name for t in TahfidzType]:
             flash("Jenis setoran tidak valid.", "danger")
-            return redirect(url_for('teacher.input_tahfidz', class_id=selected_class_id))
+            return redirect(url_for('teacher.input_tahfidz', class_id=active_class_id))
+
+        if participant_type == ParticipantType.STUDENT:
+            student = Student.query.filter_by(id=student_id, is_deleted=False).first()
+            if not student:
+                flash("Data siswa tidak ditemukan.", "danger")
+                return redirect(url_for('teacher.input_tahfidz', class_id=active_class_id))
+            if not _student_belongs_to_class(student, active_class_id):
+                flash("Siswa tidak berada pada kelas yang dipilih.", "danger")
+                return redirect(url_for('teacher.input_tahfidz', class_id=active_class_id))
+        else:
+            participant = MajlisParticipant.query.filter_by(id=majlis_participant_id, is_deleted=False).first()
+            if not participant:
+                flash("Data peserta majlis tidak ditemukan.", "danger")
+                return redirect(url_for('teacher.input_tahfidz', class_id=active_class_id))
+            if participant.majlis_class_id != active_class_id:
+                flash("Peserta majlis tidak berada pada kelas yang dipilih.", "danger")
+                return redirect(url_for('teacher.input_tahfidz', class_id=active_class_id))
 
         final_surah_name = start_surah if(not end_surah or start_surah == end_surah) else f"{start_surah} - {end_surah}"
 
@@ -997,7 +1092,7 @@ def input_tahfidz():
 
         db.session.commit()
         flash('Setoran tahfidz berhasil disimpan!', 'success')
-        return redirect(url_for('teacher.input_tahfidz', class_id=selected_class_id))
+        return redirect(url_for('teacher.input_tahfidz', class_id=active_class_id))
 
     return render_template('teacher/input_tahfidz.html',
                            my_classes=my_classes,
@@ -1013,6 +1108,7 @@ def input_tahfidz():
 def input_recitation():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
     my_classes = _get_teacher_tahfidz_classes(teacher)
+    my_class_ids = {class_room.id for class_room in my_classes}
 
     selected_class_id = request.args.get('class_id', type=int)
     students = []
@@ -1021,7 +1117,11 @@ def input_recitation():
 
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
-        if selected_class in my_classes:
+        if (
+            selected_class
+            and selected_class_id in my_class_ids
+            and _teacher_can_access_tahfidz_class(teacher, selected_class_id)
+        ):
             students, majlis_participants = _get_class_participants(selected_class_id)
         else:
             flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
@@ -1033,6 +1133,13 @@ def input_recitation():
         recitation_source = request.form.get('recitation_source', 'QURAN')
 
         active_class_id = form_class_id or selected_class_id
+        if (
+            not active_class_id
+            or active_class_id not in my_class_ids
+            or not _teacher_can_access_tahfidz_class(teacher, active_class_id)
+        ):
+            flash("Kelas tidak valid atau Anda tidak memiliki akses.", "danger")
+            return redirect(url_for('teacher.input_recitation'))
 
         if recitation_source not in [s.name for s in RecitationSource]:
             flash("Sumber bacaan tidak valid.", "danger")
@@ -1163,6 +1270,7 @@ def input_recitation():
 def input_tahfidz_evaluation():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
     my_classes = _get_teacher_tahfidz_classes(teacher)
+    my_class_ids = {class_room.id for class_room in my_classes}
 
     selected_class_id = request.args.get('class_id', type=int)
     students = []
@@ -1171,7 +1279,11 @@ def input_tahfidz_evaluation():
 
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
-        if selected_class in my_classes:
+        if (
+            selected_class
+            and selected_class_id in my_class_ids
+            and _teacher_can_access_tahfidz_class(teacher, selected_class_id)
+        ):
             students, majlis_participants = _get_class_participants(selected_class_id)
         else:
             flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
@@ -1186,6 +1298,13 @@ def input_tahfidz_evaluation():
         notes = request.form.get('notes')
 
         active_class_id = form_class_id or selected_class_id
+        if (
+            not active_class_id
+            or active_class_id not in my_class_ids
+            or not _teacher_can_access_tahfidz_class(teacher, active_class_id)
+        ):
+            flash("Kelas tidak valid atau Anda tidak memiliki akses.", "danger")
+            return redirect(url_for('teacher.input_tahfidz_evaluation'))
 
         if not participant_id or not participant_type:
             flash("Silakan pilih peserta terlebih dahulu.", "warning")
@@ -1315,26 +1434,15 @@ def input_behavior_report():
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
         if selected_class in my_classes:
-            if is_rumah_quran_classroom(selected_class):
-                students_query = Student.query.filter(
-                    Student.id.in_([student.id for student in list_rumah_quran_students_for_class(selected_class_id)]),
-                    Student.is_deleted == False,
-                )
-            elif is_bahasa_classroom(selected_class):
-                students_query = Student.query.filter(
-                    Student.id.in_([student.id for student in list_bahasa_students_for_class(selected_class_id)]),
-                    Student.is_deleted == False,
-                )
-            else:
-                students_query = Student.query.filter_by(current_class_id=selected_class_id, is_deleted=False)
+            students, _ = _get_class_participants(selected_class_id)
             if query:
-                students_query = students_query.filter(
-                    db.or_(
-                        Student.full_name.ilike(f'%{query}%'),
-                        Student.nis.ilike(f'%{query}%')
-                    )
-                )
-            students = students_query.order_by(Student.full_name).all()
+                normalized_query = query.lower()
+                students = [
+                    student for student in students
+                    if normalized_query in (student.full_name or "").lower()
+                    or normalized_query in (student.nis or "").lower()
+                ]
+            students = sorted(students, key=lambda student: (student.full_name or "").lower())
 
             recent_reports = BehaviorReport.query.filter(BehaviorReport.student_id.in_([s.id for s in students])) \
                 .order_by(BehaviorReport.report_date.desc(), BehaviorReport.created_at.desc()).limit(30).all() if students else []
@@ -1480,7 +1588,7 @@ def delete_class_announcement(announcement_id):
 @role_required(UserRole.GURU)
 def homeroom_students():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
-    homeroom_classes = ClassRoom.query.filter_by(homeroom_teacher_id=teacher.id, is_deleted=False).order_by(ClassRoom.name).all()
+    homeroom_classes = _get_teacher_homeroom_classes(teacher)
 
     if not homeroom_classes:
         flash("Anda belum ditugaskan sebagai wali kelas.", "warning")
@@ -1508,7 +1616,7 @@ def calculate_student_grades(student_id):
     
     # Cek akses
     my_classes = _get_teacher_classes(teacher)
-    if student.current_class not in my_classes:
+    if not any(_student_belongs_to_class(student, class_room.id) for class_room in my_classes):
         flash("Anda tidak memiliki akses ke siswa tersebut.", "danger")
         return redirect(url_for('teacher.dashboard'))
     
@@ -1556,14 +1664,14 @@ def calculate_student_grades(student_id):
 @role_required(UserRole.GURU)
 def print_report_card(student_id):
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
-    homeroom_classes = ClassRoom.query.filter_by(homeroom_teacher_id=teacher.id, is_deleted=False).all()
+    homeroom_classes = _get_teacher_homeroom_classes(teacher)
 
     if not homeroom_classes:
         flash("Hanya wali kelas yang dapat mencetak raport.", "danger")
         return redirect(url_for('teacher.dashboard'))
     
     student = Student.query.get_or_404(student_id)
-    if student.current_class_id not in [c.id for c in homeroom_classes]:
+    if not any(_student_belongs_to_class(student, class_room.id) for class_room in homeroom_classes):
         flash("Siswa tidak ada di kelas perwalian Anda.", "danger")
         return redirect(url_for('teacher.homeroom_students'))
 
@@ -1676,6 +1784,9 @@ def input_attendance():
     
     if request.method == 'POST':
         date_str = request.form.get('attendance_date') or selected_date
+        if not selected_class_id or not _teacher_can_access_class(teacher, selected_class_id):
+            flash("Kelas tidak valid atau Anda tidak memiliki akses.", "danger")
+            return redirect(url_for('teacher.input_attendance'))
         try:
             date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
         except ValueError:
