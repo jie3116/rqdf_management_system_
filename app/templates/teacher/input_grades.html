@@ -8,12 +8,69 @@
             <h1 class="h3 mb-0 text-gray-800">Input Nilai Akademik</h1>
             <p class="mb-0 text-muted">
                 Kelas: <strong class="text-primary">{{ target_class.name if target_class else '-' }}</strong> &bull;
-                Mapel: <strong class="text-primary">{{ subject.name if subject else (majlis_subject.name if majlis_subject else '-') }}</strong>
+                Mapel: <strong class="text-primary">
+                    {% if subject %}
+                        {{ subject.name }}
+                    {% elif majlis_subject %}
+                        {{ majlis_subject.name }}
+                    {% elif is_bahasa_target_class %}
+                        Penilaian Kelas Bahasa
+                    {% else %}
+                        -
+                    {% endif %}
+                </strong>
             </p>
         </div>
         <a href="{{ url_for('teacher.dashboard') }}" class="btn btn-sm btn-secondary shadow-sm">
             <i class="fas fa-arrow-left me-1"></i> Kembali ke Dashboard
         </a>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('teacher.input_grades') }}" class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small mb-1">Kelas</label>
+                    <select name="class_id" class="form-select" onchange="this.form.submit()">
+                        <option value="">-- Pilih Kelas --</option>
+                        {% for class_room in my_classes %}
+                        <option value="{{ class_room.id }}" {% if selected_class_id == class_room.id %}selected{% endif %}>
+                            {{ class_room.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small mb-1">Mapel</label>
+                    <select name="subject_id" class="form-select" onchange="if(this.value){this.form.majlis_subject_id.value='';} this.form.submit();" {% if not selected_class_id or is_bahasa_target_class %}disabled{% endif %}>
+                        <option value="">-- Pilih Mapel --</option>
+                        {% for item in class_subject_options %}
+                        <option value="{{ item.id }}" {% if selected_subject_id == item.id %}selected{% endif %}>
+                            {{ item.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label fw-bold small mb-1">Mapel Majlis (Opsional)</label>
+                    <select name="majlis_subject_id" class="form-select" onchange="if(this.value){this.form.subject_id.value='';} this.form.submit();" {% if not selected_class_id or is_bahasa_target_class %}disabled{% endif %}>
+                        <option value="">-- Pilih Mapel Majlis --</option>
+                        {% for item in class_majlis_subject_options %}
+                        <option value="{{ item.id }}" {% if selected_majlis_subject_id == item.id %}selected{% endif %}>
+                            {{ item.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+            {% if selected_class_id and is_bahasa_target_class %}
+            <div class="alert alert-info mb-0 mt-3 py-2 small">
+                Kelas Bahasa memakai penilaian per kelas, tanpa pemilihan mapel terpisah.
+            </div>
+            {% endif %}
+        </div>
     </div>
 
     <div class="card shadow mb-4">
@@ -47,10 +104,11 @@
             {% macro grade_form(type_name) %}
             <form method="POST" action="">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="class_id" value="{{ selected_class_id if selected_class_id else '' }}">
                 
                 <input type="hidden" name="grade_type" value="{{ type_name }}">
-                <input type="hidden" name="subject_id" value="{{ subject.id if subject else "" }}">
-                <input type="hidden" name="majlis_subject_id" value="{{ majlis_subject.id if majlis_subject else "" }}">
+                <input type="hidden" name="subject_id" value="{{ selected_subject_id if selected_subject_id else '' }}">
+                <input type="hidden" name="majlis_subject_id" value="{{ selected_majlis_subject_id if selected_majlis_subject_id else '' }}">
 
                 <div class="alert alert-info border-left-info py-2 small">
                     <i class="fas fa-info-circle me-1"></i> 
@@ -112,6 +170,19 @@
             </form>
             {% endmacro %}
 
+            {% if not selected_class_id %}
+            <div class="alert alert-info mb-0">
+                Pilih kelas terlebih dahulu.
+            </div>
+            {% elif not is_bahasa_target_class and not selected_subject_id and not selected_majlis_subject_id %}
+            <div class="alert alert-warning mb-0">
+                Pilih mapel terlebih dahulu untuk kelas ini.
+            </div>
+            {% elif not participants %}
+            <div class="alert alert-warning mb-0">
+                Belum ada peserta pada kelas ini.
+            </div>
+            {% else %}
             <div class="tab-content">
                 
                 <div class="tab-pane fade show active" id="content-tugas" role="tabpanel">
@@ -131,6 +202,7 @@
                 </div>
 
             </div>
+            {% endif %}
         </div>
     </div>
 

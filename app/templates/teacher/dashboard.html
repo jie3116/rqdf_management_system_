@@ -137,6 +137,11 @@
                                     <div class="text-xs text-uppercase fw-bold text-info mb-1">{{ class_room.program_type.value if class_room.program_type else 'Program' }}</div>
                                     <div class="fw-bold mb-2">{{ class_room.name }}</div>
                                     <div class="d-grid gap-2">
+                                        {% if class_room.program_type and class_room.program_type.name == 'BAHASA' %}
+                                        <a href="{{ url_for('teacher.input_grades', class_id=class_room.id) }}" class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-pen-alt me-1"></i> Input Nilai
+                                        </a>
+                                        {% endif %}
                                         <a href="{{ url_for('teacher.input_attendance', class_id=class_room.id) }}" class="btn btn-sm btn-outline-success">
                                             <i class="fas fa-user-check me-1"></i> Absensi
                                         </a>
