@@ -166,6 +166,7 @@ def build_teacher_sidebar_groups(teacher):
             {'endpoint': 'teacher.class_announcements', 'label': 'Pengumuman Kelas', 'icon': 'fas fa-bullhorn'},
         ],
         'bahasa': [
+            {'endpoint': 'teacher.input_grades', 'label': 'Input Nilai', 'icon': 'fas fa-pen-alt'},
             {'endpoint': 'teacher.input_attendance', 'label': 'Input Absensi', 'icon': 'fas fa-calendar-check'},
             {'endpoint': 'teacher.input_behavior_report', 'label': 'Laporan Perilaku', 'icon': 'fas fa-user-shield'},
             {'endpoint': 'teacher.class_announcements', 'label': 'Pengumuman Kelas', 'icon': 'fas fa-bullhorn'},
@@ -584,6 +585,7 @@ def dashboard():
 def input_grades():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
     my_classes = _get_teacher_classes(teacher)
+    my_class_ids = {class_room.id for class_room in my_classes}
 
     selected_class_id = request.args.get('class_id', type=int)
     selected_subject_id = request.args.get('subject_id', type=int)
@@ -592,28 +594,74 @@ def input_grades():
     majlis_participants = []
     participants = []
     target_class = None
-    subject = Subject.query.get(selected_subject_id) if selected_subject_id else None
-    majlis_subject = MajlisSubject.query.get(selected_majlis_subject_id) if selected_majlis_subject_id else None
+    is_bahasa_target_class = False
+    class_subject_options = []
+    class_majlis_subject_options = []
 
     if selected_class_id:
         target_class = ClassRoom.query.get(selected_class_id)
-        if target_class in my_classes:
+        if target_class and selected_class_id in my_class_ids:
+            is_bahasa_target_class = is_bahasa_classroom(target_class)
             students, majlis_participants = _get_class_participants(selected_class_id)
             participants = _build_participant_rows(students, majlis_participants)
+
+            class_schedules = (
+                Schedule.query.filter(
+                    Schedule.teacher_id == teacher.id,
+                    Schedule.class_id == selected_class_id,
+                    Schedule.is_deleted.is_(False),
+                )
+                .order_by(Schedule.day.asc(), Schedule.start_time.asc(), Schedule.id.asc())
+                .all()
+            )
+            seen_subject_ids = set()
+            seen_majlis_subject_ids = set()
+            for schedule in class_schedules:
+                if schedule.subject_id and schedule.subject and schedule.subject_id not in seen_subject_ids:
+                    seen_subject_ids.add(schedule.subject_id)
+                    class_subject_options.append(schedule.subject)
+                if (
+                    schedule.majlis_subject_id
+                    and schedule.majlis_subject
+                    and schedule.majlis_subject_id not in seen_majlis_subject_ids
+                ):
+                    seen_majlis_subject_ids.add(schedule.majlis_subject_id)
+                    class_majlis_subject_options.append(schedule.majlis_subject)
         else:
             flash('Anda tidak memiliki akses ke kelas tersebut.', 'danger')
+            target_class = None
+            selected_class_id = None
+            selected_subject_id = None
+            selected_majlis_subject_id = None
+
+    valid_subject_ids = {item.id for item in class_subject_options}
+    valid_majlis_subject_ids = {item.id for item in class_majlis_subject_options}
+    if selected_subject_id and selected_subject_id not in valid_subject_ids:
+        selected_subject_id = None
+    if selected_majlis_subject_id and selected_majlis_subject_id not in valid_majlis_subject_ids:
+        selected_majlis_subject_id = None
+    if selected_subject_id and selected_majlis_subject_id:
+        selected_majlis_subject_id = None
+
+    subject = Subject.query.get(selected_subject_id) if selected_subject_id else None
+    majlis_subject = MajlisSubject.query.get(selected_majlis_subject_id) if selected_majlis_subject_id else None
 
     active_year = AcademicYear.query.filter_by(is_active=True).first()
     existing_grades = {}
-    if active_year and participants and (selected_subject_id or selected_majlis_subject_id):
+    if active_year and participants and (selected_subject_id or selected_majlis_subject_id or is_bahasa_target_class):
         student_ids = [p['student_id'] for p in participants if p['participant_type'] == ParticipantType.STUDENT]
         majlis_ids = [p['majlis_participant_id'] for p in participants if p['participant_type'] == ParticipantType.EXTERNAL_MAJLIS]
         grade_query = Grade.query.filter_by(academic_year_id=active_year.id, teacher_id=teacher.id)
 
         if selected_subject_id:
             grade_query = grade_query.filter(Grade.subject_id == selected_subject_id)
-        else:
+        elif selected_majlis_subject_id:
             grade_query = grade_query.filter(Grade.majlis_subject_id == selected_majlis_subject_id)
+        else:
+            grade_query = grade_query.filter(
+                Grade.subject_id.is_(None),
+                Grade.majlis_subject_id.is_(None),
+            )
 
         participant_filters = []
         if student_ids:
@@ -651,46 +699,65 @@ def input_grades():
                 }
     
     if request.method == 'POST':
+        form_class_id = request.form.get('class_id', type=int)
+        active_class_id = form_class_id or selected_class_id
+        if not active_class_id or active_class_id not in my_class_ids:
+            flash('Kelas tidak valid atau Anda tidak memiliki akses.', 'danger')
+            return redirect(url_for('teacher.input_grades'))
+
+        active_class = ClassRoom.query.get(active_class_id)
+        is_bahasa_active_class = is_bahasa_classroom(active_class)
+
+        active_students, active_majlis_participants = _get_class_participants(active_class_id)
+        active_participants = _build_participant_rows(active_students, active_majlis_participants)
+
         if not active_year:
             flash('Tahun ajaran aktif belum diatur.', 'warning')
             return redirect(url_for(
                 'teacher.input_grades',
-                class_id=selected_class_id,
+                class_id=active_class_id,
                 subject_id=selected_subject_id,
                 majlis_subject_id=selected_majlis_subject_id
             ))
 
         grade_type = request.form.get('grade_type')
         notes = request.form.get('notes', '')
-        subject_id = selected_subject_id or request.form.get('subject_id', type=int)
-        majlis_subject_id = selected_majlis_subject_id or request.form.get('majlis_subject_id', type=int)
+        subject_id = request.form.get('subject_id', type=int) or selected_subject_id
+        majlis_subject_id = request.form.get('majlis_subject_id', type=int) or selected_majlis_subject_id
+        if subject_id and subject_id not in valid_subject_ids:
+            subject_id = None
+        if majlis_subject_id and majlis_subject_id not in valid_majlis_subject_ids:
+            majlis_subject_id = None
+        if subject_id and majlis_subject_id:
+            majlis_subject_id = None
+
         if grade_type not in [t.name for t in GradeType]:
             flash('Tipe nilai tidak valid.', 'warning')
             return redirect(url_for(
                 'teacher.input_grades',
-                class_id=selected_class_id,
+                class_id=active_class_id,
                 subject_id=selected_subject_id,
                 majlis_subject_id=selected_majlis_subject_id
             ))
-        if not subject_id and not majlis_subject_id:
+        if not is_bahasa_active_class and not subject_id and not majlis_subject_id:
             flash('Mata pelajaran belum dipilih.', 'warning')
             return redirect(url_for(
                 'teacher.input_grades',
-                class_id=selected_class_id,
+                class_id=active_class_id,
                 subject_id=selected_subject_id,
                 majlis_subject_id=selected_majlis_subject_id
             ))
-        if not participants:
+        if not active_participants:
             flash('Belum ada peserta pada kelas ini.', 'warning')
             return redirect(url_for(
                 'teacher.input_grades',
-                class_id=selected_class_id,
+                class_id=active_class_id,
                 subject_id=selected_subject_id,
                 majlis_subject_id=selected_majlis_subject_id
             ))
         
         success_count = 0
-        for participant in participants:
+        for participant in active_participants:
             score = request.form.get(f"score_{participant['key']}")
             if not score or not score.strip():
                 continue
@@ -721,17 +788,23 @@ def input_grades():
 
         return redirect(url_for(
             'teacher.input_grades',
-            class_id=selected_class_id,
-            subject_id=selected_subject_id,
-            majlis_subject_id=selected_majlis_subject_id
+            class_id=active_class_id,
+            subject_id=subject_id,
+            majlis_subject_id=majlis_subject_id
         ))
     
     return render_template('teacher/input_grades.html',
                            my_classes=my_classes,
                            participants=participants,
                            target_class=target_class,
+                           selected_class_id=selected_class_id,
                            subject=subject,
+                           selected_subject_id=selected_subject_id,
+                           class_subject_options=class_subject_options,
                            majlis_subject=majlis_subject,
+                           selected_majlis_subject_id=selected_majlis_subject_id,
+                           class_majlis_subject_options=class_majlis_subject_options,
+                           is_bahasa_target_class=is_bahasa_target_class,
                            existing_grades=existing_grades)
 
 
@@ -741,6 +814,7 @@ def input_grades():
 def grade_history():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
     my_classes = _get_teacher_classes(teacher)
+    my_class_ids = {class_room.id for class_room in my_classes}
 
     selected_class_id = request.args.get('class_id', type=int)
     selected_participant_key = (request.args.get('participant') or '').strip()
@@ -756,7 +830,7 @@ def grade_history():
 
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
-        if selected_class not in my_classes:
+        if selected_class is None or selected_class_id not in my_class_ids:
             flash('Anda tidak memiliki akses ke kelas tersebut.', 'danger')
             return redirect(url_for('teacher.grade_history'))
 
@@ -863,6 +937,7 @@ def grade_history():
 def attendance_history():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
     my_classes = _get_teacher_classes(teacher)
+    my_class_ids = {class_room.id for class_room in my_classes}
 
     selected_class_id = request.args.get('class_id', type=int)
     selected_participant_key = (request.args.get('participant') or '').strip()
@@ -877,7 +952,7 @@ def attendance_history():
 
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
-        if selected_class not in my_classes:
+        if selected_class is None or selected_class_id not in my_class_ids:
             flash('Anda tidak memiliki akses ke kelas tersebut.', 'danger')
             return redirect(url_for('teacher.attendance_history'))
 
@@ -1424,6 +1499,7 @@ def input_tahfidz_evaluation():
 def input_behavior_report():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
     my_classes = _get_teacher_classes(teacher)
+    my_class_ids = {class_room.id for class_room in my_classes}
     selected_class_id = request.args.get('class_id', type=int)
     query = (request.args.get('q') or '').strip()
 
@@ -1433,7 +1509,7 @@ def input_behavior_report():
 
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
-        if selected_class in my_classes:
+        if selected_class and selected_class_id in my_class_ids:
             students, _ = _get_class_participants(selected_class_id)
             if query:
                 normalized_query = query.lower()
@@ -1466,7 +1542,7 @@ def input_behavior_report():
             return redirect(url_for('teacher.input_behavior_report', class_id=class_id))
 
         class_room = ClassRoom.query.get(class_id)
-        if class_room not in my_classes:
+        if class_room is None or class_id not in my_class_ids:
             flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
             return redirect(url_for('teacher.input_behavior_report'))
 
@@ -1551,6 +1627,9 @@ def class_announcements():
 
     announcements_query = Announcement.query.filter_by(user_id=current_user.id).order_by(Announcement.created_at.desc())
     if selected_class_id:
+        if selected_class_id not in my_class_ids:
+            flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
+            return redirect(url_for('teacher.class_announcements'))
         announcements_query = announcements_query.filter_by(target_class_id=selected_class_id)
     announcements = announcements_query.limit(30).all()
 
@@ -1744,6 +1823,7 @@ def print_attachment(student_id):
 def input_attendance():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
     my_classes = _get_teacher_classes(teacher)
+    my_class_ids = {class_room.id for class_room in my_classes}
     
     selected_class_id = request.args.get('class_id', type=int)
     selected_date = request.args.get('date', local_today().strftime('%Y-%m-%d'))
@@ -1756,7 +1836,7 @@ def input_attendance():
     
     if selected_class_id:
         selected_class = ClassRoom.query.get(selected_class_id)
-        if selected_class in my_classes:
+        if selected_class and selected_class_id in my_class_ids:
             students, majlis_participants = _get_class_participants(selected_class_id)
             participants = _build_participant_rows(students, majlis_participants)
             
@@ -1784,7 +1864,11 @@ def input_attendance():
     
     if request.method == 'POST':
         date_str = request.form.get('attendance_date') or selected_date
-        if not selected_class_id or not _teacher_can_access_class(teacher, selected_class_id):
+        if (
+            not selected_class_id
+            or selected_class_id not in my_class_ids
+            or not _teacher_can_access_class(teacher, selected_class_id)
+        ):
             flash("Kelas tidak valid atau Anda tidak memiliki akses.", "danger")
             return redirect(url_for('teacher.input_attendance'))
         try:
