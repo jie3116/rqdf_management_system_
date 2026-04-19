@@ -1211,7 +1211,7 @@ def input_tahfidz():
         final_surah_name = start_surah if(not end_surah or start_surah == end_surah) else f"{start_surah} - {end_surah}"
 
         total_errors = tajwid_errors + makhraj_errors + tahfidz_errors
-        calculated_score = max(0, 100 - (total_errors * 5))
+        calculated_score = max(0, 100 - (total_errors * 4))
         score = calculated_score
         quality = request.form.get('quality')
 
@@ -1393,7 +1393,7 @@ def input_recitation():
                 flash("Halaman akhir tidak boleh lebih kecil dari halaman awal.", "warning")
                 return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
 
-        score = max(0, 100 - ((tajwid_errors + makhraj_errors) * 5))
+        score = max(0, 100 - ((tajwid_errors + makhraj_errors) * 4))
 
         new_record = RecitationRecord(
             student_id=student_id,
@@ -1538,7 +1538,9 @@ def input_tahfidz_evaluation():
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         question_count = len(normalized_questions)
-        score = round(sum(item['score'] for item in normalized_questions) / question_count, 2)
+        average_score = round(sum(item['score'] for item in normalized_questions) / question_count, 2)
+        total_errors = makhraj_errors + tajwid_errors + harakat_errors + tahfidz_errors
+        score = round(max(0, average_score - (total_errors * 4)), 2)
         first_question = normalized_questions[0]
         last_question = normalized_questions[-1]
         summary_surah = first_question['surah']
