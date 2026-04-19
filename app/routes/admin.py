@@ -1452,20 +1452,38 @@ def accept_candidate(candidate_id):
         nis_baru = generate_nis()
 
         # User Wali
-        user_wali = User.query.filter_by(username=calon.parent_phone).first()
+        parent_phone = (calon.parent_phone or '').strip()
+        if not parent_phone:
+            raise ValueError('Nomor Telepon Orang Tua wajib diisi.')
+
+        user_wali = User.query.filter_by(username=parent_phone).first()
         if not user_wali:
-            user_wali = User(tenant_id=tenant_id, username=calon.parent_phone, email=f"wali.{nis_baru}@sekolah.id",
-                             password_hash=generate_password_hash(calon.parent_phone or "123456"),
+            user_wali = User(tenant_id=tenant_id, username=parent_phone, email=f"wali.{nis_baru}@sekolah.id",
+                             password_hash=generate_password_hash(parent_phone or "123456"),
                              role=UserRole.WALI_MURID,
                              must_change_password=True)
             db.session.add(user_wali)
             db.session.flush()
-            parent_profile = Parent(user_id=user_wali.id, full_name=calon.father_name, phone=calon.parent_phone,
-                                    job=calon.father_job, address=calon.address)
+        parent_profile = user_wali.parent_profile
+        if not parent_profile:
+            parent_profile = Parent(
+                user_id=user_wali.id,
+                full_name=calon.father_name or calon.mother_name or "Wali Murid",
+                phone=parent_phone,
+                job=calon.father_job,
+                address=calon.address
+            )
             db.session.add(parent_profile)
             db.session.flush()
         else:
-            parent_profile = user_wali.parent_profile
+            if not parent_profile.full_name:
+                parent_profile.full_name = calon.father_name or calon.mother_name or "Wali Murid"
+            if not parent_profile.phone:
+                parent_profile.phone = parent_phone
+            if not parent_profile.job and calon.father_job:
+                parent_profile.job = calon.father_job
+            if not parent_profile.address and calon.address:
+                parent_profile.address = calon.address
 
         # User Siswa
         user_siswa = User(tenant_id=tenant_id, username=nis_baru, email=f"{nis_baru}@sekolah.id",

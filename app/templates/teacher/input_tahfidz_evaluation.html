@@ -82,11 +82,35 @@
                                     <div class="row align-items-center">
                                         <div class="col-md-8">
                                             <div class="fw-bold">Nilai akhir</div>
-                                            <small class="text-muted">Nilai akhir otomatis dihitung dari rata-rata nilai semua soal.</small>
+                                            <small class="text-muted">Nilai akhir = rata-rata nilai semua soal - (4 x total kesalahan).</small>
                                         </div>
                                         <div class="col-md-4 mt-2 mt-md-0">
                                             <input type="text" id="score_preview" class="form-control text-center fw-bold" value="0.00" readonly>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card border-0 bg-light mb-3">
+                            <div class="card-body">
+                                <h6 class="fw-bold mb-3">Jumlah Kesalahan</h6>
+                                <div class="row g-3">
+                                    <div class="col-md-3">
+                                        <label class="small fw-bold text-muted">Makhraj</label>
+                                        <input type="number" name="makhraj_errors" class="form-control evaluation-error-input" min="0" value="0">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="small fw-bold text-muted">Tajwid</label>
+                                        <input type="number" name="tajwid_errors" class="form-control evaluation-error-input" min="0" value="0">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="small fw-bold text-muted">Harakat</label>
+                                        <input type="number" name="harakat_errors" class="form-control evaluation-error-input" min="0" value="0">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="small fw-bold text-muted">Tahfidz</label>
+                                        <input type="number" name="tahfidz_errors" class="form-control evaluation-error-input" min="0" value="0">
                                     </div>
                                 </div>
                             </div>
@@ -202,6 +226,7 @@
         const addQuestionButton = document.getElementById("add-question-btn");
         const questionList = document.getElementById("question-list");
         const scorePreview = document.getElementById("score_preview");
+        const errorInputs = Array.from(document.querySelectorAll(".evaluation-error-input"));
 
         if (!periodType || !periodLabel || !periodLabelText || !addQuestionButton || !questionList || !scorePreview) {
             return;
@@ -245,7 +270,13 @@
                 return;
             }
             const total = values.reduce((sum, value) => sum + value, 0);
-            scorePreview.value = (total / values.length).toFixed(2);
+            const averageScore = total / values.length;
+            const totalErrors = errorInputs.reduce((sum, input) => {
+                const value = parseInt(input.value || "0", 10);
+                return sum + (Number.isNaN(value) ? 0 : Math.max(0, value));
+            }, 0);
+            const finalScore = Math.max(0, averageScore - (totalErrors * 4));
+            scorePreview.value = finalScore.toFixed(2);
         }
 
         function bindQuestionCard(card) {
@@ -321,6 +352,9 @@
             updatePeriodOptions(true);
         });
         addQuestionButton.addEventListener("click", addQuestionRow);
+        errorInputs.forEach((input) => {
+            input.addEventListener("input", updateScorePreview);
+        });
 
         updatePeriodOptions(true);
         addQuestionRow();
