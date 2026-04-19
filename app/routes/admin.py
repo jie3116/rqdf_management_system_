@@ -804,6 +804,69 @@ def edit_class(class_id):
         EducationLevel=EducationLevel
     )
 
+
+@admin_bp.route('/sekolah/kelas/hapus/<int:class_id>', methods=['POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def delete_class(class_id):
+    class_room = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first_or_404()
+
+    if is_rumah_quran_classroom(class_room):
+        student_count = len(list_rumah_quran_students_for_class(class_room.id))
+    elif is_bahasa_classroom(class_room):
+        student_count = len(list_bahasa_students_for_class(class_room.id))
+    elif class_room.program_group_id:
+        student_count = len(list_formal_students_for_class(class_room.id))
+    else:
+        student_count = Student.query.filter_by(
+            current_class_id=class_room.id,
+            is_deleted=False,
+        ).count()
+
+    majlis_parent_count = Parent.query.filter_by(
+        majlis_class_id=class_room.id,
+        is_deleted=False,
+    ).count()
+    majlis_participant_count = MajlisParticipant.query.filter_by(
+        majlis_class_id=class_room.id,
+        is_deleted=False,
+    ).count()
+
+    if student_count > 0 or majlis_parent_count > 0 or majlis_participant_count > 0:
+        flash(
+            (
+                f'Kelas "{class_room.name}" tidak bisa dihapus karena masih memiliki peserta aktif '
+                f'(siswa: {student_count}, peserta majlis: {majlis_participant_count}, wali majlis: {majlis_parent_count}).'
+            ),
+            'danger'
+        )
+        return redirect(url_for('admin.manage_classes'))
+
+    try:
+        schedules = Schedule.query.filter_by(class_id=class_room.id, is_deleted=False).all()
+        for schedule in schedules:
+            schedule.is_deleted = True
+
+        class_room.homeroom_teacher_id = None
+        sync_class_homeroom_assignment(class_room)
+        class_room.is_deleted = True
+
+        if class_room.program_group_id:
+            program_group = ProgramGroup.query.filter_by(
+                id=class_room.program_group_id,
+                is_deleted=False,
+            ).first()
+            if program_group:
+                program_group.is_active = False
+
+        db.session.commit()
+        flash(f'Kelas "{class_room.name}" berhasil dihapus.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Gagal menghapus kelas: {e}', 'danger')
+
+    return redirect(url_for('admin.manage_classes'))
+
 # =========================================================
 # 5. MASTER KESISWAAN (EKSKUL)
 # =========================================================

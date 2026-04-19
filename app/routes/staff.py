@@ -129,11 +129,41 @@ def dashboard():
 def cashier_search():
     query = request.args.get('q')
     students = []
+    students_due_map = {}
     if query:
         students = Student.query.filter(
+            Student.is_deleted.is_(False),
             (Student.full_name.ilike(f'%{query}%')) |
-            (Student.nis.ilike(f'%{query}%'))).all()
-    return render_template('staff/cashier_search.html', students=students, query=query)
+            (Student.nis.ilike(f'%{query}%'))
+        ).all()
+
+    if students:
+        student_ids = [s.id for s in students]
+        due_rows = (
+            db.session.query(
+                Invoice.student_id,
+                func.coalesce(func.sum(Invoice.total_amount), 0).label('total_amount'),
+                func.coalesce(func.sum(Invoice.paid_amount), 0).label('paid_amount'),
+            )
+            .filter(
+                Invoice.student_id.in_(student_ids),
+                Invoice.is_deleted.is_(False),
+                Invoice.status != PaymentStatus.PAID,
+            )
+            .group_by(Invoice.student_id)
+            .all()
+        )
+        students_due_map = {
+            student_id: max(0, to_rupiah_int(total_amount) - to_rupiah_int(paid_amount))
+            for student_id, total_amount, paid_amount in due_rows
+        }
+
+    return render_template(
+        'staff/cashier_search.html',
+        students=students,
+        query=query,
+        students_due_map=students_due_map,
+    )
 
 
 @staff_bp.route('/kasir/bayar/<int:student_id>', methods=['GET', 'POST'])
@@ -156,6 +186,20 @@ def cashier_pay(student_id):
     selected_trx_id = request.args.get('trx', type=int)
     highlighted_transaction = next((trx for trx in transactions if trx.id == selected_trx_id), None)
     invoice_tokens = {inv.id: _sign_cashier_invoice(inv.id, student.id) for inv in unpaid_invoices}
+    invoice_summary = (
+        db.session.query(
+            func.coalesce(func.sum(Invoice.total_amount), 0).label('total_amount'),
+            func.coalesce(func.sum(Invoice.paid_amount), 0).label('paid_amount'),
+        )
+        .filter(
+            Invoice.student_id == student.id,
+            Invoice.is_deleted.is_(False),
+        )
+        .first()
+    )
+    student_total_billed = to_rupiah_int(invoice_summary.total_amount if invoice_summary else 0)
+    student_total_paid = to_rupiah_int(invoice_summary.paid_amount if invoice_summary else 0)
+    student_total_due = max(0, student_total_billed - student_total_paid)
 
     form = PaymentForm()
 
@@ -230,6 +274,9 @@ def cashier_pay(student_id):
         invoice_tokens=invoice_tokens,
         transactions=transactions,
         highlighted_transaction=highlighted_transaction,
+        student_total_billed=student_total_billed,
+        student_total_paid=student_total_paid,
+        student_total_due=student_total_due,
         form=form
     )
 
