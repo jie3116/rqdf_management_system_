@@ -28,17 +28,6 @@
                         <span class="badge bg-danger fs-6 px-3 py-2">Ditolak</span>
                     {% endif %}
                 </div>
-
-                {% if candidate.status.name == 'PENDING' %}
-                <div class="d-grid gap-2 mt-4">
-                    <form action="{{ url_for('staff.accept_candidate', candidate_id=candidate.id) }}" method="POST" onsubmit="return confirm('{{ "Yakin terima peserta majelis ini? Akun user akan dibuat tanpa tagihan." if candidate.program_type.name == "MAJLIS_TALIM" else "Yakin terima santri ini? Akun User dan Tagihan akan dibuat otomatis." }}');">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                        <button type="submit" class="btn btn-success w-100">
-                            <i class="fas fa-check-circle me-2"></i>Verifikasi & Terima
-                        </button>
-                    </form>
-                </div>
-                {% endif %}
             </div>
         </div>
     </div>
@@ -103,8 +92,111 @@
                         </table>
                     </div>
                 </div>
+
+                {% if candidate.status.name == 'PENDING' %}
+                <hr>
+                <form id="accept-form" action="{{ url_for('staff.accept_candidate', candidate_id=candidate.id) }}" method="POST" onsubmit="return confirm('{{ 'Yakin terima peserta majelis ini? Akun user akan dibuat tanpa tagihan.' if candidate.program_type.name == 'MAJLIS_TALIM' else 'Yakin terima santri ini? Akun User dan Tagihan akan dibuat otomatis sesuai rincian biaya di bawah.' }}');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                    {% if candidate.program_type.name == 'MAJLIS_TALIM' %}
+                    <div class="alert alert-info mb-3">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Program Majelis Ta'lim tidak membentuk tagihan PPDB. Verifikasi akan membuat akun peserta saja.
+                    </div>
+                    {% else %}
+                    <h6 class="fw-bold text-primary mb-2">Rincian Biaya yang Akan Dibentuk</h6>
+                    {% if fee_drafts %}
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 5%">No</th>
+                                    <th>Nama Biaya</th>
+                                    <th style="width: 35%">Nominal (Rp)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in fee_drafts %}
+                                <tr>
+                                    <td class="text-center">{{ loop.index }}</td>
+                                    <td>{{ item.nama }}</td>
+                                    <td>
+                                        <input
+                                            type="text"
+                                            name="fee_amount_{{ loop.index0 }}"
+                                            class="form-control text-end fee-amount-input"
+                                            value="{{ '{:,.0f}'.format(item.nominal or 0).replace(',', '.') }}"
+                                            inputmode="numeric"
+                                            autocomplete="off"
+                                        >
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th colspan="2" class="text-end">Total</th>
+                                    <th class="text-end" id="fee-total-value">Rp {{ '{:,.0f}'.format(fee_drafts_total or 0).replace(',', '.') }}</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <small class="text-muted d-block mb-3">
+                        Nominal bisa disesuaikan sebelum tombol verifikasi ditekan.
+                    </small>
+                    {% else %}
+                    <div class="alert alert-warning mb-3">
+                        Belum ada rincian biaya otomatis untuk pendaftar ini.
+                    </div>
+                    {% endif %}
+                    {% endif %}
+
+                    <div class="d-grid mt-2">
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-check-circle me-2"></i>Verifikasi & Terima
+                        </button>
+                    </div>
+                </form>
+                {% endif %}
             </div>
         </div>
     </div>
 </div>
+
+{% if candidate.status.name == 'PENDING' and candidate.program_type.name != 'MAJLIS_TALIM' %}
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const inputs = Array.from(document.querySelectorAll(".fee-amount-input"));
+        const totalEl = document.getElementById("fee-total-value");
+        if (!inputs.length || !totalEl) return;
+
+        function toDigits(value) {
+            return (value || "").replace(/\D/g, "");
+        }
+
+        function formatRupiahDigits(digits) {
+            if (!digits) return "0";
+            return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+        }
+
+        function recalcTotal() {
+            let total = 0;
+            inputs.forEach((input) => {
+                const digits = toDigits(input.value);
+                const amount = digits ? parseInt(digits, 10) : 0;
+                total += amount;
+                input.value = formatRupiahDigits(digits);
+            });
+            totalEl.textContent = `Rp ${formatRupiahDigits(String(total))}`;
+        }
+
+        inputs.forEach((input) => {
+            input.addEventListener("input", recalcTotal);
+            input.addEventListener("blur", recalcTotal);
+        });
+
+        recalcTotal();
+    });
+</script>
+{% endif %}
 {% endblock %}

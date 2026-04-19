@@ -37,6 +37,11 @@ from app.services.staff_assignment_service import (
     ensure_assignment_label_configs,
     sync_class_homeroom_assignment,
 )
+from app.services.ppdb_fee_service import (
+    build_candidate_fee_drafts,
+    get_ppdb_fee_template_admin_fields,
+    save_ppdb_fee_templates,
+)
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
@@ -1219,6 +1224,21 @@ def delete_student(id):
 @role_required(UserRole.ADMIN)
 def manage_fee_types():
     if request.method == 'POST':
+        form_type = (request.form.get('form_type') or 'master_fee').strip()
+
+        if form_type == 'ppdb_template':
+            try:
+                changed = save_ppdb_fee_templates(request.form)
+                db.session.commit()
+                if changed > 0:
+                    flash(f'Template komponen biaya PPDB berhasil disimpan ({changed} perubahan).', 'success')
+                else:
+                    flash('Tidak ada perubahan pada template komponen biaya PPDB.', 'info')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Gagal menyimpan template biaya PPDB: {e}', 'danger')
+            return redirect(url_for('admin.manage_fee_types'))
+
         name = request.form.get('name')
         amount = request.form.get('amount')
         academic_year_id = request.form.get('academic_year_id', type=int)
@@ -1256,7 +1276,14 @@ def manage_fee_types():
 
     fees = fees_query.order_by(FeeType.id.desc()).all()
     years = AcademicYear.query.filter_by(is_active=True).all()
-    return render_template('admin/finance/fee_types.html', fees=fees, years=years, query=query)
+    ppdb_fee_template_fields = get_ppdb_fee_template_admin_fields()
+    return render_template(
+        'admin/finance/fee_types.html',
+        fees=fees,
+        years=years,
+        query=query,
+        ppdb_fee_template_fields=ppdb_fee_template_fields,
+    )
 
 
 @admin_bp.route('/keuangan/biaya/edit/<int:fee_id>', methods=['GET', 'POST'])
@@ -1375,7 +1402,7 @@ def ppdb_list():
 @login_required
 @role_required(UserRole.ADMIN)
 def accept_candidate(candidate_id):
-    calon = StudentCandidate.query.get_or_404(candidate_id)
+    calon = StudentCandidate.query.filter_by(id=candidate_id, is_deleted=False).first_or_404()
 
     if calon.status == RegistrationStatus.ACCEPTED:
         flash('Siswa ini sudah diproses sebelumnya.', 'warning')
@@ -1453,72 +1480,7 @@ def accept_candidate(candidate_id):
         db.session.flush()
 
         # --- 2. SMART INVOICING (VERSI DINAMIS) ---
-        def get_nominal(nama_biaya, harga_default):
-            biaya_db = FeeType.query.filter_by(name=nama_biaya).first()
-            if biaya_db:
-                return to_rupiah_int(biaya_db.amount)
-            return to_rupiah_int(harga_default)
-
-        tagihan_list = []
-
-        if calon.program_type.name == 'SEKOLAH_FULLDAY':
-            if calon.scholarship_category.name == 'NON_BEASISWA':
-                tagihan_list = [
-                    {'nama': 'Biaya Pendaftaran', 'nominal': get_nominal('Biaya Pendaftaran', 200000)},
-                    {'nama': 'Seragam Batik', 'nominal': get_nominal('Seragam Batik', 100000)},
-                    {'nama': 'Infaq Bulanan (Juli)', 'nominal': get_nominal('Infaq Bulanan (Juli)', 650000)},
-                    {'nama': 'Wakaf Bangunan', 'nominal': get_nominal('Wakaf Bangunan', 1000000)},
-                    {'nama': 'Fasilitas Kasur', 'nominal': get_nominal('Fasilitas Kasur', 500000)},
-                    {'nama': 'Orientasi Siswa', 'nominal': get_nominal('Orientasi Siswa', 150000)},
-                    {'nama': 'Wakaf Perpustakaan', 'nominal': get_nominal('Wakaf Perpustakaan', 100000)},
-                    {'nama': 'Infaq Qurban', 'nominal': get_nominal('Infaq Qurban', 100000)},
-                    {'nama': 'Raport Pesantren', 'nominal': get_nominal('Raport Pesantren', 65000)},
-                    {'nama': 'Adm Sekolah Formal', 'nominal': get_nominal('Adm Sekolah Formal', 500000)},
-                    {'nama': 'Infaq Kegiatan', 'nominal': get_nominal('Infaq Kegiatan', 100000)}
-                ]
-            else:
-                tagihan_list = [
-                    {'nama': 'Biaya Pendaftaran (Beasiswa)',
-                     'nominal': get_nominal('Biaya Pendaftaran (Beasiswa)', 100000)},
-                    {'nama': 'Infaq Bulanan (Beasiswa)', 'nominal': get_nominal('Infaq Bulanan (Beasiswa)', 325000)},
-                    {'nama': 'Wakaf Bangunan (Beasiswa)', 'nominal': get_nominal('Wakaf Bangunan (Beasiswa)', 500000)},
-                    {'nama': 'Fasilitas Lemari (Beasiswa)',
-                     'nominal': get_nominal('Fasilitas Lemari (Beasiswa)', 250000)},
-                    {'nama': 'Fasilitas Kasur (Beasiswa)',
-                     'nominal': get_nominal('Fasilitas Kasur (Beasiswa)', 250000)},
-                    {'nama': 'Orientasi Siswa (Beasiswa)', 'nominal': get_nominal('Orientasi Siswa (Beasiswa)', 75000)},
-                    {'nama': 'Raport', 'nominal': get_nominal('Raport', 65000)},
-                    {'nama': 'Wakaf Perpustakaan (Beasiswa)',
-                     'nominal': get_nominal('Wakaf Perpustakaan (Beasiswa)', 50000)},
-                    {'nama': 'Infaq Kegiatan (Beasiswa)', 'nominal': get_nominal('Infaq Kegiatan (Beasiswa)', 50000)},
-                    {'nama': 'Infaq Qurban (Beasiswa)', 'nominal': get_nominal('Infaq Qurban (Beasiswa)', 50000)},
-                    {'nama': 'Seragam Batik', 'nominal': get_nominal('Seragam Batik', 100000)},
-                    {'nama': 'Adm Sekolah Formal', 'nominal': get_nominal('Adm Sekolah Formal', 500000)}
-                ]
-
-        elif calon.program_type.name == 'RQDF_SORE':
-            tagihan_list = [
-                {'nama': 'Infaq Pendaftaran (RQDF)', 'nominal': get_nominal('Infaq Pendaftaran (RQDF)', 300000)},
-                {'nama': 'Uang Dana Semesteran', 'nominal': get_nominal('Uang Dana Semesteran', 50000)},
-                {'nama': 'Infaq Bulanan RQDF', 'nominal': get_nominal('Infaq Bulanan RQDF', 150000)},
-                {'nama': 'Atribut (Syal) & Buku', 'nominal': get_nominal('Atribut (Syal) & Buku', 100000)},
-                {'nama': 'Raport RQDF', 'nominal': get_nominal('Raport RQDF', 50000)}
-            ]
-
-            if calon.initial_pledge_amount and calon.initial_pledge_amount > 0:
-                tagihan_list.append({'nama': 'Infaq Pembangunan Pesantren', 'nominal': calon.initial_pledge_amount})
-
-            harga_seragam = 0
-            uk = calon.uniform_size.name
-            if uk in ['S', 'M']:
-                harga_seragam = get_nominal('Seragam RQDF (S/M)', 345000)
-            elif uk in ['L', 'XL']:
-                harga_seragam = get_nominal('Seragam RQDF (L/XL)', 355000)
-            elif uk == 'XXL':
-                harga_seragam = get_nominal('Seragam RQDF (XXL)', 380000)
-
-            if harga_seragam > 0:
-                tagihan_list.append({'nama': f'Seragam RQDF (Ukuran {uk})', 'nominal': harga_seragam})
+        tagihan_list = build_candidate_fee_drafts(calon)
 
         due_date = local_now() + timedelta(days=14)
         inv_prefix = f"INV/{local_now().strftime('%Y%m')}/{siswa_baru.id}"

@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app
+from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, abort
 from flask_login import login_required, current_user
 from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
@@ -26,6 +26,7 @@ from app.services.bahasa_service import (
     list_bahasa_classes,
 )
 from app.services.formal_service import sync_student_formal_class_membership
+from app.services.ppdb_fee_service import build_candidate_fee_drafts
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType,
@@ -54,6 +55,34 @@ def _verify_cashier_invoice(token):
         return int(data.get('invoice_id')), int(data.get('student_id'))
     except (BadSignature, TypeError, ValueError):
         return None, None
+
+
+def _parse_rupiah_input(raw_value, default_value):
+    if raw_value is None:
+        return default_value
+    digits = ''.join(ch for ch in str(raw_value) if ch.isdigit())
+    if not digits:
+        return default_value
+    return to_rupiah_int(digits, default=default_value)
+
+
+def _candidate_fee_drafts(candidate):
+    return build_candidate_fee_drafts(candidate)
+
+
+def _apply_candidate_fee_overrides(drafts, source_form):
+    updated = []
+    for idx, item in enumerate(drafts):
+        default_nominal = to_rupiah_int(item.get('nominal'))
+        raw_nominal = source_form.get(f'fee_amount_{idx}')
+        edited_nominal = _parse_rupiah_input(raw_nominal, default_nominal)
+        if edited_nominal < 0:
+            edited_nominal = 0
+        updated.append({
+            'nama': item.get('nama'),
+            'nominal': edited_nominal,
+        })
+    return updated
 
 
 @staff_bp.route('/dashboard')
@@ -99,6 +128,15 @@ def cashier_pay(student_id):
         Invoice.is_deleted.is_(False),
         Invoice.status != PaymentStatus.PAID
     ).all()
+    transactions = (
+        Transaction.query.join(Invoice, Invoice.id == Transaction.invoice_id)
+        .filter(Invoice.student_id == student.id, Invoice.is_deleted.is_(False))
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+        .limit(40)
+        .all()
+    )
+    selected_trx_id = request.args.get('trx', type=int)
+    highlighted_transaction = next((trx for trx in transactions if trx.id == selected_trx_id), None)
     invoice_tokens = {inv.id: _sign_cashier_invoice(inv.id, student.id) for inv in unpaid_invoices}
 
     form = PaymentForm()
@@ -165,14 +203,41 @@ def cashier_pay(student_id):
 
             db.session.commit()
             flash(f'Pembayaran Rp {bayar:,.0f} diterima!', 'success')
-            return redirect(url_for('staff.cashier_pay', student_id=student.id))
+            return redirect(url_for('staff.cashier_pay', student_id=student.id, trx=trx.id))
 
     return render_template(
         'staff/cashier_payment.html',
         student=student,
         invoices=unpaid_invoices,
         invoice_tokens=invoice_tokens,
+        transactions=transactions,
+        highlighted_transaction=highlighted_transaction,
         form=form
+    )
+
+
+@staff_bp.route('/kasir/kwitansi/<int:transaction_id>')
+@login_required
+@role_required(UserRole.TU)
+def cashier_receipt(transaction_id):
+    transaction = Transaction.query.get_or_404(transaction_id)
+    invoice = Invoice.query.filter_by(id=transaction.invoice_id, is_deleted=False).first()
+    if invoice is None:
+        abort(404)
+    student = Student.query.filter_by(id=invoice.student_id, is_deleted=False).first()
+    if student is None:
+        abort(404)
+
+    payment_pic = User.query.filter_by(id=transaction.pic_id).first()
+    sisa_tagihan = max(0, to_rupiah_int(invoice.total_amount) - to_rupiah_int(invoice.paid_amount))
+
+    return render_template(
+        'staff/cashier_receipt.html',
+        transaction=transaction,
+        invoice=invoice,
+        student=student,
+        payment_pic=payment_pic,
+        sisa_tagihan=sisa_tagihan,
     )
 
 
@@ -769,7 +834,7 @@ def edit_student(student_id):
 @role_required(UserRole.TU)
 def ppdb_list():
     query = (request.args.get('q') or '').strip()
-    candidates_query = StudentCandidate.query
+    candidates_query = StudentCandidate.query.filter_by(is_deleted=False)
     if query:
         candidates_query = candidates_query.filter(
             or_(
@@ -788,15 +853,24 @@ def ppdb_list():
 @login_required
 @role_required(UserRole.TU)
 def ppdb_detail(candidate_id):
-    candidate = StudentCandidate.query.get_or_404(candidate_id)
-    return render_template('staff/ppdb/detail.html', candidate=candidate)
+    candidate = StudentCandidate.query.filter_by(id=candidate_id, is_deleted=False).first_or_404()
+    fee_drafts = []
+    if candidate.status == RegistrationStatus.PENDING and candidate.program_type != ProgramType.MAJLIS_TALIM:
+        fee_drafts = _candidate_fee_drafts(candidate)
+
+    return render_template(
+        'staff/ppdb/detail.html',
+        candidate=candidate,
+        fee_drafts=fee_drafts,
+        fee_drafts_total=sum(item.get('nominal', 0) for item in fee_drafts),
+    )
 
 
 @staff_bp.route('/ppdb/terima/<int:candidate_id>', methods=['POST'])  # <--- GANTI JADI staff_bp
 @login_required
 @role_required(UserRole.TU)
 def accept_candidate(candidate_id):
-    calon = StudentCandidate.query.get_or_404(candidate_id)
+    calon = StudentCandidate.query.filter_by(id=candidate_id, is_deleted=False).first_or_404()
 
     if calon.status == RegistrationStatus.ACCEPTED:
         flash('Siswa ini sudah diproses sebelumnya.', 'warning')
@@ -874,72 +948,7 @@ def accept_candidate(candidate_id):
         db.session.flush()
 
         # --- 2. SMART INVOICING (VERSI DINAMIS) ---
-        def get_nominal(nama_biaya, harga_default):
-            biaya_db = FeeType.query.filter_by(name=nama_biaya).first()
-            if biaya_db:
-                return to_rupiah_int(biaya_db.amount)
-            return to_rupiah_int(harga_default)
-
-        tagihan_list = []
-
-        if calon.program_type.name == 'SEKOLAH_FULLDAY':
-            if calon.scholarship_category.name == 'NON_BEASISWA':
-                tagihan_list = [
-                    {'nama': 'Biaya Pendaftaran', 'nominal': get_nominal('Biaya Pendaftaran', 200000)},
-                    {'nama': 'Seragam Batik', 'nominal': get_nominal('Seragam Batik', 100000)},
-                    {'nama': 'Infaq Bulanan (Juli)', 'nominal': get_nominal('Infaq Bulanan (Juli)', 650000)},
-                    {'nama': 'Wakaf Bangunan', 'nominal': get_nominal('Wakaf Bangunan', 1000000)},
-                    {'nama': 'Fasilitas Kasur', 'nominal': get_nominal('Fasilitas Kasur', 500000)},
-                    {'nama': 'Orientasi Siswa', 'nominal': get_nominal('Orientasi Siswa', 150000)},
-                    {'nama': 'Wakaf Perpustakaan', 'nominal': get_nominal('Wakaf Perpustakaan', 100000)},
-                    {'nama': 'Infaq Qurban', 'nominal': get_nominal('Infaq Qurban', 100000)},
-                    {'nama': 'Raport Pesantren', 'nominal': get_nominal('Raport Pesantren', 65000)},
-                    {'nama': 'Adm Sekolah Formal', 'nominal': get_nominal('Adm Sekolah Formal', 500000)},
-                    {'nama': 'Infaq Kegiatan', 'nominal': get_nominal('Infaq Kegiatan', 100000)}
-                ]
-            else:
-                tagihan_list = [
-                    {'nama': 'Biaya Pendaftaran (Beasiswa)',
-                     'nominal': get_nominal('Biaya Pendaftaran (Beasiswa)', 100000)},
-                    {'nama': 'Infaq Bulanan (Beasiswa)', 'nominal': get_nominal('Infaq Bulanan (Beasiswa)', 325000)},
-                    {'nama': 'Wakaf Bangunan (Beasiswa)', 'nominal': get_nominal('Wakaf Bangunan (Beasiswa)', 500000)},
-                    {'nama': 'Fasilitas Lemari (Beasiswa)',
-                     'nominal': get_nominal('Fasilitas Lemari (Beasiswa)', 250000)},
-                    {'nama': 'Fasilitas Kasur (Beasiswa)',
-                     'nominal': get_nominal('Fasilitas Kasur (Beasiswa)', 250000)},
-                    {'nama': 'Orientasi Siswa (Beasiswa)', 'nominal': get_nominal('Orientasi Siswa (Beasiswa)', 75000)},
-                    {'nama': 'Raport', 'nominal': get_nominal('Raport', 65000)},
-                    {'nama': 'Wakaf Perpustakaan (Beasiswa)',
-                     'nominal': get_nominal('Wakaf Perpustakaan (Beasiswa)', 50000)},
-                    {'nama': 'Infaq Kegiatan (Beasiswa)', 'nominal': get_nominal('Infaq Kegiatan (Beasiswa)', 50000)},
-                    {'nama': 'Infaq Qurban (Beasiswa)', 'nominal': get_nominal('Infaq Qurban (Beasiswa)', 50000)},
-                    {'nama': 'Seragam Batik', 'nominal': get_nominal('Seragam Batik', 100000)},
-                    {'nama': 'Adm Sekolah Formal', 'nominal': get_nominal('Adm Sekolah Formal', 500000)}
-                ]
-
-        elif calon.program_type.name == 'RQDF_SORE':
-            tagihan_list = [
-                {'nama': 'Infaq Pendaftaran (RQDF)', 'nominal': get_nominal('Infaq Pendaftaran (RQDF)', 300000)},
-                {'nama': 'Uang Dana Semesteran', 'nominal': get_nominal('Uang Dana Semesteran', 50000)},
-                {'nama': 'Infaq Bulanan RQDF', 'nominal': get_nominal('Infaq Bulanan RQDF', 150000)},
-                {'nama': 'Atribut (Syal) & Buku', 'nominal': get_nominal('Atribut (Syal) & Buku', 100000)},
-                {'nama': 'Raport RQDF', 'nominal': get_nominal('Raport RQDF', 50000)}
-            ]
-
-            if calon.initial_pledge_amount and calon.initial_pledge_amount > 0:
-                tagihan_list.append({'nama': 'Infaq Pembangunan Pesantren', 'nominal': calon.initial_pledge_amount})
-
-            harga_seragam = 0
-            uk = calon.uniform_size.name
-            if uk in ['S', 'M']:
-                harga_seragam = get_nominal('Seragam RQDF (S/M)', 345000)
-            elif uk in ['L', 'XL']:
-                harga_seragam = get_nominal('Seragam RQDF (L/XL)', 355000)
-            elif uk == 'XXL':
-                harga_seragam = get_nominal('Seragam RQDF (XXL)', 380000)
-
-            if harga_seragam > 0:
-                tagihan_list.append({'nama': f'Seragam RQDF (Ukuran {uk})', 'nominal': harga_seragam})
+        tagihan_list = _apply_candidate_fee_overrides(_candidate_fee_drafts(calon), request.form)
 
         due_date = local_now() + timedelta(days=14)
         inv_prefix = f"INV/{local_now().strftime('%Y%m')}/{siswa_baru.id}"

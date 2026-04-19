@@ -18,6 +18,7 @@ from app.extensions import db
 from app.forms import PPDBForm
 from app.decorators import role_required
 from app.services.majlis_enrollment_service import resolve_majlis_classroom
+from app.services.ppdb_fee_service import get_public_ppdb_fee_preview
 from app.utils.timezone import local_now
 
 # Kita hapus import model Student, Tahfidz, Schedule dll karena tidak dipakai lagi di sini
@@ -44,6 +45,14 @@ from app.utils.announcements import get_announcements_for_dashboard, mark_announ
 from app.utils.roles import get_active_role
 
 main_bp = Blueprint('main', __name__)
+
+
+def _render_ppdb_form(form):
+    return render_template(
+        "public/ppdb_form.html",
+        form=form,
+        ppdb_fee_preview=get_public_ppdb_fee_preview(),
+    )
 
 
 def _get_majlis_announcements(limit=None):
@@ -243,7 +252,7 @@ def ppdb_register():
                 program_type = ProgramType[form.program_type.data]
             except KeyError:
                 flash('Pilihan program tidak valid.', 'danger')
-                return render_template("public/ppdb_form.html", form=form)
+                return _render_ppdb_form(form)
 
             is_majlis = program_type == ProgramType.MAJLIS_TALIM
             is_rqdf = program_type == ProgramType.RQDF_SORE
@@ -253,12 +262,12 @@ def ppdb_register():
                 contact_phone = form.personal_phone.data
                 if not contact_phone:
                     flash("Nomor WhatsApp wajib diisi untuk Majelis Ta'lim", 'danger')
-                    return render_template("public/ppdb_form.html", form=form)
+                    return _render_ppdb_form(form)
             else:
                 contact_phone = form.parent_phone.data
                 if not contact_phone:
                     flash('Nomor Telepon Orang Tua wajib diisi', 'danger')
-                    return render_template("public/ppdb_form.html", form=form)
+                    return _render_ppdb_form(form)
 
             # Untuk Majelis, pakai default yang aman agar tidak tergantung field tersembunyi
             education_level = EducationLevel.NON_FORMAL if is_majlis else EducationLevel[form.education_level.data]
@@ -322,4 +331,4 @@ def ppdb_register():
             current_app.logger.exception("PPDB registration failed")
             flash("Terjadi kesalahan sistem saat memproses pendaftaran.", "danger")
 
-    return render_template("public/ppdb_form.html", form=form)
+    return _render_ppdb_form(form)

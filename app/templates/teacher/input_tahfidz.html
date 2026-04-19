@@ -116,7 +116,7 @@
                                     
                                     <!-- NILAI DAN PREDIKAT DALAM SATU BARIS -->
                                     <div class="col-md-6">
-                                        <label class="small fw-bold text-muted">Nilai (100 - 2×kesalahan)</label>
+                                        <label class="small fw-bold text-muted">Nilai (100 - 5×kesalahan)</label>
                                         <input type="number" id="score_preview" class="form-control text-center fw-bold" value="100" readonly>
                                         <!-- PREDIKAT DI BAWAH NILAI -->
                                         <div class="mt-2">
@@ -306,7 +306,7 @@ textarea[name="notes"]::placeholder {
             const makhraj = parseInt(makhrajInput.value || "0", 10);
             const tahfidz = parseInt(tahfidzInput.value || "0", 10);
             const total = tajwid + makhraj + (tahfidzGroup.classList.contains("d-none") ? 0 : tahfidz);
-            const score = Math.max(0, 100 - (total * 2));
+            const score = Math.max(0, 100 - (total * 5));
             scorePreview.value = score;
             
             // Auto update predikat berdasarkan nilai

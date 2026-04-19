@@ -15,6 +15,17 @@
     </div>
 
     <div class="col-md-8">
+        {% if highlighted_transaction %}
+        <div class="alert alert-success d-flex justify-content-between align-items-center">
+            <div>
+                Pembayaran berhasil tersimpan: <strong>Rp {{ "{:,.0f}".format(highlighted_transaction.amount) }}</strong>
+            </div>
+            <a href="{{ url_for('staff.cashier_receipt', transaction_id=highlighted_transaction.id) }}" class="btn btn-sm btn-outline-success" target="_blank">
+                <i class="fas fa-print me-1"></i>Cetak Kwitansi
+            </a>
+        </div>
+        {% endif %}
+
         <div class="card shadow">
             <div class="card-header bg-white py-3">
                 <h5 class="m-0 fw-bold text-primary">Tagihan Belum Lunas</h5>
@@ -35,6 +46,7 @@
                             <div id="inv{{ inv.id }}" class="accordion-collapse collapse" data-bs-parent="#invoiceList">
                                 <div class="accordion-body bg-light">
                                     <p class="small mb-2">Total Tagihan: Rp {{ "{:,.0f}".format(inv.total_amount) }} | Sudah Bayar: Rp {{ "{:,.0f}".format(inv.paid_amount) }}</p>
+                                    <div class="small text-muted mb-3">No Invoice: {{ inv.invoice_number }}</div>
                                     
                                     <form method="POST" class="card card-body border-0 shadow-sm">
                                         {{ form.hidden_tag() }}
@@ -64,6 +76,48 @@
                         <i class="fas fa-check-circle fa-3x mb-3 text-success"></i>
                         <p>Tidak ada tagihan tertunggak. Siswa ini lunas!</p>
                     </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card shadow mt-4">
+            <div class="card-header bg-white py-3">
+                <h5 class="m-0 fw-bold text-secondary">Riwayat Pembayaran</h5>
+            </div>
+            <div class="card-body p-0">
+                {% if transactions %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Tanggal</th>
+                                <th>Invoice</th>
+                                <th>Biaya</th>
+                                <th>Metode</th>
+                                <th class="text-end">Nominal</th>
+                                <th class="text-center">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for trx in transactions %}
+                            <tr>
+                                <td>{{ trx.date.strftime('%d/%m/%Y %H:%M') if trx.date else '-' }}</td>
+                                <td class="small">{{ trx.invoice.invoice_number if trx.invoice else '-' }}</td>
+                                <td>{{ trx.invoice.fee_type.name if trx.invoice and trx.invoice.fee_type else '-' }}</td>
+                                <td>{{ trx.method or '-' }}</td>
+                                <td class="text-end">Rp {{ "{:,.0f}".format(trx.amount or 0) }}</td>
+                                <td class="text-center">
+                                    <a href="{{ url_for('staff.cashier_receipt', transaction_id=trx.id) }}" class="btn btn-sm btn-outline-primary" target="_blank">
+                                        <i class="fas fa-print"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="p-4 text-muted text-center">Belum ada riwayat pembayaran untuk siswa ini.</div>
                 {% endif %}
             </div>
         </div>
