@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
+from urllib.parse import urlsplit
 from sqlalchemy import func, or_, and_
 from itsdangerous import URLSafeSerializer, BadSignature
 from app.extensions import db
@@ -21,6 +22,7 @@ from app.services.rumah_quran_service import (
     list_rumah_quran_classes,
 )
 from app.services.bahasa_service import (
+    apply_bahasa_student_filter,
     assign_student_bahasa_class,
     get_student_bahasa_classroom,
     list_bahasa_classes,
@@ -39,6 +41,22 @@ from app.utils.money import to_rupiah_int
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
 
 staff_bp = Blueprint('staff', __name__)
+
+
+def _safe_students_list_return_url(next_url, fallback_endpoint='staff.list_students'):
+    fallback_url = url_for(fallback_endpoint)
+    if not next_url:
+        return fallback_url
+
+    parsed = urlsplit(next_url)
+    if parsed.scheme or parsed.netloc:
+        return fallback_url
+
+    allowed_paths = {url_for('admin.list_students'), url_for('staff.list_students')}
+    if parsed.path not in allowed_paths:
+        return fallback_url
+
+    return next_url
 
 
 def _cashier_serializer():
@@ -657,13 +675,22 @@ def list_students():
         students_query = apply_rumah_quran_student_filter(students_query, track='reguler')
     elif active_category == 'takhosus':
         students_query = apply_rumah_quran_student_filter(students_query, track='takhosus')
+    elif active_category == 'bahasa':
+        students_query = apply_bahasa_student_filter(students_query)
 
     students = students_query.order_by(Student.id.desc()).all()
+    bahasa_class_map = {}
+    if active_category == 'bahasa':
+        bahasa_class_map = {
+            student.id: get_student_bahasa_classroom(student)
+            for student in students
+        }
     majlis_participants = list_active_majlis_participants(search=query_majlis)
 
     return render_template(
         'student/list_students.html',
         students=students,
+        bahasa_class_map=bahasa_class_map,
         majlis_participants=majlis_participants,
         query=query,
         query_majlis=query_majlis,
@@ -773,6 +800,10 @@ def edit_majlis_participant(participant_id):
 def edit_student(student_id):
     """TU bertugas menempatkan siswa ke kelas dan input NISN"""
     student = Student.query.get_or_404(student_id)
+    return_url = _safe_students_list_return_url(
+        request.args.get('next') or request.form.get('next'),
+        fallback_endpoint='staff.list_students'
+    )
     classes = ClassRoom.query.all()
     rumah_quran_classes = list_rumah_quran_classes()
     rumah_quran_class = get_student_rumah_quran_classroom(student)
@@ -810,7 +841,7 @@ def edit_student(student_id):
             assign_student_bahasa_class(student, bahasa_class_id)
             db.session.commit()
             flash('Data siswa berhasil diupdate.', 'success')
-            return redirect(url_for('staff.list_students'))
+            return redirect(return_url)
         except Exception as e:
             db.session.rollback()
             flash(f'Gagal update data siswa: {e}', 'danger')
@@ -821,7 +852,8 @@ def edit_student(student_id):
                            rumah_quran_classes=rumah_quran_classes,
                            rumah_quran_class=rumah_quran_class,
                            bahasa_classes=bahasa_classes,
-                           bahasa_class=bahasa_class)
+                           bahasa_class=bahasa_class,
+                           return_url=return_url)
 
 
 

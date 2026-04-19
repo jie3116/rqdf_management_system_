@@ -17,6 +17,42 @@ from app.models import (
 )
 
 
+def apply_bahasa_student_filter(query):
+    student_ids_query = (
+        db.session.query(Student.id)
+        .join(Person, Person.id == Student.person_id)
+        .join(
+            ProgramEnrollment,
+            (ProgramEnrollment.person_id == Student.person_id)
+            & (ProgramEnrollment.status == EnrollmentStatus.ACTIVE)
+            & (ProgramEnrollment.is_deleted.is_(False)),
+        )
+        .join(
+            Program,
+            (Program.id == ProgramEnrollment.program_id)
+            & (Program.code == "BAHASA")
+            & (Program.is_deleted.is_(False)),
+        )
+        .join(
+            GroupMembership,
+            (GroupMembership.enrollment_id == ProgramEnrollment.id)
+            & (GroupMembership.status == MembershipStatus.ACTIVE)
+            & (GroupMembership.is_deleted.is_(False)),
+        )
+        .join(
+            ClassRoom,
+            (ClassRoom.program_group_id == GroupMembership.group_id)
+            & (ClassRoom.is_deleted.is_(False)),
+        )
+        .filter(
+            ClassRoom.program_type == ProgramType.BAHASA,
+            Student.is_deleted.is_(False),
+            Person.is_deleted.is_(False),
+        )
+    )
+    return query.filter(Student.id.in_(student_ids_query.distinct()))
+
+
 def _default_tenant():
     return Tenant.query.filter_by(is_default=True).first()
 
