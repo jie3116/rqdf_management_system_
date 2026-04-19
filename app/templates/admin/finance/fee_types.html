@@ -9,6 +9,7 @@
             <div class="card-body">
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="form_type" value="master_fee"/>
                     <div class="mb-3">
                         <label>Nama Biaya</label>
                         <input type="text" name="name" class="form-control" placeholder="Cth: SPP 2026, Gedung" required>
@@ -27,6 +28,28 @@
                         </select>
                     </div>
                     <button type="submit" class="btn btn-warning w-100 fw-bold">Simpan Master</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-info text-white">
+                <h6 class="m-0 fw-bold"><i class="fas fa-list-check me-2"></i>Template Komponen Biaya PPDB</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="form_type" value="ppdb_template"/>
+
+                    {% for field in ppdb_fee_template_fields %}
+                    <div class="mb-3">
+                        <label class="fw-bold small">{{ field.label }}</label>
+                        <textarea name="{{ field.input_name }}" class="form-control" rows="5" placeholder="Satu baris satu komponen biaya">{{ field.value_text }}</textarea>
+                        <small class="text-muted">{{ field.help_text }}</small>
+                    </div>
+                    {% endfor %}
+
+                    <button type="submit" class="btn btn-info text-white w-100 fw-bold">Simpan Template PPDB</button>
                 </form>
             </div>
         </div>

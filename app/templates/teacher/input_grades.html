@@ -8,17 +8,7 @@
             <h1 class="h3 mb-0 text-gray-800">Input Nilai Akademik</h1>
             <p class="mb-0 text-muted">
                 Kelas: <strong class="text-primary">{{ target_class.name if target_class else '-' }}</strong> &bull;
-                Mapel: <strong class="text-primary">
-                    {% if subject %}
-                        {{ subject.name }}
-                    {% elif majlis_subject %}
-                        {{ majlis_subject.name }}
-                    {% elif is_bahasa_target_class %}
-                        Penilaian Kelas Bahasa
-                    {% else %}
-                        -
-                    {% endif %}
-                </strong>
+                Mapel: <strong class="text-primary">{{ subject.name if subject else (majlis_subject.name if majlis_subject else '-') }}</strong>
             </p>
         </div>
         <a href="{{ url_for('teacher.dashboard') }}" class="btn btn-sm btn-secondary shadow-sm">
@@ -43,7 +33,7 @@
 
                 <div class="col-md-4">
                     <label class="form-label fw-bold small mb-1">Mapel</label>
-                    <select name="subject_id" class="form-select" onchange="if(this.value){this.form.majlis_subject_id.value='';} this.form.submit();" {% if not selected_class_id or is_bahasa_target_class %}disabled{% endif %}>
+                    <select name="subject_id" class="form-select" onchange="if(this.value){this.form.majlis_subject_id.value='';} this.form.submit();" {% if not selected_class_id %}disabled{% endif %}>
                         <option value="">-- Pilih Mapel --</option>
                         {% for item in class_subject_options %}
                         <option value="{{ item.id }}" {% if selected_subject_id == item.id %}selected{% endif %}>
@@ -55,7 +45,7 @@
 
                 <div class="col-md-4">
                     <label class="form-label fw-bold small mb-1">Mapel Majlis (Opsional)</label>
-                    <select name="majlis_subject_id" class="form-select" onchange="if(this.value){this.form.subject_id.value='';} this.form.submit();" {% if not selected_class_id or is_bahasa_target_class %}disabled{% endif %}>
+                    <select name="majlis_subject_id" class="form-select" onchange="if(this.value){this.form.subject_id.value='';} this.form.submit();" {% if not selected_class_id %}disabled{% endif %}>
                         <option value="">-- Pilih Mapel Majlis --</option>
                         {% for item in class_majlis_subject_options %}
                         <option value="{{ item.id }}" {% if selected_majlis_subject_id == item.id %}selected{% endif %}>
@@ -65,11 +55,6 @@
                     </select>
                 </div>
             </form>
-            {% if selected_class_id and is_bahasa_target_class %}
-            <div class="alert alert-info mb-0 mt-3 py-2 small">
-                Kelas Bahasa memakai penilaian per kelas, tanpa pemilihan mapel terpisah.
-            </div>
-            {% endif %}
         </div>
     </div>
 
@@ -174,7 +159,7 @@
             <div class="alert alert-info mb-0">
                 Pilih kelas terlebih dahulu.
             </div>
-            {% elif not is_bahasa_target_class and not selected_subject_id and not selected_majlis_subject_id %}
+            {% elif not selected_subject_id and not selected_majlis_subject_id %}
             <div class="alert alert-warning mb-0">
                 Pilih mapel terlebih dahulu untuk kelas ini.
             </div>

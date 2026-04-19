@@ -225,6 +225,35 @@ def _get_teacher_classes(teacher):
     return list(classes_by_id.values())
 
 
+def _get_teacher_attendance_classes(teacher):
+    """Kelas untuk akses absensi: hanya wali kelas atau guru mapel aktif."""
+    classes_by_id = {}
+
+    for homeroom_class in _get_teacher_homeroom_classes(teacher):
+        classes_by_id[homeroom_class.id] = homeroom_class
+
+    teaching_schedules = (
+        Schedule.query.filter(
+            Schedule.teacher_id == teacher.id,
+            Schedule.is_deleted.is_(False),
+            Schedule.class_id.isnot(None),
+        )
+        .order_by(Schedule.class_id.asc())
+        .all()
+    )
+    for schedule in teaching_schedules:
+        class_room = schedule.class_room
+        if not class_room or class_room.is_deleted:
+            continue
+        if not schedule.subject_id and not schedule.majlis_subject_id:
+            continue
+        if is_rumah_quran_classroom(class_room):
+            continue
+        classes_by_id[class_room.id] = class_room
+
+    return sorted(classes_by_id.values(), key=lambda item: item.name or "")
+
+
 def _is_tahfidz_related_schedule(schedule):
     labels = []
     if schedule.subject and schedule.subject.name:
@@ -364,6 +393,12 @@ def _teacher_can_access_class(teacher, class_id):
     if not teacher or not class_id:
         return False
     return any(class_room.id == class_id for class_room in _get_teacher_classes(teacher))
+
+
+def _teacher_can_access_attendance_class(teacher, class_id):
+    if not teacher or not class_id:
+        return False
+    return any(class_room.id == class_id for class_room in _get_teacher_attendance_classes(teacher))
 
 
 def _parse_participant_key(participant_key):
@@ -594,14 +629,12 @@ def input_grades():
     majlis_participants = []
     participants = []
     target_class = None
-    is_bahasa_target_class = False
     class_subject_options = []
     class_majlis_subject_options = []
 
     if selected_class_id:
         target_class = ClassRoom.query.get(selected_class_id)
         if target_class and selected_class_id in my_class_ids:
-            is_bahasa_target_class = is_bahasa_classroom(target_class)
             students, majlis_participants = _get_class_participants(selected_class_id)
             participants = _build_participant_rows(students, majlis_participants)
 
@@ -648,20 +681,15 @@ def input_grades():
 
     active_year = AcademicYear.query.filter_by(is_active=True).first()
     existing_grades = {}
-    if active_year and participants and (selected_subject_id or selected_majlis_subject_id or is_bahasa_target_class):
+    if active_year and participants and (selected_subject_id or selected_majlis_subject_id):
         student_ids = [p['student_id'] for p in participants if p['participant_type'] == ParticipantType.STUDENT]
         majlis_ids = [p['majlis_participant_id'] for p in participants if p['participant_type'] == ParticipantType.EXTERNAL_MAJLIS]
         grade_query = Grade.query.filter_by(academic_year_id=active_year.id, teacher_id=teacher.id)
 
         if selected_subject_id:
             grade_query = grade_query.filter(Grade.subject_id == selected_subject_id)
-        elif selected_majlis_subject_id:
-            grade_query = grade_query.filter(Grade.majlis_subject_id == selected_majlis_subject_id)
         else:
-            grade_query = grade_query.filter(
-                Grade.subject_id.is_(None),
-                Grade.majlis_subject_id.is_(None),
-            )
+            grade_query = grade_query.filter(Grade.majlis_subject_id == selected_majlis_subject_id)
 
         participant_filters = []
         if student_ids:
@@ -705,9 +733,6 @@ def input_grades():
             flash('Kelas tidak valid atau Anda tidak memiliki akses.', 'danger')
             return redirect(url_for('teacher.input_grades'))
 
-        active_class = ClassRoom.query.get(active_class_id)
-        is_bahasa_active_class = is_bahasa_classroom(active_class)
-
         active_students, active_majlis_participants = _get_class_participants(active_class_id)
         active_participants = _build_participant_rows(active_students, active_majlis_participants)
 
@@ -739,7 +764,7 @@ def input_grades():
                 subject_id=selected_subject_id,
                 majlis_subject_id=selected_majlis_subject_id
             ))
-        if not is_bahasa_active_class and not subject_id and not majlis_subject_id:
+        if not subject_id and not majlis_subject_id:
             flash('Mata pelajaran belum dipilih.', 'warning')
             return redirect(url_for(
                 'teacher.input_grades',
@@ -804,7 +829,6 @@ def input_grades():
                            majlis_subject=majlis_subject,
                            selected_majlis_subject_id=selected_majlis_subject_id,
                            class_majlis_subject_options=class_majlis_subject_options,
-                           is_bahasa_target_class=is_bahasa_target_class,
                            existing_grades=existing_grades)
 
 
@@ -936,7 +960,7 @@ def grade_history():
 @role_required(UserRole.GURU)
 def attendance_history():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
-    my_classes = _get_teacher_classes(teacher)
+    my_classes = _get_teacher_attendance_classes(teacher)
     my_class_ids = {class_room.id for class_room in my_classes}
 
     selected_class_id = request.args.get('class_id', type=int)
@@ -947,6 +971,7 @@ def attendance_history():
     selected_participant = None
     class_attendances = []
     participant_attendances = []
+    participant_summary_rows = []
     class_recap = {'hadir': 0, 'sakit': 0, 'izin': 0, 'alpa': 0, 'total': 0}
     participant_recap = {'hadir': 0, 'sakit': 0, 'izin': 0, 'alpa': 0, 'total': 0}
 
@@ -968,16 +993,77 @@ def attendance_history():
             Attendance.created_at.desc()
         ).limit(300).all()
 
+        participant_summary_map = {
+            row['key']: {
+                'key': row['key'],
+                'display_name': row['display_name'],
+                'identifier': row['identifier'],
+                'identifier_label': row['identifier_label'],
+                'hadir': 0,
+                'sakit': 0,
+                'izin': 0,
+                'alpa': 0,
+                'total': 0,
+            }
+            for row in participants
+        }
+
         for row in class_attendances:
             class_recap['total'] += 1
+            if row.participant_type == ParticipantType.EXTERNAL_MAJLIS and row.majlis_participant_id:
+                key = f"M-{row.majlis_participant_id}"
+                fallback_name = row.majlis_participant.full_name if row.majlis_participant else f"Peserta #{row.majlis_participant_id}"
+                fallback_identifier = row.majlis_participant.phone if row.majlis_participant else '-'
+                fallback_label = 'Kontak'
+            elif row.student_id:
+                key = f"S-{row.student_id}"
+                fallback_name = row.student.full_name if row.student else f"Siswa #{row.student_id}"
+                fallback_identifier = row.student.nis if row.student else '-'
+                fallback_label = 'NIS'
+            else:
+                key = None
+                fallback_name = None
+                fallback_identifier = '-'
+                fallback_label = '-'
+
+            if key:
+                bucket = participant_summary_map.get(key)
+                if bucket is None:
+                    bucket = {
+                        'key': key,
+                        'display_name': fallback_name,
+                        'identifier': fallback_identifier,
+                        'identifier_label': fallback_label,
+                        'hadir': 0,
+                        'sakit': 0,
+                        'izin': 0,
+                        'alpa': 0,
+                        'total': 0,
+                    }
+                    participant_summary_map[key] = bucket
+                bucket['total'] += 1
+
             if row.status == AttendanceStatus.HADIR:
                 class_recap['hadir'] += 1
+                if key:
+                    participant_summary_map[key]['hadir'] += 1
             elif row.status == AttendanceStatus.SAKIT:
                 class_recap['sakit'] += 1
+                if key:
+                    participant_summary_map[key]['sakit'] += 1
             elif row.status == AttendanceStatus.IZIN:
                 class_recap['izin'] += 1
+                if key:
+                    participant_summary_map[key]['izin'] += 1
             elif row.status == AttendanceStatus.ALPA:
                 class_recap['alpa'] += 1
+                if key:
+                    participant_summary_map[key]['alpa'] += 1
+
+        participant_summary_rows = sorted(
+            participant_summary_map.values(),
+            key=lambda item: (item.get('display_name') or '').lower()
+        )
 
         if selected_participant:
             participant_query = Attendance.query.filter(
@@ -1019,6 +1105,7 @@ def attendance_history():
         participants=participants,
         class_attendances=class_attendances,
         participant_attendances=participant_attendances,
+        participant_summary_rows=participant_summary_rows,
         class_recap=class_recap,
         participant_recap=participant_recap
     )
@@ -1124,8 +1211,8 @@ def input_tahfidz():
         final_surah_name = start_surah if(not end_surah or start_surah == end_surah) else f"{start_surah} - {end_surah}"
 
         total_errors = tajwid_errors + makhraj_errors + tahfidz_errors
-        calculated_score = max(0, 100 - (total_errors * 2))
-        score = int(request.form.get('score_preview') or calculated_score)
+        calculated_score = max(0, 100 - (total_errors * 5))
+        score = calculated_score
         quality = request.form.get('quality')
 
         new_record = TahfidzRecord(
@@ -1306,7 +1393,7 @@ def input_recitation():
                 flash("Halaman akhir tidak boleh lebih kecil dari halaman awal.", "warning")
                 return redirect(url_for('teacher.input_recitation', class_id=active_class_id))
 
-        score = max(0, 100 - ((tajwid_errors + makhraj_errors) * 2))
+        score = max(0, 100 - ((tajwid_errors + makhraj_errors) * 5))
 
         new_record = RecitationRecord(
             student_id=student_id,
@@ -1822,7 +1909,7 @@ def print_attachment(student_id):
 @role_required(UserRole.GURU)
 def input_attendance():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
-    my_classes = _get_teacher_classes(teacher)
+    my_classes = _get_teacher_attendance_classes(teacher)
     my_class_ids = {class_room.id for class_room in my_classes}
     
     selected_class_id = request.args.get('class_id', type=int)
@@ -1867,7 +1954,7 @@ def input_attendance():
         if (
             not selected_class_id
             or selected_class_id not in my_class_ids
-            or not _teacher_can_access_class(teacher, selected_class_id)
+            or not _teacher_can_access_attendance_class(teacher, selected_class_id)
         ):
             flash("Kelas tidak valid atau Anda tidak memiliki akses.", "danger")
             return redirect(url_for('teacher.input_attendance'))

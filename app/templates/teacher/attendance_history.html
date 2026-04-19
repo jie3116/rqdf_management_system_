@@ -62,6 +62,52 @@
             <div class="small text-muted">Total record absensi kelas: <strong>{{ class_recap.total }}</strong></div>
         </div>
     </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-white">
+            <h6 class="m-0 fw-bold text-primary"><i class="fas fa-table me-2"></i>Total Absensi per Peserta</h6>
+        </div>
+        <div class="card-body p-0">
+            {% if participant_summary_rows %}
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate" data-default-per-page="15">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Peserta</th>
+                            <th>NIS/Kontak</th>
+                            <th class="text-center">Hadir</th>
+                            <th class="text-center">Sakit</th>
+                            <th class="text-center">Izin</th>
+                            <th class="text-center">Alpa</th>
+                            <th class="text-center">Total</th>
+                            <th class="text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in participant_summary_rows %}
+                        <tr>
+                            <td>{{ row.display_name }}</td>
+                            <td class="small text-muted">{{ row.identifier_label }}: {{ row.identifier or '-' }}</td>
+                            <td class="text-center">{{ row.hadir }}</td>
+                            <td class="text-center">{{ row.sakit }}</td>
+                            <td class="text-center">{{ row.izin }}</td>
+                            <td class="text-center">{{ row.alpa }}</td>
+                            <td class="text-center fw-bold">{{ row.total }}</td>
+                            <td class="text-center">
+                                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('teacher.attendance_history', class_id=selected_class.id, participant=row.key) }}">
+                                    <i class="fas fa-search me-1"></i>Detail
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted m-3">Belum ada data absensi untuk kelas ini.</p>
+            {% endif %}
+        </div>
+    </div>
     {% endif %}
 
     {% if selected_participant %}
