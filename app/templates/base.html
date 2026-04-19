@@ -308,10 +308,46 @@
                 });
                 if (dataRows.length === 0) return;
 
+                const tableIdentity = table.id ? `id:${table.id}` : `idx:${idx + 1}`;
+                const paginationStateKey = `row-pagination:${window.location.pathname}${window.location.search}:${tableIdentity}`;
+
                 const defaultPerPage = parseInt(table.dataset.defaultPerPage || '10', 10);
                 let perPage = Number.isNaN(defaultPerPage) || defaultPerPage < 1 ? 10 : defaultPerPage;
                 let currentPage = 1;
                 const totalPages = () => Math.max(1, Math.ceil(dataRows.length / perPage));
+
+                function loadPaginationState() {
+                    try {
+                        const raw = localStorage.getItem(paginationStateKey);
+                        if (!raw) return null;
+                        return JSON.parse(raw);
+                    } catch (_err) {
+                        return null;
+                    }
+                }
+
+                function savePaginationState() {
+                    try {
+                        localStorage.setItem(
+                            paginationStateKey,
+                            JSON.stringify({ page: currentPage, perPage: perPage })
+                        );
+                    } catch (_err) {
+                        // ignore storage failures
+                    }
+                }
+
+                const savedState = loadPaginationState();
+                if (savedState) {
+                    const savedPerPage = parseInt(savedState.perPage, 10);
+                    const savedPage = parseInt(savedState.page, 10);
+                    if (!Number.isNaN(savedPerPage) && savedPerPage > 0) {
+                        perPage = savedPerPage;
+                    }
+                    if (!Number.isNaN(savedPage) && savedPage > 0) {
+                        currentPage = savedPage;
+                    }
+                }
 
                 const controls = document.createElement('div');
                 controls.className = 'row-pagination-controls d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mt-2';
@@ -408,6 +444,7 @@
                     }
 
                     pagination.appendChild(makeItem('Next', currentPage + 1, currentPage >= pages));
+                    savePaginationState();
                 }
 
                 function applyPerPageValue() {

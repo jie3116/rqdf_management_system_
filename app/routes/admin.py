@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, date
 import csv
+from urllib.parse import urlsplit
 from io import TextIOWrapper
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
@@ -19,6 +20,7 @@ from app.services.rumah_quran_service import (
     list_rumah_quran_students_for_class,
 )
 from app.services.bahasa_service import (
+    apply_bahasa_student_filter,
     assign_student_bahasa_class,
     ensure_bahasa_program_group,
     get_student_bahasa_classroom,
@@ -71,6 +73,22 @@ from app.utils.roles import validate_role_combination, role_label, ROLE_PRIORITY
 from app.utils.money import to_rupiah_int
 
 admin_bp = Blueprint('admin', __name__)
+
+
+def _safe_students_list_return_url(next_url, fallback_endpoint='admin.list_students'):
+    fallback_url = url_for(fallback_endpoint)
+    if not next_url:
+        return fallback_url
+
+    parsed = urlsplit(next_url)
+    if parsed.scheme or parsed.netloc:
+        return fallback_url
+
+    allowed_paths = {url_for('admin.list_students'), url_for('staff.list_students')}
+    if parsed.path not in allowed_paths:
+        return fallback_url
+
+    return next_url
 
 
 def _infer_user_display_name(user):
@@ -928,6 +946,10 @@ def add_student():
 @role_required(UserRole.ADMIN)
 def edit_student(student_id):
     student = Student.query.get_or_404(student_id)
+    return_url = _safe_students_list_return_url(
+        request.args.get('next') or request.form.get('next'),
+        fallback_endpoint='admin.list_students'
+    )
     classes = ClassRoom.query.filter_by(is_deleted=False).all()
     rumah_quran_classes = list_rumah_quran_classes()
     rumah_quran_class = get_student_rumah_quran_classroom(student)
@@ -968,7 +990,7 @@ def edit_student(student_id):
             assign_student_bahasa_class(student, bahasa_class_id)
             student.save()  # Menggunakan method save() dari BaseModel
             flash('Data siswa diupdate.', 'success')
-            return redirect(url_for('admin.list_students'))
+            return redirect(return_url)
         except Exception as e:
             db.session.rollback()
             flash(f'Gagal update data siswa: {e}', 'danger')
@@ -979,7 +1001,8 @@ def edit_student(student_id):
                            rumah_quran_classes=rumah_quran_classes,
                            rumah_quran_class=rumah_quran_class,
                            bahasa_classes=bahasa_classes,
-                           bahasa_class=bahasa_class)
+                           bahasa_class=bahasa_class,
+                           return_url=return_url)
 
 
 @admin_bp.route('/daftar-student')
@@ -1055,13 +1078,22 @@ def list_students():
         students_query = apply_rumah_quran_student_filter(students_query, track='reguler')
     elif active_category == 'takhosus':
         students_query = apply_rumah_quran_student_filter(students_query, track='takhosus')
+    elif active_category == 'bahasa':
+        students_query = apply_bahasa_student_filter(students_query)
 
     students = students_query.order_by(Student.id.desc()).all()
+    bahasa_class_map = {}
+    if active_category == 'bahasa':
+        bahasa_class_map = {
+            student.id: get_student_bahasa_classroom(student)
+            for student in students
+        }
     majlis_participants = list_active_majlis_participants(search=query_majlis)
 
     return render_template(
         'student/list_students.html',
         students=students,
+        bahasa_class_map=bahasa_class_map,
         majlis_participants=majlis_participants,
         query=query,
         query_majlis=query_majlis,
