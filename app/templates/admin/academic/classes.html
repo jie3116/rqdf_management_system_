@@ -103,6 +103,10 @@
                             </td>
                             <td>
                                 <a href="{{ url_for('admin.edit_class', class_id=c.id) }}" class="btn btn-sm btn-warning" title="Edit Kelas"><i class="fas fa-edit"></i></a>
+                                <form method="POST" action="{{ url_for('admin.delete_class', class_id=c.id) }}" class="d-inline" onsubmit="return confirm('Hapus kelas ini? Data kelas akan disembunyikan dari sistem.');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                    <button type="submit" class="btn btn-sm btn-danger" title="Hapus Kelas"><i class="fas fa-trash"></i></button>
+                                </form>
                             </td>
                         </tr>
                         {% else %}

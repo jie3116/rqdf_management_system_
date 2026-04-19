@@ -7,6 +7,22 @@
                 <h4 class="fw-bold">{{ student.full_name }}</h4>
                 <p class="text-muted">{{ student.nis }}</p>
                 <hr>
+                <div class="text-start small mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">Total Tagihan</span>
+                        <strong>Rp {{ "{:,.0f}".format(student_total_billed or 0) }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">Total Sudah Bayar</span>
+                        <strong class="text-success">Rp {{ "{:,.0f}".format(student_total_paid or 0) }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">Sisa Tagihan</span>
+                        <strong class="{% if (student_total_due or 0) > 0 %}text-danger{% else %}text-success{% endif %}">
+                            Rp {{ "{:,.0f}".format(student_total_due or 0) }}
+                        </strong>
+                    </div>
+                </div>
                 <div class="d-grid">
                     <a href="{{ url_for('staff.cashier_search') }}" class="btn btn-outline-secondary">Kembali ke Pencarian</a>
                 </div>
