@@ -9,7 +9,7 @@ from sqlalchemy import func, or_, and_
 from openpyxl import load_workbook
 from app.extensions import db
 from app.decorators import role_required
-from app.services.majlis_enrollment_service import ensure_majlis_participant_acceptance, get_default_tenant_id, list_active_majlis_participants
+from app.services.majlis_enrollment_service import ensure_majlis_participant_acceptance, list_active_majlis_participants
 from app.services.rumah_quran_service import (
     apply_rumah_quran_student_filter,
     assign_student_rumah_quran_class,
@@ -71,8 +71,25 @@ from app.models import (
 from app.utils.nis import generate_nip, generate_nis
 from app.utils.roles import validate_role_combination, role_label, ROLE_PRIORITY
 from app.utils.money import to_rupiah_int
+from app.utils.tenant import (
+    classroom_in_tenant,
+    get_default_tenant_id,
+    resolve_tenant_id,
+    scoped_classrooms_query,
+)
 
 admin_bp = Blueprint('admin', __name__)
+
+
+def _current_tenant_id():
+    return resolve_tenant_id(current_user)
+
+
+def _tenant_teachers_query(tenant_id):
+    return Teacher.query.join(User, Teacher.user_id == User.id).filter(
+        Teacher.is_deleted.is_(False),
+        User.tenant_id == tenant_id,
+    )
 
 
 def _safe_students_list_return_url(next_url, fallback_endpoint='admin.list_students'):
@@ -334,7 +351,7 @@ def edit_subject(subject_id):
 @role_required(UserRole.ADMIN)
 def manage_teachers():
     if request.method == 'POST':
-        tenant_id = current_user.tenant_id or get_default_tenant_id()
+        tenant_id = _current_tenant_id()
         if tenant_id is None:
             flash('Tenant default tidak ditemukan.', 'danger')
             return redirect(url_for('admin.manage_teachers'))
@@ -376,7 +393,15 @@ def manage_teachers():
         return redirect(url_for('admin.manage_teachers'))
 
     query = (request.args.get('q') or '').strip()
-    teachers_query = Teacher.query.filter_by(is_deleted=False)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return render_template('admin/hr/teachers.html', teachers=[], query=query)
+
+    teachers_query = Teacher.query.join(User, Teacher.user_id == User.id).filter(
+        Teacher.is_deleted == False,
+        User.tenant_id == tenant_id,
+    )
     if query:
         teachers_query = teachers_query.filter(
             or_(
@@ -410,12 +435,23 @@ def _display_assignment_note(note):
 @role_required(UserRole.ADMIN)
 def teacher_assignments(id):
     teacher = Teacher.query.get_or_404(id)
+    tenant_id = _current_tenant_id()
+    teacher_tenant_id = teacher.user.tenant_id if teacher.user else None
+
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_teachers'))
+
+    if teacher_tenant_id is not None and teacher_tenant_id != tenant_id:
+        flash('Akses assignment guru lintas tenant tidak diizinkan.', 'danger')
+        return redirect(url_for('admin.manage_teachers'))
 
     assignment_rows = (
         StaffAssignment.query
         .outerjoin(Program, StaffAssignment.program_id == Program.id)
         .outerjoin(ProgramGroup, StaffAssignment.group_id == ProgramGroup.id)
         .filter(
+            StaffAssignment.tenant_id == (teacher_tenant_id or tenant_id),
             StaffAssignment.person_id == teacher.person_id,
             StaffAssignment.is_deleted == False,
         )
@@ -509,6 +545,11 @@ def upload_teachers():
     created = 0
     skipped = 0
     errors = []
+    tenant_id = _current_tenant_id()
+
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_teachers'))
 
     for idx, row in _iter_upload_rows(file):
         nip = (row.get('nip') or row.get('NIP') or '').strip()
@@ -522,14 +563,19 @@ def upload_teachers():
             errors.append(f'Baris {idx}: NIP dan Nama wajib diisi.')
             continue
 
-        if User.query.filter_by(username=nip).first():
+        existing_user = User.query.filter_by(username=nip).first()
+        if existing_user:
             skipped += 1
-            errors.append(f'Baris {idx}: NIP {nip} sudah terdaftar.')
+            if existing_user.tenant_id != tenant_id:
+                errors.append(f'Baris {idx}: NIP {nip} sudah dipakai tenant lain.')
+            else:
+                errors.append(f'Baris {idx}: NIP {nip} sudah terdaftar.')
             continue
 
         try:
             with db.session.begin_nested():
                 user = User(
+                    tenant_id=tenant_id,
                     username=nip,
                     email=f"{nip}@sekolah.id",
                     password_hash=generate_password_hash(password),
@@ -614,18 +660,32 @@ def edit_teacher(id):
 @role_required(UserRole.ADMIN)
 def manage_staff():
     if request.method == 'POST':
-        username = request.form.get('username')
+        tenant_id = _current_tenant_id()
+        if tenant_id is None:
+            flash('Tenant default tidak ditemukan.', 'danger')
+            return redirect(url_for('admin.manage_staff'))
+
+        username = (request.form.get('username') or '').strip()
         password = request.form.get('password') or "staff123"
         full_name = request.form.get('full_name')
         position = request.form.get('position') # Misal: Kepala TU, Staff Keuangan
 
         # Cek Username Kembar
-        if User.query.filter_by(username=username).first():
-            flash('Username sudah digunakan.', 'danger')
+        existing_user = User.query.filter_by(username=username).first()
+        if existing_user:
+            if existing_user.tenant_id != tenant_id:
+                flash('Username sudah digunakan tenant lain.', 'danger')
+            else:
+                flash('Username sudah digunakan.', 'danger')
         else:
             try:
                 # 1. Buat User Login
-                user = User(username=username, email=f"{username}@sekolah.id", role=UserRole.TU)
+                user = User(
+                    tenant_id=tenant_id,
+                    username=username,
+                    email=f"{username}@sekolah.id",
+                    role=UserRole.TU,
+                )
                 user.set_password(password)
                 db.session.add(user)
                 db.session.flush()
@@ -641,7 +701,14 @@ def manage_staff():
         return redirect(url_for('admin.manage_staff'))
 
     query = (request.args.get('q') or '').strip()
-    staff_query = Staff.query.filter_by(is_deleted=False).outerjoin(User, Staff.user_id == User.id)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return render_template('admin/hr/staff.html', staff_list=[], query=query)
+
+    staff_query = Staff.query.filter_by(is_deleted=False).join(User, Staff.user_id == User.id).filter(
+        User.tenant_id == tenant_id
+    )
     if query:
         staff_query = staff_query.filter(
             or_(
@@ -704,12 +771,31 @@ def edit_staff(id):
 @login_required
 @role_required(UserRole.ADMIN)
 def manage_classes():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return render_template(
+            'admin/academic/classes.html',
+            classes=[],
+            class_student_counts={},
+            teachers=[],
+            query=(request.args.get('q') or '').strip(),
+            ProgramType=ProgramType,
+            EducationLevel=EducationLevel,
+        )
+
     if request.method == 'POST':
         name = request.form.get('name')
         grade_level = request.form.get('grade_level')
-        homeroom_id = request.form.get('homeroom_teacher_id')  # ID Guru
+        homeroom_id = request.form.get('homeroom_teacher_id', type=int)  # ID Guru
         program_type_raw = request.form.get('program_type')
         education_level_raw = request.form.get('education_level')
+
+        if homeroom_id:
+            homeroom_teacher = _tenant_teachers_query(tenant_id).filter(Teacher.id == homeroom_id).first()
+            if homeroom_teacher is None:
+                flash('Wali kelas tidak valid untuk tenant aktif.', 'warning')
+                return redirect(url_for('admin.manage_classes'))
 
         program_type = ProgramType[program_type_raw] if program_type_raw else None
         education_level = EducationLevel[education_level_raw] if education_level_raw else None
@@ -717,22 +803,22 @@ def manage_classes():
         new_class = ClassRoom(
             name=name,
             grade_level=grade_level,
-            homeroom_teacher_id=homeroom_id if homeroom_id else None,
+            homeroom_teacher_id=homeroom_id,
             program_type=program_type,
             education_level=education_level
         )
         db.session.add(new_class)
         db.session.flush()
-        ensure_formal_program_group(new_class)
-        ensure_rumah_quran_program_group(new_class)
-        ensure_bahasa_program_group(new_class)
+        ensure_formal_program_group(new_class, tenant_id=tenant_id)
+        ensure_rumah_quran_program_group(new_class, tenant_id=tenant_id)
+        ensure_bahasa_program_group(new_class, tenant_id=tenant_id)
         sync_class_homeroom_assignment(new_class)
         db.session.commit()
         flash('Kelas berhasil dibuat.', 'success')
         return redirect(url_for('admin.manage_classes'))
 
     query = (request.args.get('q') or '').strip()
-    classes_query = ClassRoom.query.filter_by(is_deleted=False).outerjoin(Teacher, ClassRoom.homeroom_teacher_id == Teacher.id)
+    classes_query = scoped_classrooms_query(tenant_id).outerjoin(Teacher, ClassRoom.homeroom_teacher_id == Teacher.id)
     if query:
         classes_query = classes_query.filter(
             or_(
@@ -752,7 +838,7 @@ def manage_classes():
             class_student_counts[class_room.id] = len(list_formal_students_for_class(class_room.id))
         else:
             class_student_counts[class_room.id] = len(class_room.students)
-    teachers = Teacher.query.filter_by(is_deleted=False).all()  # Untuk dropdown
+    teachers = _tenant_teachers_query(tenant_id).order_by(Teacher.full_name.asc()).all()  # Untuk dropdown
     return render_template(
         'admin/academic/classes.html',
         classes=classes,
@@ -768,9 +854,14 @@ def manage_classes():
 @login_required
 @role_required(UserRole.ADMIN)
 def edit_class(class_id):
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_classes'))
+
     # Ambil data kelas atau 404 jika tidak ada
-    class_room = ClassRoom.query.get_or_404(class_id)
-    teachers = Teacher.query.filter_by(is_deleted=False).all()
+    class_room = scoped_classrooms_query(tenant_id).filter(ClassRoom.id == class_id).first_or_404()
+    teachers = _tenant_teachers_query(tenant_id).order_by(Teacher.full_name.asc()).all()
 
     if request.method == 'POST':
         class_room.name = request.form.get('name')
@@ -781,13 +872,18 @@ def edit_class(class_id):
         class_room.education_level = EducationLevel[education_level_raw] if education_level_raw else None
 
         # Handle Wali Kelas (Bisa Kosong/None)
-        homeroom_id = request.form.get('homeroom_teacher_id')
+        homeroom_id = request.form.get('homeroom_teacher_id', type=int)
+        if homeroom_id:
+            homeroom_teacher = _tenant_teachers_query(tenant_id).filter(Teacher.id == homeroom_id).first()
+            if homeroom_teacher is None:
+                flash('Wali kelas tidak valid untuk tenant aktif.', 'warning')
+                return redirect(url_for('admin.edit_class', class_id=class_id))
         class_room.homeroom_teacher_id = homeroom_id if homeroom_id else None
 
         try:
-            ensure_formal_program_group(class_room)
-            ensure_rumah_quran_program_group(class_room)
-            ensure_bahasa_program_group(class_room)
+            ensure_formal_program_group(class_room, tenant_id=tenant_id)
+            ensure_rumah_quran_program_group(class_room, tenant_id=tenant_id)
+            ensure_bahasa_program_group(class_room, tenant_id=tenant_id)
             sync_class_homeroom_assignment(class_room)
             db.session.commit()
             flash(f'Kelas {class_room.name} berhasil diperbarui.', 'success')
@@ -809,7 +905,12 @@ def edit_class(class_id):
 @login_required
 @role_required(UserRole.ADMIN)
 def delete_class(class_id):
-    class_room = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first_or_404()
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_classes'))
+
+    class_room = scoped_classrooms_query(tenant_id).filter(ClassRoom.id == class_id).first_or_404()
 
     if is_rumah_quran_classroom(class_room):
         student_count = len(list_rumah_quran_students_for_class(class_room.id))
@@ -854,6 +955,7 @@ def delete_class(class_id):
         if class_room.program_group_id:
             program_group = ProgramGroup.query.filter_by(
                 id=class_room.program_group_id,
+                tenant_id=tenant_id,
                 is_deleted=False,
             ).first()
             if program_group:
@@ -902,11 +1004,16 @@ from app.models import User, Student, Parent, ClassRoom, UserRole, Gender
 @login_required
 @role_required(UserRole.ADMIN)
 def add_student():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.list_students'))
+
     form = StudentForm()
 
     # 1. Isi Pilihan Kelas (Wajib diisi dinamis setiap loading halaman)
     # Kita ambil ID dan Nama Kelas dari database
-    form.class_id.choices = [(c.id, c.name) for c in ClassRoom.query.filter_by(is_deleted=False).all()]
+    form.class_id.choices = [(c.id, c.name) for c in scoped_classrooms_query(tenant_id).all()]
 
     # Jika belum ada kelas sama sekali, kasih opsi dummy biar gak error
     if not form.class_id.choices:
@@ -914,15 +1021,20 @@ def add_student():
 
     if form.validate_on_submit():
         try:
-            tenant_id = current_user.tenant_id or get_default_tenant_id()
-            if tenant_id is None:
-                raise ValueError('Tenant default tidak ditemukan.')
+            if form.class_id.data and form.class_id.data != 0:
+                selected_class = scoped_classrooms_query(tenant_id).filter(ClassRoom.id == form.class_id.data).first()
+                if selected_class is None:
+                    raise ValueError('Kelas tidak valid untuk tenant aktif.')
 
             nis = (form.nis.data or '').strip() or generate_nis()
 
             # A. CEK DUPLIKASI (Penting!)
-            if User.query.filter_by(username=nis).first():
-                flash('NIS sudah terdaftar sebagai User.', 'warning')
+            existing_student_user = User.query.filter_by(username=nis).first()
+            if existing_student_user:
+                if existing_student_user.tenant_id != tenant_id:
+                    flash('NIS sudah dipakai tenant lain.', 'warning')
+                else:
+                    flash('NIS sudah terdaftar sebagai User.', 'warning')
                 return render_template('admin/add_student.html', form=form)
 
             # B. BUAT USER SISWA
@@ -944,7 +1056,7 @@ def add_student():
                 gender=Gender[form.gender.data],  # Konversi string 'L'/'P' ke Enum
                 place_of_birth=form.place_of_birth.data,
                 date_of_birth=form.date_of_birth.data,
-                current_class_id=form.class_id.data,
+                current_class_id=form.class_id.data if form.class_id.data != 0 else None,
                 address=form.address.data
             )
             db.session.add(new_student)
@@ -964,30 +1076,34 @@ def add_student():
                 parent_user.set_password(form.parent_phone.data)  # Default Pass = No WA
                 db.session.add(parent_user)
                 db.session.flush()
+            elif parent_user.tenant_id != tenant_id:
+                raise ValueError('Nomor HP wali sudah dipakai tenant lain.')
 
-                # Buat Profil Wali Baru
+            if parent_user.tenant_id is None:
+                parent_user.tenant_id = tenant_id
+
+            if parent_user.role == UserRole.ADMIN:
+                raise ValueError('Akun admin tidak boleh dipakai sebagai wali murid.')
+
+            if not parent_user.has_role(UserRole.WALI_MURID):
+                db.session.add(UserRoleAssignment(user_id=parent_user.id, role=UserRole.WALI_MURID))
+
+            if parent_user.role != UserRole.WALI_MURID:
+                parent_user.role = UserRole.WALI_MURID
+            db.session.flush()
+
+            # Buat/ambil profil wali
+            parent_profile = parent_user.parent_profile
+            if not parent_profile:
                 parent_profile = Parent(
                     user_id=parent_user.id,
                     full_name=form.parent_name.data,
                     phone=form.parent_phone.data,
-                    job=form.parent_job.data,  # Sesuai form Anda
-                    address=form.address.data  # Alamat sama dengan anak
+                    job=form.parent_job.data,
+                    address=form.address.data
                 )
                 db.session.add(parent_profile)
                 db.session.flush()
-            else:
-                # Jika sudah ada user, ambil profilnya
-                parent_profile = parent_user.parent_profile
-                if not parent_profile:
-                    parent_profile = Parent(
-                        user_id=parent_user.id,
-                        full_name=form.parent_name.data,
-                        phone=form.parent_phone.data,
-                        job=form.parent_job.data,
-                        address=form.address.data
-                    )
-                    db.session.add(parent_profile)
-                    db.session.flush()
 
             # Sambungkan Siswa ke Wali
             new_student.parent_id = parent_profile.id
@@ -1008,15 +1124,28 @@ def add_student():
 @login_required
 @role_required(UserRole.ADMIN)
 def edit_student(student_id):
-    student = Student.query.get_or_404(student_id)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.list_students'))
+
+    student = (
+        Student.query.join(User, Student.user_id == User.id)
+        .filter(
+            Student.id == student_id,
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .first_or_404()
+    )
     return_url = _safe_students_list_return_url(
         request.args.get('next') or request.form.get('next'),
         fallback_endpoint='admin.list_students'
     )
-    classes = ClassRoom.query.filter_by(is_deleted=False).all()
-    rumah_quran_classes = list_rumah_quran_classes()
+    classes = scoped_classrooms_query(tenant_id).all()
+    rumah_quran_classes = [class_room for class_room in list_rumah_quran_classes() if classroom_in_tenant(class_room, tenant_id)]
     rumah_quran_class = get_student_rumah_quran_classroom(student)
-    bahasa_classes = list_bahasa_classes()
+    bahasa_classes = [class_room for class_room in list_bahasa_classes() if classroom_in_tenant(class_room, tenant_id)]
     bahasa_class = get_student_bahasa_classroom(student)
 
     if request.method == 'POST':
@@ -1034,7 +1163,13 @@ def edit_student(student_id):
         bahasa_class_id = request.form.get('bahasa_class_id')
         bahasa_class_id = int(bahasa_class_id) if bahasa_class_id else None
 
-        selected_class = ClassRoom.query.filter_by(id=selected_class_id, is_deleted=False).first() if selected_class_id else None
+        selected_class = (
+            scoped_classrooms_query(tenant_id).filter(ClassRoom.id == selected_class_id).first()
+            if selected_class_id else None
+        )
+        if selected_class_id and selected_class is None:
+            flash('Kelas tidak valid untuk tenant aktif.', 'warning')
+            return redirect(url_for('admin.edit_student', student_id=student_id, next=return_url))
         if selected_class and selected_class.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ):
             rumah_quran_class_id = selected_class.id
         if selected_class and selected_class.program_type == ProgramType.BAHASA:
@@ -1180,6 +1315,11 @@ def upload_students():
     created = 0
     skipped = 0
     errors = []
+    tenant_id = _current_tenant_id()
+
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.list_students'))
 
     for idx, row in _iter_upload_rows(file):
         nis = (row.get('nis') or row.get('NIS') or '').strip()
@@ -1207,9 +1347,13 @@ def upload_students():
         if not nis:
             nis = generate_nis()
 
-        if User.query.filter_by(username=nis).first():
+        existing_student_user = User.query.filter_by(username=nis).first()
+        if existing_student_user:
             skipped += 1
-            errors.append(f'Baris {idx}: NIS {nis} sudah terdaftar.')
+            if existing_student_user.tenant_id != tenant_id:
+                errors.append(f'Baris {idx}: NIS {nis} sudah dipakai tenant lain.')
+            else:
+                errors.append(f'Baris {idx}: NIS {nis} sudah terdaftar.')
             continue
 
         if gender_raw not in {'L', 'P'}:
@@ -1226,13 +1370,14 @@ def upload_students():
 
         class_id = None
         if class_name:
-            class_room = ClassRoom.query.filter_by(name=class_name).first()
+            class_room = scoped_classrooms_query(tenant_id).filter(ClassRoom.name == class_name).first()
             if class_room:
                 class_id = class_room.id
 
         try:
             with db.session.begin_nested():
                 student_user = User(
+                    tenant_id=tenant_id,
                     username=nis,
                     email=email or f"{nis}@sekolah.id",
                     role=UserRole.SISWA
@@ -1256,6 +1401,7 @@ def upload_students():
                 parent_user = User.query.filter_by(username=parent_phone).first()
                 if not parent_user:
                     parent_user = User(
+                        tenant_id=tenant_id,
                         username=parent_phone,
                         email=f"{parent_phone}@wali.sekolah.id",
                         role=UserRole.WALI_MURID
@@ -1263,7 +1409,25 @@ def upload_students():
                     parent_user.set_password(parent_phone)
                     db.session.add(parent_user)
                     db.session.flush()
+                elif parent_user.tenant_id != tenant_id:
+                    raise ValueError('Nomor HP wali sudah terdaftar pada tenant lain.')
 
+                if parent_user.tenant_id is None:
+                    parent_user.tenant_id = tenant_id
+
+                if not parent_user.has_role(UserRole.WALI_MURID):
+                    db.session.add(UserRoleAssignment(user_id=parent_user.id, role=UserRole.WALI_MURID))
+
+                if parent_user.role == UserRole.ADMIN:
+                    raise ValueError('Akun admin tidak boleh dipakai sebagai wali murid.')
+
+                if parent_user.role != UserRole.WALI_MURID:
+                    parent_user.role = UserRole.WALI_MURID
+
+                db.session.flush()
+
+                parent_profile = parent_user.parent_profile
+                if not parent_profile:
                     parent_profile = Parent(
                         user_id=parent_user.id,
                         full_name=parent_name or "Wali Murid",
@@ -1273,18 +1437,6 @@ def upload_students():
                     )
                     db.session.add(parent_profile)
                     db.session.flush()
-                else:
-                    parent_profile = parent_user.parent_profile
-                    if not parent_profile:
-                        parent_profile = Parent(
-                            user_id=parent_user.id,
-                            full_name=parent_name or "Wali Murid",
-                            phone=parent_phone,
-                            job=parent_job,
-                            address=address
-                        )
-                        db.session.add(parent_profile)
-                        db.session.flush()
 
                 new_student.parent_id = parent_profile.id
 
@@ -1311,7 +1463,7 @@ def delete_student(id):
 
 
 # =========================================================
-# 7. MANAJEMEN KEUANGAN (SAMA SEPERTI SEBELUMNYA)
+# 7. MANAJEMEN KEUANGAN
 # =========================================================
 
 @admin_bp.route('/keuangan/master-biaya', methods=['GET', 'POST'])
@@ -1470,7 +1622,7 @@ def generate_invoices(fee_id):
 
 
 # =========================================================
-# 8. MANAJEMEN PPDB (SAMA SEPERTI SEBELUMNYA)
+# 8. MANAJEMEN PPDB
 # =========================================================
 
 @admin_bp.route('/ppdb/pendaftar')
@@ -1512,7 +1664,7 @@ def accept_candidate(candidate_id):
 
             majlis_user = User.query.filter_by(username=nomor_majelis).first()
             if not majlis_user:
-                default_tenant_id = get_default_tenant_id()
+                default_tenant_id = _current_tenant_id()
                 if default_tenant_id is None:
                     raise ValueError('Tenant default tidak ditemukan.')
                 majlis_user = User(
@@ -1525,6 +1677,8 @@ def accept_candidate(candidate_id):
                 )
                 db.session.add(majlis_user)
                 db.session.flush()
+            elif majlis_user.tenant_id != _current_tenant_id():
+                raise ValueError('Akun Majelis lintas tenant tidak diizinkan.')
 
             ensure_majlis_participant_acceptance(
                 user=majlis_user,
@@ -1638,7 +1792,12 @@ def accept_candidate(candidate_id):
 @login_required
 @role_required(UserRole.ADMIN)
 def reset_password(user_id):
-    user = User.query.get_or_404(user_id)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    user = User.query.filter_by(id=user_id, tenant_id=tenant_id).first_or_404()
 
     if user.has_role(UserRole.ADMIN):
         flash('Tidak bisa mereset akun Admin lain dari sini.', 'danger')
@@ -1675,24 +1834,39 @@ def reset_password(user_id):
 @login_required
 @role_required(UserRole.ADMIN)
 def manage_schedules():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return render_template(
+            'admin/academic/schedules.html',
+            classes=[],
+            subjects=[],
+            teachers=[],
+            schedules=[],
+            selected_class=None,
+        )
+
     # Ambil parameter filter kelas dari URL (misal: ?class_id=1)
     selected_class_id = request.args.get('class_id', type=int)
 
     # Pastikan data lama "guru mapel Rumah Qur'an" ditutup.
-    cleanup_stats = cleanup_rumah_quran_subject_data()
+    cleanup_stats = cleanup_rumah_quran_subject_data(tenant_id=tenant_id)
     if cleanup_stats["closed_assignments"] or cleanup_stats["deleted_schedules"]:
         db.session.commit()
 
     # Dropdown Data
-    classes = ClassRoom.query.filter(
-        ClassRoom.is_deleted.is_(False),
-        or_(
-            ClassRoom.program_type.is_(None),
-            ~ClassRoom.program_type.in_([ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ]),
-        ),
-    ).all()
+    classes = (
+        scoped_classrooms_query(tenant_id)
+        .filter(
+            or_(
+                ClassRoom.program_type.is_(None),
+                ~ClassRoom.program_type.in_([ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ]),
+            )
+        )
+        .all()
+    )
     subjects = Subject.query.filter_by(is_deleted=False).all()
-    teachers = Teacher.query.filter_by(is_deleted=False).all()
+    teachers = _tenant_teachers_query(tenant_id).all()
 
     # Jika user mengirim Form Tambah Jadwal
     if request.method == 'POST':
@@ -1704,12 +1878,15 @@ def manage_schedules():
         end_time_str = request.form.get('end_time')
 
         try:
-            target_class = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+            target_class = scoped_classrooms_query(tenant_id).filter(ClassRoom.id == class_id).first()
             if target_class is None:
                 flash('Kelas tidak valid.', 'warning')
                 return redirect(url_for('admin.manage_schedules'))
             if is_rumah_quran_classroom(target_class):
                 flash("Kelas Rumah Qur'an tidak menggunakan jadwal mapel.", 'warning')
+                return redirect(url_for('admin.manage_schedules', class_id=class_id))
+            if _tenant_teachers_query(tenant_id).filter(Teacher.id == teacher_id).first() is None:
+                flash('Guru tidak valid untuk tenant aktif.', 'warning')
                 return redirect(url_for('admin.manage_schedules', class_id=class_id))
 
             # 1. Konversi String jam "07:00" menjadi object Time python
@@ -1728,6 +1905,7 @@ def manage_schedules():
             # A. Cek Bentrok KELAS (Kelas ini sudah dipakai belum di jam segitu?)
             clash_class = Schedule.query.filter(
                 Schedule.class_id == class_id,
+                Schedule.is_deleted.is_(False),
                 Schedule.day == day,
                 Schedule.start_time < end_time,  # Logic overlap: StartA < EndB
                 Schedule.end_time > start_time  # Logic overlap: EndA > StartB
@@ -1742,12 +1920,19 @@ def manage_schedules():
                 return redirect(url_for('admin.manage_schedules', class_id=class_id))
 
             # B. Cek Bentrok GURU (Guru ini sedang mengajar di kelas lain tidak?)
-            clash_teacher = Schedule.query.filter(
-                Schedule.teacher_id == teacher_id,
-                Schedule.day == day,
-                Schedule.start_time < end_time,
-                Schedule.end_time > start_time
-            ).first()
+            clash_teacher = (
+                Schedule.query.join(ClassRoom, Schedule.class_id == ClassRoom.id)
+                .join(ProgramGroup, ClassRoom.program_group_id == ProgramGroup.id)
+                .filter(
+                    ProgramGroup.tenant_id == tenant_id,
+                    Schedule.teacher_id == teacher_id,
+                    Schedule.is_deleted.is_(False),
+                    Schedule.day == day,
+                    Schedule.start_time < end_time,
+                    Schedule.end_time > start_time,
+                )
+                .first()
+            )
 
             if clash_teacher:
                 # Ambil nama kelas tempat guru tsb sedang mengajar
@@ -1782,12 +1967,15 @@ def manage_schedules():
     selected_class = None
 
     if selected_class_id:
-        selected_class = ClassRoom.query.get(selected_class_id)
+        selected_class = scoped_classrooms_query(tenant_id).filter(ClassRoom.id == selected_class_id).first()
+        if selected_class is None:
+            flash('Kelas tidak valid.', 'warning')
+            return redirect(url_for('admin.manage_schedules'))
         if selected_class and is_rumah_quran_classroom(selected_class):
             flash("Kelas Rumah Qur'an tidak menggunakan jadwal mapel.", 'warning')
             return redirect(url_for('admin.manage_schedules'))
         # Urutkan berdasarkan Hari (Senin-Jumat) dan Jam Mulai
-        schedules = Schedule.query.filter_by(class_id=selected_class_id) \
+        schedules = Schedule.query.filter_by(class_id=selected_class_id, is_deleted=False) \
             .order_by(Schedule.day, Schedule.start_time).all()
 
         # Custom sort di python agar harinya urut Senin->Minggu
@@ -1806,7 +1994,21 @@ def manage_schedules():
 @login_required
 @role_required(UserRole.ADMIN)
 def edit_schedule(id):
-    schedule = Schedule.query.get_or_404(id)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_schedules'))
+
+    schedule = (
+        Schedule.query.join(ClassRoom, Schedule.class_id == ClassRoom.id)
+        .join(ProgramGroup, ClassRoom.program_group_id == ProgramGroup.id)
+        .filter(
+            Schedule.id == id,
+            Schedule.is_deleted.is_(False),
+            ProgramGroup.tenant_id == tenant_id,
+        )
+        .first_or_404()
+    )
     class_id = request.form.get('class_id', type=int) or schedule.class_id  # Fallback
 
     if schedule.class_room and is_rumah_quran_classroom(schedule.class_room):
@@ -1823,12 +2025,15 @@ def edit_schedule(id):
     end_time_str = request.form.get('end_time')
 
     try:
-        target_class = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+        target_class = scoped_classrooms_query(tenant_id).filter(ClassRoom.id == class_id).first()
         if target_class is None:
             flash('Kelas tidak valid.', 'warning')
             return redirect(url_for('admin.manage_schedules', class_id=class_id))
         if is_rumah_quran_classroom(target_class):
             flash("Kelas Rumah Qur'an tidak menggunakan jadwal mapel.", 'warning')
+            return redirect(url_for('admin.manage_schedules', class_id=class_id))
+        if _tenant_teachers_query(tenant_id).filter(Teacher.id == teacher_id).first() is None:
+            flash('Guru tidak valid untuk tenant aktif.', 'warning')
             return redirect(url_for('admin.manage_schedules', class_id=class_id))
 
         start_time = datetime.strptime(start_time_str, '%H:%M').time()
@@ -1842,6 +2047,7 @@ def edit_schedule(id):
         clash_class = Schedule.query.filter(
             Schedule.id != id,  # PENTING: Jangan cek jadwal diri sendiri
             Schedule.class_id == class_id,
+            Schedule.is_deleted.is_(False),
             Schedule.day == day,
             Schedule.start_time < end_time,
             Schedule.end_time > start_time
@@ -1852,13 +2058,20 @@ def edit_schedule(id):
             return redirect(url_for('admin.manage_schedules', class_id=class_id))
 
         # Cek Bentrok GURU
-        clash_teacher = Schedule.query.filter(
-            Schedule.id != id,  # PENTING: Jangan cek jadwal diri sendiri
-            Schedule.teacher_id == teacher_id,
-            Schedule.day == day,
-            Schedule.start_time < end_time,
-            Schedule.end_time > start_time
-        ).first()
+        clash_teacher = (
+            Schedule.query.join(ClassRoom, Schedule.class_id == ClassRoom.id)
+            .join(ProgramGroup, ClassRoom.program_group_id == ProgramGroup.id)
+            .filter(
+                Schedule.id != id,  # PENTING: Jangan cek jadwal diri sendiri
+                ProgramGroup.tenant_id == tenant_id,
+                Schedule.teacher_id == teacher_id,
+                Schedule.is_deleted.is_(False),
+                Schedule.day == day,
+                Schedule.start_time < end_time,
+                Schedule.end_time > start_time,
+            )
+            .first()
+        )
 
         if clash_teacher:
             flash(f'Gagal Update! Guru sedang mengajar di kelas lain.', 'danger')
@@ -1885,7 +2098,21 @@ def edit_schedule(id):
 @login_required
 @role_required(UserRole.ADMIN)
 def delete_schedule(id):
-    schedule = Schedule.query.get_or_404(id)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_schedules'))
+
+    schedule = (
+        Schedule.query.join(ClassRoom, Schedule.class_id == ClassRoom.id)
+        .join(ProgramGroup, ClassRoom.program_group_id == ProgramGroup.id)
+        .filter(
+            Schedule.id == id,
+            Schedule.is_deleted.is_(False),
+            ProgramGroup.tenant_id == tenant_id,
+        )
+        .first_or_404()
+    )
     class_id = schedule.class_id
 
     # Optional: Jika ingin strict hanya boleh POST
@@ -1912,8 +2139,19 @@ def manage_users():
     query = (request.args.get('q') or '').strip()
     role_filter = (request.args.get('role') or 'all').strip().lower()
 
-    # Ambil semua user KECUALI Admin (untuk keamanan)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return render_template(
+            'admin/users/manage.html',
+            users=[],
+            query=query,
+            role_filter=role_filter
+        )
+
+    # Ambil semua user tenant aktif KECUALI Admin (untuk keamanan)
     users_query = User.query.filter(
+        User.tenant_id == tenant_id,
         User.role != UserRole.ADMIN,
         ~User.role_assignments.any(role=UserRole.ADMIN)
     )
@@ -1976,12 +2214,17 @@ def manage_users():
 @login_required
 @role_required(UserRole.ADMIN)
 def manage_user_roles():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_users'))
+
     if request.method == 'POST':
         user_id = request.form.get('user_id', type=int)
         selected_roles_raw = request.form.getlist('roles')
         query = (request.form.get('q') or '').strip()
 
-        user = User.query.get_or_404(user_id)
+        user = User.query.filter_by(id=user_id, tenant_id=tenant_id).first_or_404()
         selected_roles = set()
         for item in selected_roles_raw:
             try:
@@ -2062,6 +2305,7 @@ def manage_user_roles():
 
     query = (request.args.get('q') or '').strip()
     users_query = User.query.filter(
+        User.tenant_id == tenant_id,
         User.role != UserRole.ADMIN,
         ~User.role_assignments.any(role=UserRole.ADMIN)
     )
@@ -2091,7 +2335,12 @@ def generic_reset_password():
     user_id = request.form.get('user_id')
     new_password = request.form.get('new_password')
 
-    user = User.query.get_or_404(user_id)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_users'))
+
+    user = User.query.filter_by(id=user_id, tenant_id=tenant_id).first_or_404()
 
     # Validasi sederhana
     if not new_password or len(new_password) < 4:

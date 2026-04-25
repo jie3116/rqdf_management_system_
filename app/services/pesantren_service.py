@@ -1,3 +1,5 @@
+from sqlalchemy import and_, or_
+
 from app.extensions import db
 from app.models import (
     AcademicYear,
@@ -7,8 +9,10 @@ from app.models import (
     MembershipStatus,
     Program,
     ProgramEnrollment,
+    ProgramGroup,
     Student,
     Tenant,
+    User,
     local_today,
 )
 
@@ -48,8 +52,8 @@ def _active_pesantren_enrollment(tenant_id, person_id):
     )
 
 
-def list_students_for_dormitory(dormitory_id):
-    return (
+def list_students_for_dormitory(dormitory_id, tenant_id=None):
+    query = (
         Student.query.join(
             ProgramEnrollment,
             (ProgramEnrollment.person_id == Student.person_id)
@@ -77,21 +81,49 @@ def list_students_for_dormitory(dormitory_id):
             BoardingDormitory.id == dormitory_id,
             Student.is_deleted.is_(False),
         )
-        .order_by(Student.full_name.asc())
-        .distinct()
-        .all()
     )
+    if tenant_id is not None:
+        query = query.filter(ProgramEnrollment.tenant_id == tenant_id)
+
+    return query.order_by(Student.full_name.asc()).distinct().all()
 
 
-def sync_student_dormitory_membership(student, dormitory_id):
-    tenant_id = _resolve_student_tenant_id(student)
+def sync_student_dormitory_membership(student, dormitory_id, tenant_id=None):
+    tenant_id = tenant_id or _resolve_student_tenant_id(student)
     if not tenant_id or not student.person_id:
         return False
 
     enrollment = _active_pesantren_enrollment(tenant_id, student.person_id)
     target_dormitory = None
     if dormitory_id:
-        target_dormitory = BoardingDormitory.query.filter_by(id=dormitory_id, is_deleted=False).first()
+        target_dormitory = (
+            BoardingDormitory.query.outerjoin(
+                ProgramGroup,
+                and_(
+                    ProgramGroup.id == BoardingDormitory.program_group_id,
+                    ProgramGroup.is_deleted.is_(False),
+                ),
+            )
+            .outerjoin(
+                User,
+                and_(
+                    User.id == BoardingDormitory.guardian_user_id,
+                    User.is_deleted.is_(False),
+                ),
+            )
+            .filter(
+                BoardingDormitory.id == dormitory_id,
+                BoardingDormitory.is_deleted.is_(False),
+                or_(
+                    ProgramGroup.tenant_id == tenant_id,
+                    and_(
+                        BoardingDormitory.program_group_id.is_(None),
+                        User.tenant_id == tenant_id,
+                    ),
+                ),
+            )
+            .first()
+        )
 
     is_valid_dormitory = target_dormitory is not None and target_dormitory.program_group_id is not None
 

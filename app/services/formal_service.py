@@ -79,15 +79,32 @@ def _formal_program(tenant_id, class_room):
     ).first()
 
 
-def ensure_formal_program_group(class_room):
+def _resolve_classroom_tenant_id(class_room, tenant_id=None):
+    if tenant_id:
+        return tenant_id
+
+    if class_room and class_room.program_group_id:
+        group = ProgramGroup.query.filter_by(id=class_room.program_group_id, is_deleted=False).first()
+        if group:
+            return group.tenant_id
+
+    if class_room and class_room.homeroom_teacher and class_room.homeroom_teacher.user:
+        if class_room.homeroom_teacher.user.tenant_id:
+            return class_room.homeroom_teacher.user.tenant_id
+
+    tenant = _default_tenant()
+    return tenant.id if tenant else None
+
+
+def ensure_formal_program_group(class_room, tenant_id=None):
     if class_room is None or class_room.is_deleted or not is_formal_classroom(class_room):
         return None
 
-    tenant = _default_tenant()
-    if tenant is None:
+    resolved_tenant_id = _resolve_classroom_tenant_id(class_room, tenant_id=tenant_id)
+    if resolved_tenant_id is None:
         return None
 
-    program = _formal_program(tenant.id, class_room)
+    program = _formal_program(resolved_tenant_id, class_room)
     if program is None:
         return None
 
@@ -95,7 +112,7 @@ def ensure_formal_program_group(class_room):
     if class_room.program_group_id:
         group = ProgramGroup.query.filter_by(
             id=class_room.program_group_id,
-            tenant_id=tenant.id,
+            tenant_id=resolved_tenant_id,
             is_deleted=False,
         ).first()
         if group is not None and group.program_id != program.id:
@@ -103,7 +120,7 @@ def ensure_formal_program_group(class_room):
 
     if group is None:
         group = ProgramGroup.query.filter_by(
-            tenant_id=tenant.id,
+            tenant_id=resolved_tenant_id,
             program_id=program.id,
             academic_year_id=class_room.academic_year_id,
             name=class_room.name,
@@ -112,7 +129,7 @@ def ensure_formal_program_group(class_room):
 
     if group is None:
         group = ProgramGroup(
-            tenant_id=tenant.id,
+            tenant_id=resolved_tenant_id,
             program_id=program.id,
             academic_year_id=class_room.academic_year_id,
             name=class_room.name,
@@ -325,7 +342,12 @@ def sync_student_formal_class_membership(student, class_id=None):
                 membership.end_date = local_today()
         return True
 
-    ensure_formal_program_group(target_class)
+    if target_class.program_group_id:
+        target_group = ProgramGroup.query.filter_by(id=target_class.program_group_id, is_deleted=False).first()
+        if target_group and target_group.tenant_id != tenant_id:
+            return False
+
+    ensure_formal_program_group(target_class, tenant_id=tenant_id)
     program = _formal_program(tenant_id, target_class)
     if program is None or target_class.program_group_id is None:
         return False

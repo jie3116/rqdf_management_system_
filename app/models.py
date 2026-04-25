@@ -53,7 +53,7 @@ class UserRole(enum.Enum):
     WALI_MURID = "wali_murid"
     WALI_ASRAMA = "wali_asrama"
     TU = "tata_usaha"
-    MAJLIS_PARTICIPANT = "majlis_participant"  # BARU: Role untuk peserta majlis non-parent
+    MAJLIS_PARTICIPANT = "majlis_participant"
 
 
 class ParticipantType(enum.Enum):
@@ -118,7 +118,7 @@ class ProgramType(enum.Enum):
     RQDF_SORE = "RQDF Reguler (Sore)"
     SEKOLAH_FULLDAY = "Sekolah Bina Qur'an"
     TAKHOSUS_TAHFIDZ = "Takhosus Tahfidz"
-    MAJLIS_TALIM = "Majelis Ta'lim"  # BARU
+    MAJLIS_TALIM = "Majelis Ta'lim"
     BAHASA = "Program Bahasa"
 
 
