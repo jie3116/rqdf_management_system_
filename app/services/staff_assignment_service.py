@@ -11,9 +11,9 @@ from app.models import (
     Schedule,
     StaffAssignment,
     Teacher,
-    Tenant,
     local_today,
 )
+from app.utils.tenant import get_default_tenant, get_default_tenant_id, resolve_tenant_id
 
 ASSIGNMENT_LABEL_DEFAULTS = {
     "assignment_label.formal_homeroom": ("Wali Kelas", "Label untuk penanggung jawab kelas program formal."),
@@ -25,7 +25,7 @@ ASSIGNMENT_LABEL_DEFAULTS = {
 
 
 def _default_tenant():
-    return Tenant.query.filter_by(is_default=True, is_deleted=False).first()
+    return get_default_tenant()
 
 
 def _active_academic_year():
@@ -34,6 +34,25 @@ def _active_academic_year():
 
 def _teacher_person_id(teacher):
     return teacher.person_id if teacher and teacher.person_id else None
+
+
+def _tenant_id_for_teacher(teacher):
+    if teacher is None:
+        return None
+    return resolve_tenant_id(getattr(teacher, "user", None), fallback_default=False)
+
+
+def _resolve_assignment_tenant_id(teacher=None, group=None):
+    teacher_tenant_id = _tenant_id_for_teacher(teacher)
+    group_tenant_id = group.tenant_id if group else None
+
+    if teacher_tenant_id and group_tenant_id and teacher_tenant_id != group_tenant_id:
+        return None
+    if teacher_tenant_id:
+        return teacher_tenant_id
+    if group_tenant_id:
+        return group_tenant_id
+    return get_default_tenant_id()
 
 
 def _program_code_for_class(class_room):
@@ -133,22 +152,25 @@ def _ensure_staff_assignment(person_id, tenant_id, program_id, group_id, academi
 
 
 def create_teacher_staff_assignment(teacher, class_room, assignment_role, notes=None):
-    tenant = _default_tenant()
     person_id = _teacher_person_id(teacher)
-    if teacher is None or class_room is None or tenant is None or not person_id:
+    if teacher is None or class_room is None or not person_id:
         return False, "Data guru atau kelas belum lengkap."
 
     if class_room.program_group_id is None:
         return False, "Kelas belum terhubung ke program group."
 
-    program = _program_for_class(class_room, tenant.id)
     group = _group_for_class(class_room)
+    tenant_id = _resolve_assignment_tenant_id(teacher=teacher, group=group)
+    if tenant_id is None:
+        return False, "Tenant guru dan kelas tidak sinkron."
+
+    program = _program_for_class(class_room, tenant_id)
     if program is None or group is None:
         return False, "Program atau group kelas belum valid."
 
     existing = (
         StaffAssignment.query.filter_by(
-            tenant_id=tenant.id,
+            tenant_id=tenant_id,
             person_id=person_id,
             program_id=program.id,
             group_id=group.id,
@@ -164,7 +186,7 @@ def create_teacher_staff_assignment(teacher, class_room, assignment_role, notes=
 
     if existing is None:
         existing = StaffAssignment(
-            tenant_id=tenant.id,
+            tenant_id=tenant_id,
             person_id=person_id,
             program_id=program.id,
             group_id=group.id,
@@ -181,21 +203,24 @@ def create_teacher_staff_assignment(teacher, class_room, assignment_role, notes=
 
 
 def sync_class_homeroom_assignment(class_room):
-    tenant = _default_tenant()
-    if class_room is None or tenant is None:
+    if class_room is None:
         return False, "Data kelas belum lengkap."
 
-    program = _program_for_class(class_room, tenant.id)
     group = _group_for_class(class_room)
+    teacher = _teacher_by_id(class_room.homeroom_teacher_id)
+    tenant_id = _resolve_assignment_tenant_id(teacher=teacher, group=group)
+    if tenant_id is None:
+        return False, "Tenant guru dan kelas tidak sinkron."
+
+    program = _program_for_class(class_room, tenant_id)
     if program is None or group is None:
         return False, None
 
-    teacher = _teacher_by_id(class_room.homeroom_teacher_id)
     person_id = _teacher_person_id(teacher)
 
     active_assignments = (
         StaffAssignment.query.filter(
-            StaffAssignment.tenant_id == tenant.id,
+            StaffAssignment.tenant_id == tenant_id,
             StaffAssignment.program_id == program.id,
             StaffAssignment.group_id == group.id,
             StaffAssignment.assignment_role == AssignmentRole.HOMEROOM,
@@ -215,7 +240,7 @@ def sync_class_homeroom_assignment(class_room):
 
     _ensure_staff_assignment(
         person_id=person_id,
-        tenant_id=tenant.id,
+        tenant_id=tenant_id,
         program_id=program.id,
         group_id=group.id,
         academic_year_id=class_room.academic_year_id,
@@ -225,7 +250,7 @@ def sync_class_homeroom_assignment(class_room):
 
     duplicate_assignments = (
         StaffAssignment.query.filter(
-            StaffAssignment.tenant_id == tenant.id,
+            StaffAssignment.tenant_id == tenant_id,
             StaffAssignment.person_id == person_id,
             StaffAssignment.program_id == program.id,
             StaffAssignment.group_id == group.id,
@@ -242,14 +267,14 @@ def sync_class_homeroom_assignment(class_room):
 
 
 def deactivate_teacher_staff_assignment(teacher, assignment_id):
-    tenant = _default_tenant()
+    tenant_id = _resolve_assignment_tenant_id(teacher=teacher)
     person_id = _teacher_person_id(teacher)
-    if teacher is None or tenant is None or not person_id:
+    if teacher is None or tenant_id is None or not person_id:
         return False, "Data guru belum lengkap."
 
     assignment = StaffAssignment.query.filter_by(
         id=assignment_id,
-        tenant_id=tenant.id,
+        tenant_id=tenant_id,
         person_id=person_id,
         is_deleted=False,
     ).first()
@@ -265,9 +290,9 @@ def sync_teacher_staff_assignments(teacher):
     if teacher is None:
         return {"created": 0, "skipped": 0}
 
-    tenant = _default_tenant()
+    tenant_id = _resolve_assignment_tenant_id(teacher=teacher)
     person_id = _teacher_person_id(teacher)
-    if tenant is None or not person_id:
+    if tenant_id is None or not person_id:
         return {"created": 0, "skipped": 1}
 
     created = 0
@@ -279,13 +304,18 @@ def sync_teacher_staff_assignments(teacher):
         .all()
     )
     for class_room in homeroom_classes:
-        program = _program_for_class(class_room, tenant.id)
+        group = _group_for_class(class_room)
+        class_tenant_id = _resolve_assignment_tenant_id(teacher=teacher, group=group)
+        if class_tenant_id != tenant_id:
+            continue
+
+        program = _program_for_class(class_room, tenant_id)
         group = _group_for_class(class_room)
         if program is None:
             continue
         if _ensure_staff_assignment(
             person_id=person_id,
-            tenant_id=tenant.id,
+            tenant_id=tenant_id,
             program_id=program.id,
             group_id=group.id if group else None,
             academic_year_id=class_room.academic_year_id or (academic_year.id if academic_year else None),
@@ -306,8 +336,12 @@ def sync_teacher_staff_assignments(teacher):
         if schedule.class_room.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ):
             # Rumah Qur'an tidak memakai assignment guru mapel.
             continue
-        program = _program_for_class(schedule.class_room, tenant.id)
         group = _group_for_class(schedule.class_room)
+        class_tenant_id = _resolve_assignment_tenant_id(teacher=teacher, group=group)
+        if class_tenant_id != tenant_id:
+            continue
+
+        program = _program_for_class(schedule.class_room, tenant_id)
         if program is None:
             continue
         key = (
@@ -321,7 +355,7 @@ def sync_teacher_staff_assignments(teacher):
         seen_schedule_keys.add(key)
         if _ensure_staff_assignment(
             person_id=person_id,
-            tenant_id=tenant.id,
+            tenant_id=tenant_id,
             program_id=program.id,
             group_id=group.id if group else None,
             academic_year_id=schedule.class_room.academic_year_id or (academic_year.id if academic_year else None),
@@ -334,13 +368,13 @@ def sync_teacher_staff_assignments(teacher):
 
 
 def _active_staff_assignments_for_teacher(teacher, assignment_role=None):
-    tenant = _default_tenant()
+    tenant_id = _resolve_assignment_tenant_id(teacher=teacher)
     person_id = _teacher_person_id(teacher)
-    if teacher is None or tenant is None or not person_id:
+    if teacher is None or tenant_id is None or not person_id:
         return []
 
     query = StaffAssignment.query.filter(
-        StaffAssignment.tenant_id == tenant.id,
+        StaffAssignment.tenant_id == tenant_id,
         StaffAssignment.person_id == person_id,
         StaffAssignment.is_deleted.is_(False),
         StaffAssignment.end_date.is_(None),
@@ -456,14 +490,14 @@ def backfill_all_teacher_staff_assignments():
     return summary
 
 
-def cleanup_rumah_quran_subject_data():
+def cleanup_rumah_quran_subject_data(tenant_id=None):
     """
     Rumah Qur'an tidak menggunakan guru mapel.
     Data SUBJECT_TEACHER dan jadwal mapel pada kelas Rumah Qur'an ditutup/disembunyikan.
     """
     today = local_today()
 
-    assignments = (
+    assignment_query = (
         StaffAssignment.query.join(StaffAssignment.program)
         .filter(
             Program.code == "RUMAH_QURAN",
@@ -472,20 +506,29 @@ def cleanup_rumah_quran_subject_data():
             StaffAssignment.is_deleted.is_(False),
             StaffAssignment.end_date.is_(None),
         )
-        .all()
     )
+    if tenant_id is not None:
+        assignment_query = assignment_query.filter(Program.tenant_id == tenant_id)
+
+    assignments = assignment_query.all()
     for assignment in assignments:
         assignment.end_date = today
 
-    schedules = (
+    schedule_query = (
         Schedule.query.join(Schedule.class_room)
         .filter(
             ClassRoom.program_type.in_([ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ]),
             Schedule.subject_id.isnot(None),
             Schedule.is_deleted.is_(False),
         )
-        .all()
     )
+    if tenant_id is not None:
+        schedule_query = schedule_query.join(
+            ProgramGroup,
+            ClassRoom.program_group_id == ProgramGroup.id,
+        ).filter(ProgramGroup.tenant_id == tenant_id)
+
+    schedules = schedule_query.all()
     for schedule in schedules:
         schedule.is_deleted = True
 

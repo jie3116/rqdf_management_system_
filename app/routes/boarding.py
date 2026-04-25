@@ -5,6 +5,7 @@ from flask_login import login_required, current_user
 
 from app.decorators import role_required
 from app.utils.timezone import local_today
+from app.utils.tenant import resolve_tenant_id, scoped_dormitories_query
 from app.extensions import db
 from app.services.pesantren_service import list_students_for_dormitory, sync_student_dormitory_membership
 from app.models import (
@@ -19,11 +20,109 @@ from app.models import (
     BoardingActivitySchedule,
     BoardingAttendance,
     BoardingHoliday,
+    GroupType,
+    Program,
+    ProgramGroup,
 )
 
 
 boarding_bp = Blueprint('boarding', __name__, url_prefix='/boarding')
 DAYS = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
+
+
+def _current_tenant_id():
+    return resolve_tenant_id(current_user)
+
+
+def _tenant_guardians_query(tenant_id):
+    return BoardingGuardian.query.join(User, BoardingGuardian.user_id == User.id).filter(
+        BoardingGuardian.is_deleted.is_(False),
+        User.is_deleted.is_(False),
+        User.tenant_id == tenant_id,
+        db.or_(
+            User.role == UserRole.WALI_ASRAMA,
+            User.role_assignments.any(role=UserRole.WALI_ASRAMA)
+        ),
+    )
+
+
+def _tenant_students_query(tenant_id):
+    return Student.query.join(User, Student.user_id == User.id).filter(
+        Student.is_deleted.is_(False),
+        User.is_deleted.is_(False),
+        User.tenant_id == tenant_id,
+    )
+
+
+def _coerce_selected_ids(raw_values):
+    ids = []
+    for value in raw_values or []:
+        try:
+            ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    return ids
+
+
+def _ensure_dormitory_program_group(dormitory, tenant_id):
+    if dormitory is None or tenant_id is None:
+        return None
+
+    program = Program.query.filter_by(
+        tenant_id=tenant_id,
+        code='PESANTREN',
+        is_deleted=False,
+    ).first()
+    if program is None:
+        return None
+
+    group = None
+    if dormitory.program_group_id:
+        group = ProgramGroup.query.filter_by(
+            id=dormitory.program_group_id,
+            tenant_id=tenant_id,
+            is_deleted=False,
+        ).first()
+
+    if group is None:
+        group = ProgramGroup.query.filter_by(
+            tenant_id=tenant_id,
+            program_id=program.id,
+            academic_year_id=None,
+            name=dormitory.name,
+            is_deleted=False,
+        ).first()
+
+    if group is None:
+        group = ProgramGroup(
+            tenant_id=tenant_id,
+            program_id=program.id,
+            academic_year_id=None,
+            name=dormitory.name,
+        )
+        db.session.add(group)
+
+    group.name = dormitory.name
+    group.group_type = GroupType.DORMITORY
+    group.level_label = None
+    group.gender_scope = dormitory.gender
+    group.capacity = dormitory.capacity
+    group.is_active = True
+    db.session.flush()
+
+    dormitory.program_group_id = group.id
+    return group
+
+
+def _schedule_in_tenant(schedule, tenant_dormitory_ids):
+    if schedule is None:
+        return False
+    if schedule.dormitory_id and schedule.dormitory_id in tenant_dormitory_ids:
+        return True
+    selected_ids = {d.id for d in schedule.selected_dormitories}
+    if selected_ids:
+        return bool(selected_ids.intersection(tenant_dormitory_ids))
+    return False
 
 
 def _weekday_label(date_obj):
@@ -46,10 +145,14 @@ def _is_holiday(date_obj):
 
 
 def _schedule_applies_to_dormitory(schedule, dormitory_id):
-    if schedule.applies_all_dormitories:
-        return True
-
     selected_ids = {d.id for d in schedule.selected_dormitories}
+    if schedule.applies_all_dormitories:
+        if selected_ids:
+            return dormitory_id in selected_ids
+        if schedule.dormitory_id:
+            return schedule.dormitory_id == dormitory_id
+        return False
+
     if selected_ids:
         return dormitory_id in selected_ids
 
@@ -61,7 +164,7 @@ def _effective_schedules_for(dormitory_id, date_obj):
     day_name = _weekday_label(date_obj)
     holiday = _is_holiday(date_obj)
 
-    schedules = BoardingActivitySchedule.query.filter_by(is_active=True).order_by(
+    schedules = BoardingActivitySchedule.query.filter_by(is_active=True, is_deleted=False).order_by(
         BoardingActivitySchedule.start_time.asc()
     ).all()
 
@@ -81,6 +184,11 @@ def _effective_schedules_for(dormitory_id, date_obj):
 @login_required
 @role_required(UserRole.ADMIN)
 def manage_guardians():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
         password = (request.form.get('password') or '').strip() or '123456'
@@ -96,6 +204,7 @@ def manage_guardians():
         try:
             if not existing_user:
                 existing_user = User(
+                    tenant_id=tenant_id,
                     username=username,
                     email=f'{username}@asrama.sekolah.id',
                     role=UserRole.WALI_ASRAMA,
@@ -104,11 +213,17 @@ def manage_guardians():
                 existing_user.set_password(password)
                 db.session.add(existing_user)
                 db.session.flush()
+            elif existing_user.tenant_id != tenant_id:
+                flash('Username sudah digunakan tenant lain.', 'danger')
+                return redirect(url_for('boarding.manage_guardians'))
             elif not existing_user.has_role(UserRole.WALI_ASRAMA):
                 db.session.add(UserRoleAssignment(
                     user_id=existing_user.id,
                     role=UserRole.WALI_ASRAMA
                 ))
+
+            if existing_user.tenant_id is None:
+                existing_user.tenant_id = tenant_id
 
             profile = existing_user.boarding_guardian_profile
             if not profile:
@@ -131,12 +246,7 @@ def manage_guardians():
         return redirect(url_for('boarding.manage_guardians'))
 
     query = (request.args.get('q') or '').strip()
-    guardians_query = BoardingGuardian.query.join(User, BoardingGuardian.user_id == User.id).filter(
-        db.or_(
-            User.role == UserRole.WALI_ASRAMA,
-            User.role_assignments.any(role=UserRole.WALI_ASRAMA)
-        )
-    )
+    guardians_query = _tenant_guardians_query(tenant_id)
     if query:
         guardians_query = guardians_query.filter(
             db.or_(
@@ -154,8 +264,22 @@ def manage_guardians():
 @login_required
 @role_required(UserRole.ADMIN)
 def manage_dormitories():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
     if request.method == 'POST':
         action = (request.form.get('action') or '').strip()
+        tenant_dormitory_ids = {
+            dormitory.id
+            for dormitory in scoped_dormitories_query(tenant_id).all()
+        }
+        tenant_guardian_user_ids = {
+            guardian.user_id
+            for guardian in _tenant_guardians_query(tenant_id).all()
+            if guardian.user_id
+        }
 
         if action == 'create_dormitory':
             name = (request.form.get('name') or '').strip()
@@ -170,8 +294,11 @@ def manage_dormitories():
             if not guardian_user_id:
                 flash('Wali asrama wajib dipilih.', 'warning')
                 return redirect(url_for('boarding.manage_dormitories'))
+            if guardian_user_id not in tenant_guardian_user_ids:
+                flash('Wali asrama tidak valid untuk tenant aktif.', 'warning')
+                return redirect(url_for('boarding.manage_dormitories'))
 
-            if BoardingDormitory.query.filter_by(name=name).first():
+            if scoped_dormitories_query(tenant_id).filter(BoardingDormitory.name == name).first():
                 flash('Nama asrama sudah digunakan.', 'warning')
                 return redirect(url_for('boarding.manage_dormitories'))
 
@@ -183,19 +310,27 @@ def manage_dormitories():
                 description=description or None,
             )
             db.session.add(dormitory)
+            db.session.flush()
+            _ensure_dormitory_program_group(dormitory, tenant_id)
             db.session.commit()
             flash('Data asrama berhasil ditambahkan.', 'success')
             return redirect(url_for('boarding.manage_dormitories'))
 
         if action == 'update_dormitory':
             dormitory_id = request.form.get('dormitory_id', type=int)
-            dormitory = BoardingDormitory.query.get_or_404(dormitory_id)
+            dormitory = scoped_dormitories_query(tenant_id).filter(BoardingDormitory.id == dormitory_id).first_or_404()
 
-            dormitory.guardian_user_id = request.form.get('guardian_user_id', type=int)
+            guardian_user_id = request.form.get('guardian_user_id', type=int)
+            if guardian_user_id and guardian_user_id not in tenant_guardian_user_ids:
+                flash('Wali asrama tidak valid untuk tenant aktif.', 'warning')
+                return redirect(url_for('boarding.manage_dormitories'))
+
+            dormitory.guardian_user_id = guardian_user_id
             dormitory.capacity = request.form.get('capacity', type=int)
             dormitory.description = (request.form.get('description') or '').strip() or None
             gender_raw = (request.form.get('gender') or '').strip()
             dormitory.gender = Gender[gender_raw] if gender_raw else None
+            _ensure_dormitory_program_group(dormitory, tenant_id)
 
             db.session.commit()
             flash(f'Asrama {dormitory.name} berhasil diperbarui.', 'success')
@@ -219,16 +354,23 @@ def manage_dormitories():
                 flash('Tidak ada data penempatan yang dikirim.', 'warning')
                 return redirect(url_for('boarding.manage_dormitories', q=query_value or None))
 
-            students = Student.query.filter(
-                Student.id.in_(submitted_assignments.keys()),
-                Student.is_deleted == False
-            ).all()
+            submitted_dormitory_ids = {
+                dormitory_id
+                for dormitory_id in submitted_assignments.values()
+                if dormitory_id is not None
+            }
+            invalid_dormitory_ids = submitted_dormitory_ids - tenant_dormitory_ids
+            if invalid_dormitory_ids:
+                flash('Terdapat asrama yang bukan milik tenant aktif.', 'danger')
+                return redirect(url_for('boarding.manage_dormitories', q=query_value or None))
+
+            students = _tenant_students_query(tenant_id).filter(Student.id.in_(submitted_assignments.keys())).all()
             updated = 0
             for student in students:
                 new_dormitory_id = submitted_assignments.get(student.id)
                 if student.boarding_dormitory_id != new_dormitory_id:
                     student.boarding_dormitory_id = new_dormitory_id
-                    sync_student_dormitory_membership(student, new_dormitory_id)
+                    sync_student_dormitory_membership(student, new_dormitory_id, tenant_id=tenant_id)
                     updated += 1
 
             db.session.commit()
@@ -236,7 +378,7 @@ def manage_dormitories():
             return redirect(url_for('boarding.manage_dormitories', q=query_value or None))
 
     student_query = (request.args.get('q') or '').strip()
-    students_query = Student.query.filter_by(is_deleted=False)
+    students_query = _tenant_students_query(tenant_id)
     if student_query:
         students_query = students_query.filter(
             db.or_(
@@ -245,10 +387,10 @@ def manage_dormitories():
             )
         )
 
-    guardians = BoardingGuardian.query.order_by(BoardingGuardian.full_name.asc()).all()
-    dormitories = BoardingDormitory.query.order_by(BoardingDormitory.name.asc()).all()
+    guardians = _tenant_guardians_query(tenant_id).order_by(BoardingGuardian.full_name.asc()).all()
+    dormitories = scoped_dormitories_query(tenant_id).order_by(BoardingDormitory.name.asc()).all()
     dormitory_student_counts = {
-        dormitory.id: len(list_students_for_dormitory(dormitory.id))
+        dormitory.id: len(list_students_for_dormitory(dormitory.id, tenant_id=tenant_id))
         for dormitory in dormitories
     }
     students = students_query.order_by(Student.full_name.asc()).all()
@@ -268,7 +410,17 @@ def manage_dormitories():
 @login_required
 @role_required(UserRole.ADMIN)
 def manage_schedules():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
     selected_dormitory_id = request.args.get('dormitory_id', type=int)
+    dormitories = scoped_dormitories_query(tenant_id).order_by(BoardingDormitory.name.asc()).all()
+    tenant_dormitory_ids = {dormitory.id for dormitory in dormitories}
+    if selected_dormitory_id and selected_dormitory_id not in tenant_dormitory_ids:
+        flash('Asrama tidak valid untuk tenant aktif.', 'warning')
+        return redirect(url_for('boarding.manage_schedules'))
 
     if request.method == 'POST':
         action = (request.form.get('action') or '').strip()
@@ -279,7 +431,8 @@ def manage_schedules():
             end_time_str = (request.form.get('end_time') or '').strip()
             applies_all_dormitories = request.form.get('applies_all_dormitories') == 'on'
             applies_all_days = request.form.get('applies_all_days') == 'on'
-            selected_dormitory_ids = request.form.getlist('selected_dormitories')
+            selected_dormitory_ids = _coerce_selected_ids(request.form.getlist('selected_dormitories'))
+            selected_dormitory_ids = [dormitory_id for dormitory_id in selected_dormitory_ids if dormitory_id in tenant_dormitory_ids]
             selected_days = request.form.getlist('selected_days')
             exclude_national_holidays = request.form.get('exclude_national_holidays') == 'on'
 
@@ -289,6 +442,9 @@ def manage_schedules():
 
             if not applies_all_dormitories and not selected_dormitory_ids:
                 flash('Pilih minimal satu asrama jika tidak berlaku untuk semua asrama.', 'warning')
+                return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
+            if applies_all_dormitories and not dormitories:
+                flash('Belum ada asrama pada tenant aktif.', 'warning')
                 return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
 
             if not applies_all_days and not selected_days:
@@ -320,10 +476,12 @@ def manage_schedules():
             db.session.flush()
 
             if not applies_all_dormitories:
-                dormitories = BoardingDormitory.query.filter(BoardingDormitory.id.in_(selected_dormitory_ids)).all()
+                selected_dormitories = [dormitory for dormitory in dormitories if dormitory.id in selected_dormitory_ids]
+                schedule.selected_dormitories = selected_dormitories
+                schedule.dormitory_id = selected_dormitories[0].id if selected_dormitories else None  # fallback legacy
+            else:
                 schedule.selected_dormitories = dormitories
-                if dormitories:
-                    schedule.dormitory_id = dormitories[0].id  # fallback legacy
+                schedule.dormitory_id = dormitories[0].id if dormitories else None
 
             if not applies_all_days and selected_days:
                 schedule.day = selected_days[0]  # fallback legacy
@@ -335,13 +493,17 @@ def manage_schedules():
         if action == 'update_schedule':
             schedule_id = request.form.get('schedule_id', type=int)
             schedule = BoardingActivitySchedule.query.get_or_404(schedule_id)
+            if not _schedule_in_tenant(schedule, tenant_dormitory_ids):
+                flash('Jadwal tidak valid untuk tenant aktif.', 'danger')
+                return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
 
             activity_name = (request.form.get('activity_name') or '').strip()
             start_time_str = (request.form.get('start_time') or '').strip()
             end_time_str = (request.form.get('end_time') or '').strip()
             applies_all_dormitories = request.form.get('applies_all_dormitories') == 'on'
             applies_all_days = request.form.get('applies_all_days') == 'on'
-            selected_dormitory_ids = request.form.getlist('selected_dormitories')
+            selected_dormitory_ids = _coerce_selected_ids(request.form.getlist('selected_dormitories'))
+            selected_dormitory_ids = [dormitory_id for dormitory_id in selected_dormitory_ids if dormitory_id in tenant_dormitory_ids]
             selected_days = request.form.getlist('selected_days')
             exclude_national_holidays = request.form.get('exclude_national_holidays') == 'on'
 
@@ -351,6 +513,9 @@ def manage_schedules():
 
             if not applies_all_dormitories and not selected_dormitory_ids:
                 flash('Pilih minimal satu asrama jika tidak berlaku untuk semua asrama.', 'warning')
+                return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
+            if applies_all_dormitories and not dormitories:
+                flash('Belum ada asrama pada tenant aktif.', 'warning')
                 return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
 
             if not applies_all_days and not selected_days:
@@ -377,12 +542,12 @@ def manage_schedules():
             schedule.exclude_national_holidays = exclude_national_holidays
 
             if not applies_all_dormitories:
-                dormitories = BoardingDormitory.query.filter(BoardingDormitory.id.in_(selected_dormitory_ids)).all()
+                selected_dormitories = [dormitory for dormitory in dormitories if dormitory.id in selected_dormitory_ids]
+                schedule.selected_dormitories = selected_dormitories
+                schedule.dormitory_id = selected_dormitories[0].id if selected_dormitories else None
+            else:
                 schedule.selected_dormitories = dormitories
                 schedule.dormitory_id = dormitories[0].id if dormitories else None
-            else:
-                schedule.selected_dormitories = []
-                schedule.dormitory_id = None
 
             if not applies_all_days and selected_days:
                 schedule.day = selected_days[0]
@@ -396,6 +561,9 @@ def manage_schedules():
         if action == 'toggle_schedule':
             schedule_id = request.form.get('schedule_id', type=int)
             schedule = BoardingActivitySchedule.query.get_or_404(schedule_id)
+            if not _schedule_in_tenant(schedule, tenant_dormitory_ids):
+                flash('Jadwal tidak valid untuk tenant aktif.', 'danger')
+                return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
             schedule.is_active = not schedule.is_active
             db.session.commit()
             flash(
@@ -407,6 +575,9 @@ def manage_schedules():
         if action == 'delete_schedule':
             schedule_id = request.form.get('schedule_id', type=int)
             schedule = BoardingActivitySchedule.query.get_or_404(schedule_id)
+            if not _schedule_in_tenant(schedule, tenant_dormitory_ids):
+                flash('Jadwal tidak valid untuk tenant aktif.', 'danger')
+                return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
             schedule.is_deleted = True
             db.session.commit()
             flash(f"Template '{schedule.activity_name}' dihapus.", 'success')
@@ -442,15 +613,15 @@ def manage_schedules():
             flash('Hari libur boarding berhasil disimpan.', 'success')
             return redirect(url_for('boarding.manage_schedules', dormitory_id=selected_dormitory_id))
 
-    dormitories = BoardingDormitory.query.order_by(BoardingDormitory.name.asc()).all()
     schedules = BoardingActivitySchedule.query.filter_by(is_deleted=False).order_by(
         BoardingActivitySchedule.start_time.asc(),
         BoardingActivitySchedule.activity_name.asc()
     ).all()
+    schedules = [schedule for schedule in schedules if _schedule_in_tenant(schedule, tenant_dormitory_ids)]
     holidays = BoardingHoliday.query.filter_by(is_deleted=False).order_by(BoardingHoliday.date.asc()).all()
     selected_dormitory = None
     if selected_dormitory_id:
-        selected_dormitory = BoardingDormitory.query.get(selected_dormitory_id)
+        selected_dormitory = next((dormitory for dormitory in dormitories if dormitory.id == selected_dormitory_id), None)
         if selected_dormitory:
             schedules = [s for s in schedules if _schedule_applies_to_dormitory(s, selected_dormitory.id)]
 
@@ -469,13 +640,23 @@ def manage_schedules():
 @login_required
 @role_required(UserRole.WALI_ASRAMA)
 def dashboard():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
     today = local_today()
     today_name = _weekday_label(today)
 
-    dormitories = BoardingDormitory.query.filter_by(guardian_user_id=current_user.id).order_by(BoardingDormitory.name).all()
+    dormitories = (
+        scoped_dormitories_query(tenant_id)
+        .filter(BoardingDormitory.guardian_user_id == current_user.id)
+        .order_by(BoardingDormitory.name)
+        .all()
+    )
     dormitory_ids = [item.id for item in dormitories]
 
-    total_students = sum(len(list_students_for_dormitory(dormitory.id)) for dormitory in dormitories)
+    total_students = sum(len(list_students_for_dormitory(dormitory.id, tenant_id=tenant_id)) for dormitory in dormitories)
 
     attendance_today = BoardingAttendance.query.filter(
         BoardingAttendance.dormitory_id.in_(dormitory_ids),
@@ -504,7 +685,17 @@ def dashboard():
 @login_required
 @role_required(UserRole.WALI_ASRAMA)
 def input_attendance():
-    my_dormitories = BoardingDormitory.query.filter_by(guardian_user_id=current_user.id).order_by(BoardingDormitory.name.asc()).all()
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    my_dormitories = (
+        scoped_dormitories_query(tenant_id)
+        .filter(BoardingDormitory.guardian_user_id == current_user.id)
+        .order_by(BoardingDormitory.name.asc())
+        .all()
+    )
     my_dormitory_ids = [d.id for d in my_dormitories]
 
     selected_dormitory_id = request.args.get('dormitory_id', type=int)
@@ -538,7 +729,7 @@ def input_attendance():
         selected_schedule_id = schedules[0].id
 
     selected_schedule = next((item for item in schedules if item.id == selected_schedule_id), None)
-    students = list_students_for_dormitory(selected_dormitory_id) if selected_dormitory else []
+    students = list_students_for_dormitory(selected_dormitory_id, tenant_id=tenant_id) if selected_dormitory else []
 
     existing_attendance = {}
     if selected_schedule and students:

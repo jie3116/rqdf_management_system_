@@ -88,6 +88,23 @@ def _active_bahasa_enrollment(tenant_id, person_id):
     )
 
 
+def _resolve_classroom_tenant_id(class_room, tenant_id=None):
+    if tenant_id:
+        return tenant_id
+
+    if class_room and class_room.program_group_id:
+        group = ProgramGroup.query.filter_by(id=class_room.program_group_id, is_deleted=False).first()
+        if group:
+            return group.tenant_id
+
+    if class_room and class_room.homeroom_teacher and class_room.homeroom_teacher.user:
+        if class_room.homeroom_teacher.user.tenant_id:
+            return class_room.homeroom_teacher.user.tenant_id
+
+    tenant = _default_tenant()
+    return tenant.id if tenant else None
+
+
 def list_bahasa_classes():
     classes = (
         ClassRoom.query.outerjoin(ProgramGroup, ProgramGroup.id == ClassRoom.program_group_id)
@@ -114,16 +131,16 @@ def is_bahasa_classroom(class_room):
     return class_room is not None and class_room.program_type == ProgramType.BAHASA
 
 
-def ensure_bahasa_program_group(class_room):
+def ensure_bahasa_program_group(class_room, tenant_id=None):
     if class_room is None or class_room.is_deleted or class_room.program_type != ProgramType.BAHASA:
         return None
 
-    tenant = _default_tenant()
-    if tenant is None:
+    resolved_tenant_id = _resolve_classroom_tenant_id(class_room, tenant_id=tenant_id)
+    if resolved_tenant_id is None:
         return None
 
     program = Program.query.filter_by(
-        tenant_id=tenant.id,
+        tenant_id=resolved_tenant_id,
         code="BAHASA",
         is_deleted=False,
     ).first()
@@ -134,7 +151,7 @@ def ensure_bahasa_program_group(class_room):
     if class_room.program_group_id:
         group = ProgramGroup.query.filter_by(
             id=class_room.program_group_id,
-            tenant_id=tenant.id,
+            tenant_id=resolved_tenant_id,
             is_deleted=False,
         ).first()
         if group is not None and group.program_id != program.id:
@@ -142,7 +159,7 @@ def ensure_bahasa_program_group(class_room):
 
     if group is None:
         group = ProgramGroup.query.filter_by(
-            tenant_id=tenant.id,
+            tenant_id=resolved_tenant_id,
             program_id=program.id,
             academic_year_id=class_room.academic_year_id,
             name=class_room.name,
@@ -151,7 +168,7 @@ def ensure_bahasa_program_group(class_room):
 
     if group is None:
         group = ProgramGroup(
-            tenant_id=tenant.id,
+            tenant_id=resolved_tenant_id,
             program_id=program.id,
             academic_year_id=class_room.academic_year_id,
             name=class_room.name,
@@ -240,7 +257,11 @@ def assign_student_bahasa_class(student, class_id):
     target_class = None
     if class_id:
         target_class = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
-        ensure_bahasa_program_group(target_class)
+        if target_class and target_class.program_group_id:
+            target_group = ProgramGroup.query.filter_by(id=target_class.program_group_id, is_deleted=False).first()
+            if target_group and target_group.tenant_id != tenant_id:
+                return False
+        ensure_bahasa_program_group(target_class, tenant_id=tenant_id)
 
     is_bahasa_class = (
         target_class is not None

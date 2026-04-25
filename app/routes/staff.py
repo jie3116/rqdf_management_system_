@@ -33,14 +33,19 @@ from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType,
     StudentCandidate, RegistrationStatus, ProgramType, EducationLevel,
-    MajlisParticipant, ClassType, Announcement
+    MajlisParticipant, ClassType, Announcement, ProgramGroup
 )
 from app.utils.nis import generate_nis
 from app.utils.roles import get_active_role
 from app.utils.money import to_rupiah_int
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
+from app.utils.tenant import classroom_in_tenant, resolve_tenant_id, scoped_classrooms_query
 
 staff_bp = Blueprint('staff', __name__)
+
+
+def _current_tenant_id():
+    return resolve_tenant_id(current_user)
 
 
 def _safe_students_list_return_url(next_url, fallback_endpoint='staff.list_students'):
@@ -341,8 +346,11 @@ def _parse_invoice_target(source):
     }, None
 
 
-def _targeted_students(target):
-    students_query = Student.query.filter_by(is_deleted=False)
+def _targeted_students(target, tenant_id):
+    students_query = Student.query.join(User, Student.user_id == User.id).filter(
+        Student.is_deleted.is_(False),
+        User.tenant_id == tenant_id,
+    )
 
     if target['target_scope'] == 'PROGRAM':
         program_enum = ProgramType[target['target_program_type']]
@@ -353,7 +361,18 @@ def _targeted_students(target):
             ClassRoom.program_type == program_enum
         )
     elif target['target_scope'] == 'CLASS':
-        students_query = students_query.filter(Student.current_class_id == target['target_class_id'])
+        students_query = students_query.join(
+            ClassRoom,
+            Student.current_class_id == ClassRoom.id,
+        ).join(
+            ProgramGroup,
+            ClassRoom.program_group_id == ProgramGroup.id,
+        ).filter(
+            Student.current_class_id == target['target_class_id'],
+            ClassRoom.is_deleted.is_(False),
+            ProgramGroup.tenant_id == tenant_id,
+            ProgramGroup.is_deleted.is_(False),
+        )
     elif target['target_scope'] == 'STUDENT':
         students_query = students_query.filter(Student.id == target['target_student_id'])
 
@@ -379,13 +398,18 @@ def _send_invoices_redirect_params(source, target):
 @login_required
 @role_required(UserRole.TU)
 def generate_invoices(fee_id):
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('staff.send_invoices'))
+
     fee = FeeType.query.get_or_404(fee_id)
     target, error_message = _parse_invoice_target(request.form)
     if error_message:
         flash(error_message, 'warning')
         return redirect(url_for('staff.send_invoices'))
 
-    students = _targeted_students(target)
+    students = _targeted_students(target, tenant_id)
     if not students:
         flash('Tidak ada siswa sesuai target pengiriman tagihan.', 'warning')
         return redirect(url_for('staff.send_invoices', **_send_invoices_redirect_params(request.form, target)))
@@ -446,13 +470,18 @@ def generate_invoices(fee_id):
 @login_required
 @role_required(UserRole.TU)
 def delete_generated_invoices(fee_id):
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('staff.send_invoices'))
+
     fee = FeeType.query.get_or_404(fee_id)
     target, error_message = _parse_invoice_target(request.form)
     if error_message:
         flash(error_message, 'warning')
         return redirect(url_for('staff.send_invoices'))
 
-    students = _targeted_students(target)
+    students = _targeted_students(target, tenant_id)
     student_ids = [student.id for student in students]
     if not student_ids:
         flash('Tidak ada siswa sesuai target penghapusan.', 'warning')
@@ -497,6 +526,11 @@ def delete_generated_invoices(fee_id):
 @login_required
 @role_required(UserRole.TU)
 def send_invoices():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('staff.dashboard'))
+
     selected_fee_id = request.args.get('selected_fee_id', type=int)
     target, _ = _parse_invoice_target(request.args)
     if not target:
@@ -511,8 +545,21 @@ def send_invoices():
         fees_query = fees_query.filter(FeeType.id == selected_fee_id)
     fees = fees_query.order_by(FeeType.id.desc()).all()
     fee_options = FeeType.query.order_by(FeeType.name.asc()).all()
-    classes = ClassRoom.query.filter_by(is_deleted=False).order_by(ClassRoom.name.asc()).all()
-    students = Student.query.filter_by(is_deleted=False).order_by(Student.full_name.asc()).all()
+    classes = scoped_classrooms_query(tenant_id).order_by(ClassRoom.name.asc()).all()
+    students = (
+        Student.query.join(User, Student.user_id == User.id)
+        .filter(Student.is_deleted.is_(False), User.tenant_id == tenant_id)
+        .order_by(Student.full_name.asc())
+        .all()
+    )
+
+    class_ids = {class_room.id for class_room in classes}
+    student_ids = {student.id for student in students}
+    if target['target_scope'] == 'CLASS' and target['target_class_id'] not in class_ids:
+        target['target_class_id'] = None
+    if target['target_scope'] == 'STUDENT' and target['target_student_id'] not in student_ids:
+        target['target_student_id'] = None
+
     return render_template(
         'staff/send_invoices.html',
         fees=fees,
@@ -532,11 +579,19 @@ def send_invoices():
 @login_required
 @role_required(UserRole.TU)
 def manage_announcements():
-    classes = ClassRoom.query.filter_by(is_deleted=False).order_by(ClassRoom.name.asc()).all()
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('staff.dashboard'))
+
+    classes = scoped_classrooms_query(tenant_id).order_by(ClassRoom.name.asc()).all()
     users = User.query.filter(
+        User.tenant_id == tenant_id,
         User.role != UserRole.ADMIN,
         ~User.role_assignments.any(role=UserRole.ADMIN)
     ).order_by(User.username.asc()).limit(500).all()
+    allowed_class_ids = {class_room.id for class_room in classes}
+    allowed_user_ids = {user.id for user in users}
     available_roles = sorted({role_value for u in users for role_value in u.all_role_values()})
     role_labels = {
         UserRole.WALI_MURID.value: 'Wali Murid',
@@ -581,9 +636,15 @@ def manage_announcements():
         if target_scope == 'CLASS' and not class_id:
             flash("Pilih kelas tujuan terlebih dahulu.", "warning")
             return redirect(url_for('staff.manage_announcements'))
+        if target_scope == 'CLASS' and class_id not in allowed_class_ids:
+            flash("Kelas tujuan tidak valid untuk tenant aktif.", "warning")
+            return redirect(url_for('staff.manage_announcements'))
 
         if target_scope == 'USER' and not target_user_id:
             flash("Pilih pengguna tujuan terlebih dahulu.", "warning")
+            return redirect(url_for('staff.manage_announcements'))
+        if target_scope == 'USER' and target_user_id not in allowed_user_ids:
+            flash("Pengguna tujuan tidak valid untuk tenant aktif.", "warning")
             return redirect(url_for('staff.manage_announcements'))
 
         if target_scope == 'ROLE' and target_role not in targetable_roles:
@@ -749,13 +810,23 @@ def list_students():
 @login_required
 @role_required(UserRole.TU)
 def assign_majlis_classes():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('staff.dashboard'))
+
     query = (request.args.get('q') or '').strip()
     majlis_participants = list_active_majlis_participants(search=query)
-    majlis_classes = ClassRoom.query.filter_by(is_deleted=False, class_type=ClassType.MAJLIS_TALIM).order_by(ClassRoom.name).all()
+    majlis_classes = (
+        scoped_classrooms_query(tenant_id)
+        .filter(ClassRoom.class_type == ClassType.MAJLIS_TALIM)
+        .order_by(ClassRoom.name)
+        .all()
+    )
 
     # Fallback: jika belum ada class_type khusus, tetap izinkan pilih semua kelas agar operasional tidak terblokir
     if not majlis_classes:
-        majlis_classes = ClassRoom.query.filter_by(is_deleted=False).order_by(ClassRoom.name).all()
+        majlis_classes = scoped_classrooms_query(tenant_id).order_by(ClassRoom.name).all()
 
     if request.method == 'POST':
         updated = 0
@@ -783,15 +854,25 @@ def assign_majlis_classes():
 @role_required(UserRole.TU, UserRole.ADMIN)
 def edit_majlis_participant(participant_id):
     participant = MajlisParticipant.query.filter_by(id=participant_id, is_deleted=False).first_or_404()
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('staff.dashboard'))
+    if participant.user and participant.user.tenant_id != tenant_id:
+        flash('Peserta Majlis tidak valid untuk tenant aktif.', 'danger')
+        return redirect(url_for('staff.list_students'))
+
     active_role = get_active_role(current_user)
     list_endpoint = 'admin.list_students' if active_role == UserRole.ADMIN else 'staff.list_students'
 
-    majlis_classes = ClassRoom.query.filter_by(
-        is_deleted=False,
-        class_type=ClassType.MAJLIS_TALIM
-    ).order_by(ClassRoom.name).all()
+    majlis_classes = (
+        scoped_classrooms_query(tenant_id)
+        .filter(ClassRoom.class_type == ClassType.MAJLIS_TALIM)
+        .order_by(ClassRoom.name)
+        .all()
+    )
     if not majlis_classes:
-        majlis_classes = ClassRoom.query.filter_by(is_deleted=False).order_by(ClassRoom.name).all()
+        majlis_classes = scoped_classrooms_query(tenant_id).order_by(ClassRoom.name).all()
     allowed_class_ids = {cls.id for cls in majlis_classes}
 
     if request.method == 'POST':
@@ -846,15 +927,28 @@ def edit_majlis_participant(participant_id):
 @role_required(UserRole.TU)
 def edit_student(student_id):
     """TU bertugas menempatkan siswa ke kelas dan input NISN"""
-    student = Student.query.get_or_404(student_id)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('staff.list_students'))
+
+    student = (
+        Student.query.join(User, Student.user_id == User.id)
+        .filter(
+            Student.id == student_id,
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .first_or_404()
+    )
     return_url = _safe_students_list_return_url(
         request.args.get('next') or request.form.get('next'),
         fallback_endpoint='staff.list_students'
     )
-    classes = ClassRoom.query.all()
-    rumah_quran_classes = list_rumah_quran_classes()
+    classes = scoped_classrooms_query(tenant_id).all()
+    rumah_quran_classes = [class_room for class_room in list_rumah_quran_classes() if classroom_in_tenant(class_room, tenant_id)]
     rumah_quran_class = get_student_rumah_quran_classroom(student)
-    bahasa_classes = list_bahasa_classes()
+    bahasa_classes = [class_room for class_room in list_bahasa_classes() if classroom_in_tenant(class_room, tenant_id)]
     bahasa_class = get_student_bahasa_classroom(student)
 
     if request.method == 'POST':
@@ -869,7 +963,13 @@ def edit_student(student_id):
         bahasa_class_id = request.form.get('bahasa_class_id')
         bahasa_class_id = int(bahasa_class_id) if bahasa_class_id else None
 
-        selected_class = ClassRoom.query.filter_by(id=selected_class_id, is_deleted=False).first() if selected_class_id else None
+        selected_class = (
+            scoped_classrooms_query(tenant_id).filter(ClassRoom.id == selected_class_id).first()
+            if selected_class_id else None
+        )
+        if selected_class_id and selected_class is None:
+            flash('Kelas tidak valid untuk tenant aktif.', 'warning')
+            return redirect(url_for('staff.edit_student', student_id=student_id, next=return_url))
         if selected_class and selected_class.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ):
             rumah_quran_class_id = selected_class.id
         if selected_class and selected_class.program_type == ProgramType.BAHASA:
@@ -956,6 +1056,10 @@ def accept_candidate(candidate_id):
         return redirect(url_for('staff.ppdb_detail', candidate_id=calon.id))
 
     try:
+        tenant_id = current_user.tenant_id or get_default_tenant_id()
+        if tenant_id is None:
+            raise ValueError('Tenant default tidak ditemukan.')
+
         # Jalur khusus peserta Majelis Ta'lim (tidak membuat akun siswa/wali)
         if calon.program_type == ProgramType.MAJLIS_TALIM:
             nomor_majelis = calon.personal_phone or calon.parent_phone
@@ -964,11 +1068,8 @@ def accept_candidate(candidate_id):
 
             majlis_user = User.query.filter_by(username=nomor_majelis).first()
             if not majlis_user:
-                default_tenant_id = get_default_tenant_id()
-                if default_tenant_id is None:
-                    raise ValueError('Tenant default tidak ditemukan.')
                 majlis_user = User(
-                    tenant_id=default_tenant_id,
+                    tenant_id=tenant_id,
                     username=nomor_majelis,
                     email=f"majlis.{calon.id}@sekolah.id",
                     password_hash=generate_password_hash("123456"),
@@ -977,6 +1078,8 @@ def accept_candidate(candidate_id):
                 )
                 db.session.add(majlis_user)
                 db.session.flush()
+            elif majlis_user.tenant_id != tenant_id:
+                raise ValueError('Akun Majelis lintas tenant tidak diizinkan.')
 
             ensure_majlis_participant_acceptance(
                 user=majlis_user,
@@ -990,10 +1093,6 @@ def accept_candidate(candidate_id):
             db.session.commit()
             flash(f'Peserta Majelis {calon.full_name} berhasil diterima.', 'success')
             return redirect(url_for('staff.ppdb_detail', candidate_id=candidate_id))
-
-        tenant_id = current_user.tenant_id or get_default_tenant_id()
-        if tenant_id is None:
-            raise ValueError('Tenant default tidak ditemukan.')
 
         # --- 1. PROSES AKUN ---
         nis_baru = generate_nis()
