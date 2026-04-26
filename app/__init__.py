@@ -78,6 +78,7 @@ def create_app(config_class=Config):
     from app.routes.parent import parent_bp
     from app.routes.teacher import teacher_bp
     from app.routes.boarding import boarding_bp
+    from app.routes.api import api_bp
 
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
@@ -88,5 +89,6 @@ def create_app(config_class=Config):
     app.register_blueprint(parent_bp, url_prefix='/parent')
     app.register_blueprint(teacher_bp, url_prefix='/teacher')
     app.register_blueprint(boarding_bp)
+    app.register_blueprint(api_bp, url_prefix='/api/v1')
 
     return app
