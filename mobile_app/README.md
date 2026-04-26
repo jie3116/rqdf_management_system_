@@ -24,7 +24,7 @@ Default app URL:
 For real device testing, override it with your LAN IP:
 
 ```powershell
-flutter run --dart-define=API_BASE_URL=http://192.168.1.10:8000/api/v1
+flutter run --dart-define=BASE_URL_API=http://192.168.1.10:8000/api/v1
 ```
 
 Notes:
