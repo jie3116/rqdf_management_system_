@@ -33,6 +33,9 @@ def _program_code_for_classroom(class_room):
     if class_room.program_type == ProgramType.TAKHOSUS_TAHFIDZ:
         return "RUMAH_QURAN"
 
+    if class_room.program_type == ProgramType.BAHASA:
+        return "BAHASA"
+
     return "SEKOLAH_SD"
 
 

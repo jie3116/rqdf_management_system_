@@ -104,7 +104,7 @@ def backfill_nonformal_enrollments():
         active_year = _active_academic_year()
         programs = _program_map(tenant.id)
 
-        required_codes = {"MAJLIS_TALIM", "PESANTREN", "RUMAH_QURAN"}
+        required_codes = {"MAJLIS_TALIM", "PESANTREN", "RUMAH_QURAN", "BAHASA"}
         missing_codes = sorted(required_codes - set(programs.keys()))
         if missing_codes:
             raise RuntimeError(f"Program belum tersedia: {', '.join(missing_codes)}")
@@ -116,6 +116,8 @@ def backfill_nonformal_enrollments():
             "pesantren_memberships": 0,
             "rumah_quran_enrollments": 0,
             "rumah_quran_memberships": 0,
+            "bahasa_enrollments": 0,
+            "bahasa_memberships": 0,
             "skipped": 0,
         }
 
@@ -205,6 +207,22 @@ def backfill_nonformal_enrollments():
                     notes="Backfill dari kelas program rumah quran",
                     enrollment_key="rumah_quran_enrollments",
                     membership_key="rumah_quran_memberships",
+                )
+
+            if (
+                student.current_class
+                and student.current_class.program_group_id
+                and student.current_class.program_type == ProgramType.BAHASA
+            ):
+                handle_record(
+                    person_id=student.person_id,
+                    program_code="BAHASA",
+                    academic_year_id=student.current_class.academic_year_id or (active_year.id if active_year else None),
+                    group_id=student.current_class.program_group_id,
+                    join_date=student.created_at.date() if student.created_at else None,
+                    notes="Backfill dari kelas program bahasa",
+                    enrollment_key="bahasa_enrollments",
+                    membership_key="bahasa_memberships",
                 )
 
         db.session.commit()
