@@ -19,9 +19,36 @@ from app.services.staff_assignment_service import (
     list_teacher_subject_classes_from_assignments,
 )
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
+from app.utils.tenant import classroom_in_tenant, resolve_tenant_id, scoped_classrooms_query
 from app.utils.timezone import local_day_bounds_utc_naive, local_today, utc_now_naive
 
 teacher_bp = Blueprint('teacher', __name__)
+
+
+def _teacher_tenant_id(teacher):
+    if teacher is None:
+        return None
+    return resolve_tenant_id(getattr(teacher, "user", None), fallback_default=False)
+
+
+def _teacher_scoped_classrooms_query(teacher):
+    tenant_id = _teacher_tenant_id(teacher)
+    if tenant_id is None:
+        return ClassRoom.query.filter(ClassRoom.id == -1)
+    return scoped_classrooms_query(tenant_id)
+
+
+def _teacher_classroom_by_id(teacher, class_id):
+    if not class_id:
+        return None
+    return _teacher_scoped_classrooms_query(teacher).filter(ClassRoom.id == class_id).first()
+
+
+def _classroom_visible_for_teacher(teacher, class_room):
+    if class_room is None:
+        return False
+    tenant_id = _teacher_tenant_id(teacher)
+    return classroom_in_tenant(class_room, tenant_id)
 
 
 def _dedupe_classes(classes):
@@ -33,11 +60,16 @@ def _dedupe_classes(classes):
 
 
 def _get_teacher_homeroom_classes(teacher):
-    classes = list_teacher_homeroom_classes_from_assignments(teacher)
+    classes = [
+        class_room
+        for class_room in list_teacher_homeroom_classes_from_assignments(teacher)
+        if _classroom_visible_for_teacher(teacher, class_room)
+    ]
     if classes:
         return sorted(_dedupe_classes(classes), key=lambda item: item.name or "")
     return (
-        ClassRoom.query.filter_by(homeroom_teacher_id=teacher.id, is_deleted=False)
+        _teacher_scoped_classrooms_query(teacher)
+        .filter(ClassRoom.homeroom_teacher_id == teacher.id)
         .order_by(ClassRoom.name.asc())
         .all()
     )
@@ -107,6 +139,8 @@ def _collect_teacher_assignment_summary(teacher):
     all_teacher_schedules = Schedule.query.filter_by(teacher_id=teacher.id, is_deleted=False).all()
     for sch in all_teacher_schedules:
         if not sch.class_room:
+            continue
+        if not _classroom_visible_for_teacher(teacher, sch.class_room):
             continue
         if is_rumah_quran_classroom(sch.class_room):
             continue
@@ -204,6 +238,8 @@ def _get_teacher_classes(teacher):
         classes_by_id[homeroom_class.id] = homeroom_class
 
     for assigned_class in list_teacher_subject_classes_from_assignments(teacher):
+        if not _classroom_visible_for_teacher(teacher, assigned_class):
+            continue
         if is_rumah_quran_classroom(assigned_class):
             continue
         classes_by_id[assigned_class.id] = assigned_class
@@ -216,7 +252,7 @@ def _get_teacher_classes(teacher):
     ).distinct().all()
     for row in teaching_class_ids:
         class_id = row[0]
-        target_class = ClassRoom.query.get(class_id)
+        target_class = _teacher_classroom_by_id(teacher, class_id)
         if target_class and not target_class.is_deleted:
             if is_rumah_quran_classroom(target_class):
                 continue
@@ -244,6 +280,8 @@ def _get_teacher_attendance_classes(teacher):
     for schedule in teaching_schedules:
         class_room = schedule.class_room
         if not class_room or class_room.is_deleted:
+            continue
+        if not _classroom_visible_for_teacher(teacher, class_room):
             continue
         if not schedule.subject_id and not schedule.majlis_subject_id:
             continue
@@ -281,10 +319,9 @@ def _get_teacher_tahfidz_classes(teacher):
     # Rumah Qur'an: akses tahfidz hanya untuk pembimbing/wali kelas yang melekat
     # pada kelas tersebut (homeroom_teacher_id).
     strict_rumah_quran_classes = (
-        ClassRoom.query.filter(
+        _teacher_scoped_classrooms_query(teacher).filter(
             ClassRoom.homeroom_teacher_id == teacher.id,
             ClassRoom.program_type.in_([ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ]),
-            ClassRoom.is_deleted.is_(False),
         )
         .order_by(ClassRoom.name.asc())
         .all()
@@ -298,7 +335,7 @@ def _get_teacher_tahfidz_classes(teacher):
     assigned_subject_class_ids = {
         class_room.id
         for class_room in _dedupe_classes(list_teacher_subject_classes_from_assignments(teacher))
-        if class_room and not class_room.is_deleted
+        if class_room and not class_room.is_deleted and _classroom_visible_for_teacher(teacher, class_room)
     }
     schedules = []
     if assigned_subject_class_ids:
@@ -314,6 +351,8 @@ def _get_teacher_tahfidz_classes(teacher):
 
     for schedule in schedules:
         if not schedule.class_room or schedule.class_room.is_deleted:
+            continue
+        if not _classroom_visible_for_teacher(teacher, schedule.class_room):
             continue
         if is_rumah_quran_classroom(schedule.class_room):
             # Rumah Qur'an tidak memakai akses berbasis jadwal mapel.
@@ -331,7 +370,7 @@ def _teacher_can_access_tahfidz_class(teacher, class_id):
     if not teacher or not class_id:
         return False
 
-    class_room = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+    class_room = _teacher_classroom_by_id(teacher, class_id)
     if class_room is None:
         return False
 
@@ -353,8 +392,14 @@ def _get_teacher_tahfidz_classes_legacy(teacher):
     return classes
 
 
-def _get_class_participants(class_id):
-    class_room = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+def _get_class_participants(class_id, tenant_id=None):
+    if tenant_id is None:
+        tenant_id = resolve_tenant_id(current_user, fallback_default=False)
+
+    class_room = scoped_classrooms_query(tenant_id).filter(ClassRoom.id == class_id).first() if tenant_id else None
+    if class_room is None:
+        return [], []
+
     if is_rumah_quran_classroom(class_room):
         students = list_rumah_quran_students_for_class(class_id)
     elif is_bahasa_classroom(class_room):
@@ -514,10 +559,17 @@ def dashboard():
         day=today_name,
         is_deleted=False
     ).order_by(Schedule.start_time).all()
+    todays_schedules = [
+        schedule
+        for schedule in todays_schedules
+        if _classroom_visible_for_teacher(teacher, schedule.class_room)
+    ]
 
     all_teacher_schedules = Schedule.query.filter_by(teacher_id=teacher.id, is_deleted=False).all()
     for sch in all_teacher_schedules:
         if not sch.class_room:
+            continue
+        if not _classroom_visible_for_teacher(teacher, sch.class_room):
             continue
         if not sch.subject and not sch.majlis_subject:
             continue
@@ -633,7 +685,7 @@ def input_grades():
     class_majlis_subject_options = []
 
     if selected_class_id:
-        target_class = ClassRoom.query.get(selected_class_id)
+        target_class = _teacher_classroom_by_id(teacher, selected_class_id)
         if target_class and selected_class_id in my_class_ids:
             students, majlis_participants = _get_class_participants(selected_class_id)
             participants = _build_participant_rows(students, majlis_participants)
@@ -853,7 +905,7 @@ def grade_history():
     academic_summary_rows = []
 
     if selected_class_id:
-        selected_class = ClassRoom.query.get(selected_class_id)
+        selected_class = _teacher_classroom_by_id(teacher, selected_class_id)
         if selected_class is None or selected_class_id not in my_class_ids:
             flash('Anda tidak memiliki akses ke kelas tersebut.', 'danger')
             return redirect(url_for('teacher.grade_history'))
@@ -976,7 +1028,7 @@ def attendance_history():
     participant_recap = {'hadir': 0, 'sakit': 0, 'izin': 0, 'alpa': 0, 'total': 0}
 
     if selected_class_id:
-        selected_class = ClassRoom.query.get(selected_class_id)
+        selected_class = _teacher_classroom_by_id(teacher, selected_class_id)
         if selected_class is None or selected_class_id not in my_class_ids:
             flash('Anda tidak memiliki akses ke kelas tersebut.', 'danger')
             return redirect(url_for('teacher.attendance_history'))
@@ -1125,7 +1177,7 @@ def input_tahfidz():
     selected_class = None
 
     if selected_class_id:
-        selected_class = ClassRoom.query.get(selected_class_id)
+        selected_class = _teacher_classroom_by_id(teacher, selected_class_id)
         if (
             selected_class
             and selected_class_id in my_class_ids
@@ -1278,7 +1330,7 @@ def input_recitation():
     selected_class = None
 
     if selected_class_id:
-        selected_class = ClassRoom.query.get(selected_class_id)
+        selected_class = _teacher_classroom_by_id(teacher, selected_class_id)
         if (
             selected_class
             and selected_class_id in my_class_ids
@@ -1440,7 +1492,7 @@ def input_tahfidz_evaluation():
     selected_class = None
 
     if selected_class_id:
-        selected_class = ClassRoom.query.get(selected_class_id)
+        selected_class = _teacher_classroom_by_id(teacher, selected_class_id)
         if (
             selected_class
             and selected_class_id in my_class_ids
@@ -1597,7 +1649,7 @@ def input_behavior_report():
     recent_reports = []
 
     if selected_class_id:
-        selected_class = ClassRoom.query.get(selected_class_id)
+        selected_class = _teacher_classroom_by_id(teacher, selected_class_id)
         if selected_class and selected_class_id in my_class_ids:
             students, _ = _get_class_participants(selected_class_id)
             if query:
@@ -1630,7 +1682,7 @@ def input_behavior_report():
             flash("Data laporan belum lengkap.", "warning")
             return redirect(url_for('teacher.input_behavior_report', class_id=class_id))
 
-        class_room = ClassRoom.query.get(class_id)
+        class_room = _teacher_classroom_by_id(teacher, class_id)
         if class_room is None or class_id not in my_class_ids:
             flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
             return redirect(url_for('teacher.input_behavior_report'))
@@ -1693,7 +1745,7 @@ def class_announcements():
         content = (request.form.get('content') or '').strip()
         is_active = request.form.get('is_active') == 'on'
 
-        target_class = ClassRoom.query.get(class_id) if class_id else None
+        target_class = _teacher_classroom_by_id(teacher, class_id) if class_id else None
         if not target_class or class_id not in my_class_ids:
             flash("Kelas target tidak valid.", "danger")
             return redirect(url_for('teacher.class_announcements'))
@@ -1780,7 +1832,7 @@ def homeroom_students():
 @role_required(UserRole.GURU)
 def calculate_student_grades(student_id):
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
-    student = Student.query.get_or_404(student_id)
+    student = Student.query.filter_by(id=student_id, is_deleted=False).first_or_404()
     
     # Cek akses
     my_classes = _get_teacher_classes(teacher)
@@ -1838,7 +1890,7 @@ def print_report_card(student_id):
         flash("Hanya wali kelas yang dapat mencetak raport.", "danger")
         return redirect(url_for('teacher.dashboard'))
     
-    student = Student.query.get_or_404(student_id)
+    student = Student.query.filter_by(id=student_id, is_deleted=False).first_or_404()
     if not any(_student_belongs_to_class(student, class_room.id) for class_room in homeroom_classes):
         flash("Siswa tidak ada di kelas perwalian Anda.", "danger")
         return redirect(url_for('teacher.homeroom_students'))
@@ -1885,7 +1937,12 @@ def print_report_card(student_id):
 @role_required(UserRole.GURU)
 def print_attachment(student_id):
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
-    student = Student.query.get_or_404(student_id)
+    student = Student.query.filter_by(id=student_id, is_deleted=False).first_or_404()
+
+    my_classes = _get_teacher_classes(teacher)
+    if not any(_student_belongs_to_class(student, class_room.id) for class_room in my_classes):
+        flash("Anda tidak memiliki akses ke siswa tersebut.", "danger")
+        return redirect(url_for('teacher.dashboard'))
     
     # Get tahfidz records for attachment
     tahfidz_records = TahfidzRecord.query.filter_by(
@@ -1924,7 +1981,7 @@ def input_attendance():
     existing_attendance = {}
     
     if selected_class_id:
-        selected_class = ClassRoom.query.get(selected_class_id)
+        selected_class = _teacher_classroom_by_id(teacher, selected_class_id)
         if selected_class and selected_class_id in my_class_ids:
             students, majlis_participants = _get_class_participants(selected_class_id)
             participants = _build_participant_rows(students, majlis_participants)

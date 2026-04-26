@@ -6,11 +6,12 @@ from app.models import (
     UserRole, TahfidzRecord, TahfidzSummary, TahfidzEvaluation, ProgramType,
     RecitationRecord, Schedule, Grade, Violation, AcademicYear, Invoice, PaymentStatus,
     ParticipantType, StudentCandidate, EducationLevel, ScholarshipCategory, RegistrationStatus,
-    MajlisParticipant, BehaviorReport, Attendance, AttendanceStatus,
+    MajlisParticipant, BehaviorReport, Attendance, AttendanceStatus, ClassRoom,
     BoardingAttendance, BoardingActivitySchedule
 )
 from app.decorators import role_required
 from app.services.formal_service import get_student_formal_classroom
+from app.utils.tenant import resolve_tenant_id, scoped_classrooms_query
 from app.utils.timezone import local_now, local_today
 from app.extensions import db
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
@@ -25,6 +26,10 @@ def join_majlis():
     parent = current_user.parent_profile
     if not parent:
         flash("Profil Wali Murid tidak ditemukan.", "danger")
+        return redirect(url_for('parent.dashboard'))
+    tenant_id = resolve_tenant_id(current_user, fallback_default=False)
+    if tenant_id is None:
+        flash("Tenant akun tidak valid. Hubungi admin.", "danger")
         return redirect(url_for('parent.dashboard'))
 
     participant_profile = current_user.majlis_profile
@@ -46,6 +51,7 @@ def join_majlis():
         return redirect(url_for('parent.join_majlis'))
 
     existing_candidate = StudentCandidate.query.filter(
+        StudentCandidate.tenant_id == tenant_id,
         StudentCandidate.program_type == ProgramType.MAJLIS_TALIM,
         StudentCandidate.status.in_([RegistrationStatus.PENDING, RegistrationStatus.INTERVIEW, RegistrationStatus.ACCEPTED]),
         or_(
@@ -56,6 +62,7 @@ def join_majlis():
 
     if not existing_candidate:
         candidate = StudentCandidate(
+            tenant_id=tenant_id,
             status=RegistrationStatus.PENDING,
             program_type=ProgramType.MAJLIS_TALIM,
             education_level=EducationLevel.NON_FORMAL,
@@ -154,8 +161,16 @@ def dashboard():
     target_ids = [current_user.id]
     if student and student.user_id:
         target_ids.append(student.user_id)
+    tenant_id = resolve_tenant_id(current_user, fallback_default=False)
     formal_class = get_student_formal_classroom(student)
     active_class_id = formal_class.id if formal_class else student.current_class_id
+    if tenant_id and active_class_id:
+        active_class = scoped_classrooms_query(tenant_id).filter(ClassRoom.id == active_class_id).first()
+        if active_class is None:
+            active_class_id = None
+        elif formal_class is None:
+            formal_class = active_class
+
     class_program = formal_class.program_type.name if formal_class and formal_class.program_type else None
     announcements, unread_announcements_count = get_announcements_for_dashboard(
         current_user,
@@ -174,12 +189,12 @@ def dashboard():
     todays_schedules = []
     if active_class_id:
         todays_schedules = Schedule.query.filter_by(
-            class_id=active_class_id, day=today_name
+            class_id=active_class_id, day=today_name, is_deleted=False
         ).order_by(Schedule.start_time).all()
 
     weekly_schedule = {day: [] for day in ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']}
     if active_class_id:
-        all_schedules = Schedule.query.filter_by(class_id=active_class_id).all()
+        all_schedules = Schedule.query.filter_by(class_id=active_class_id, is_deleted=False).all()
         for sch in all_schedules:
             if sch.day in weekly_schedule:
                 weekly_schedule[sch.day].append(sch)

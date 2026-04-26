@@ -14,15 +14,15 @@
             </div>
             <div class="card-body text-center">
                 <h4 class="fw-bold mb-1">{{ candidate.full_name }}</h4>
-                <p class="text-muted">{{ candidate.program_type.value }}</p>
+                <p class="text-muted">{{ candidate.program_type.value if candidate.program_type else '-' }}</p>
                 
                 <hr>
                 
                 <div class="mb-3">
                     <small class="text-uppercase text-muted fw-bold">Status Saat Ini</small><br>
-                    {% if candidate.status.name == 'PENDING' %}
+                    {% if candidate.status and candidate.status.name == 'PENDING' %}
                         <span class="badge bg-warning text-dark fs-6 px-3 py-2">Menunggu Verifikasi</span>
-                    {% elif candidate.status.name == 'ACCEPTED' %}
+                    {% elif candidate.status and candidate.status.name == 'ACCEPTED' %}
                         <span class="badge bg-success fs-6 px-3 py-2">Sudah Diterima</span>
                     {% else %}
                         <span class="badge bg-danger fs-6 px-3 py-2">Ditolak</span>
@@ -45,7 +45,7 @@
                     <li class="nav-item">
                         <button class="nav-link" id="ortu-tab" data-bs-toggle="tab" data-bs-target="#ortu" type="button">Orang Tua</button>
                     </li>
-                    {% if candidate.program_type.name == 'RQDF_SORE' %}
+                    {% if candidate.program_type and candidate.program_type.name == 'RQDF_SORE' %}
                     <li class="nav-item">
                         <button class="nav-link" id="rqdf-tab" data-bs-toggle="tab" data-bs-target="#rqdf" type="button">Detail RQDF</button>
                     </li>
@@ -58,7 +58,7 @@
                             <tr><td width="30%" class="text-muted">NIK</td><td class="fw-bold">{{ candidate.nik or '-' }}</td></tr>
                             <tr><td class="text-muted">No. KK</td><td class="fw-bold">{{ candidate.kk_number or '-' }}</td></tr>
                             <tr><td class="text-muted">TTL</td><td class="fw-bold">{{ candidate.place_of_birth }}, {{ candidate.date_of_birth }}</td></tr>
-                            <tr><td class="text-muted">Jenis Kelamin</td><td class="fw-bold">{{ candidate.gender.value }}</td></tr>
+                            <tr><td class="text-muted">Jenis Kelamin</td><td class="fw-bold">{{ candidate.gender.value if candidate.gender else '-' }}</td></tr>
                             <tr><td class="text-muted">Alamat</td><td>{{ candidate.address }}</td></tr>
                             <tr><td class="text-muted">Sekolah Asal</td><td class="fw-bold">{{ candidate.previous_school }}</td></tr>
                         </table>
@@ -86,19 +86,19 @@
 
                     <div class="tab-pane fade" id="rqdf">
                         <table class="table table-borderless">
-                            <tr><td width="40%" class="text-muted">Pilihan Jadwal</td><td class="fw-bold">{{ candidate.tahfidz_schedule.value }}</td></tr>
-                            <tr><td class="text-muted">Ukuran Seragam</td><td class="fw-bold">{{ candidate.uniform_size.value }}</td></tr>
+                            <tr><td width="40%" class="text-muted">Pilihan Jadwal</td><td class="fw-bold">{{ candidate.tahfidz_schedule.value if candidate.tahfidz_schedule else '-' }}</td></tr>
+                            <tr><td class="text-muted">Ukuran Seragam</td><td class="fw-bold">{{ candidate.uniform_size.value if candidate.uniform_size else '-' }}</td></tr>
                             <tr><td class="text-muted">Infaq Pembangunan</td><td class="fw-bold text-success">Rp {{ "{:,.0f}".format(candidate.initial_pledge_amount) }}</td></tr>
                         </table>
                     </div>
                 </div>
 
-                {% if candidate.status.name == 'PENDING' %}
+                {% if candidate.status and candidate.status.name == 'PENDING' %}
                 <hr>
-                <form id="accept-form" action="{{ url_for('staff.accept_candidate', candidate_id=candidate.id) }}" method="POST" onsubmit="return confirm('{{ 'Yakin terima peserta majelis ini? Akun user akan dibuat tanpa tagihan.' if candidate.program_type.name == 'MAJLIS_TALIM' else 'Yakin terima santri ini? Akun User dan Tagihan akan dibuat otomatis sesuai rincian biaya di bawah.' }}');">
+                <form id="accept-form" action="{{ url_for('staff.accept_candidate', candidate_id=candidate.id) }}" method="POST" onsubmit="return confirm('{{ 'Yakin terima peserta majelis ini? Akun user akan dibuat tanpa tagihan.' if candidate.program_type and candidate.program_type.name == 'MAJLIS_TALIM' else 'Yakin terima santri ini? Akun User dan Tagihan akan dibuat otomatis sesuai rincian biaya di bawah.' }}');">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
-                    {% if candidate.program_type.name == 'MAJLIS_TALIM' %}
+                    {% if candidate.program_type and candidate.program_type.name == 'MAJLIS_TALIM' %}
                     <div class="alert alert-info mb-3">
                         <i class="fas fa-info-circle me-2"></i>
                         Program Majelis Ta'lim tidak membentuk tagihan PPDB. Verifikasi akan membuat akun peserta saja.
@@ -163,7 +163,7 @@
     </div>
 </div>
 
-{% if candidate.status.name == 'PENDING' and candidate.program_type.name != 'MAJLIS_TALIM' %}
+{% if candidate.status and candidate.status.name == 'PENDING' and (not candidate.program_type or candidate.program_type.name != 'MAJLIS_TALIM') %}
 <script>
     document.addEventListener("DOMContentLoaded", function () {
         const inputs = Array.from(document.querySelectorAll(".fee-amount-input"));

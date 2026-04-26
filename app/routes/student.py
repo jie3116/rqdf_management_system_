@@ -9,11 +9,12 @@ from app import db
 from app.models import (
     UserRole, Student, TahfidzRecord, TahfidzSummary, TahfidzEvaluation,
     RecitationRecord,Schedule, Grade, Violation, AcademicYear, BehaviorReport,
-    Attendance, ParticipantType, AttendanceStatus, BoardingAttendance, BoardingActivitySchedule
+    Attendance, ParticipantType, AttendanceStatus, BoardingAttendance, BoardingActivitySchedule, ClassRoom
 )
 from app.decorators import role_required
 from app.services.formal_service import get_student_formal_classroom
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
+from app.utils.tenant import resolve_tenant_id, scoped_classrooms_query
 from app.utils.timezone import local_now, local_today
 
 student_bp = Blueprint('student', __name__)
@@ -51,6 +52,16 @@ def dashboard():
 
     formal_class = get_student_formal_classroom(student)
     active_class_id = formal_class.id if formal_class else student.current_class_id
+    tenant_id = resolve_tenant_id(current_user, fallback_default=False)
+    if active_class_id:
+        if tenant_id is None:
+            active_class_id = None
+        else:
+            active_class = scoped_classrooms_query(tenant_id).filter(ClassRoom.id == active_class_id).first()
+            if active_class is None:
+                active_class_id = None
+            elif formal_class is None:
+                formal_class = active_class
 
     top_tab = (request.args.get('top_tab') or 'main').strip().lower()
     show_all_announcements = (request.args.get('ann') or '').strip().lower() == 'all'
@@ -84,7 +95,8 @@ def dashboard():
         ) \
             .filter_by(
             class_id=active_class_id,
-            day=today_name
+            day=today_name,
+            is_deleted=False
         ).order_by(Schedule.start_time).all()
 
     # Jadwal Lengkap (Senin - Minggu)
@@ -96,7 +108,7 @@ def dashboard():
             joinedload(Schedule.subject),
             joinedload(Schedule.teacher)
         ) \
-            .filter_by(class_id=active_class_id).all()
+            .filter_by(class_id=active_class_id, is_deleted=False).all()
 
     # Logic pengelompokan Python (Tidak berubah, ini sudah oke)
     weekly_schedule = {day: [] for day in ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']}

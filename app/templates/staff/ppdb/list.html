@@ -41,34 +41,38 @@
                         <td class="fw-bold text-primary">{{ c.registration_no }}</td>
                         <td>
                             {{ c.full_name }}
-                            <div class="small text-muted">{{ c.gender.value }} | {{ c.education_level.value }}</div>
+                            <div class="small text-muted">
+                                {{ c.gender.value if c.gender else '-' }} | {{ c.education_level.value if c.education_level else '-' }}
+                            </div>
                         </td>
                         <td>
-                            {% if c.program_type.name == 'MAJLIS_TALIM' %}
+                            {% if c.program_type and c.program_type.name == 'MAJLIS_TALIM' %}
                                 <span class="badge bg-success">Majelis Ta'lim</span>
-                            {% elif c.program_type.name == 'RQDF_SORE' %}
+                            {% elif c.program_type and c.program_type.name == 'RQDF_SORE' %}
                                 <span class="badge bg-primary">RQDF Sore</span>
-                            {% elif c.program_type.name == 'TAKHOSUS_TAHFIDZ' %}
+                            {% elif c.program_type and c.program_type.name == 'TAKHOSUS_TAHFIDZ' %}
                                 <span class="badge bg-warning text-dark">Takhosus Tahfidz</span>
                             {% else %}
                                 <span class="badge bg-info text-dark">Sekolah Formal</span>
                             {% endif %}
                         </td>
                          <td>
-                            {% if c.program_type.name == 'MAJLIS_TALIM' %}
+                            {% if c.program_type and c.program_type.name == 'MAJLIS_TALIM' %}
                                 -
                             {% else %}
-                                {{ c.scholarship_category.value }}
+                                {{ c.scholarship_category.value if c.scholarship_category else '-' }}
                             {% endif %}
                         </td>
                         <td>{{ c.created_at.strftime('%d %b %Y') }}</td>
                         <td>
-                            {% if c.status.name == 'PENDING' %}
+                            {% if c.status and c.status.name == 'PENDING' %}
                                 <span class="badge bg-warning text-dark">Menunggu Verifikasi</span>
-                            {% elif c.status.name == 'ACCEPTED' %}
+                            {% elif c.status and c.status.name == 'ACCEPTED' %}
                                 <span class="badge bg-success">Diterima</span>
-                            {% elif c.status.name == 'REJECTED' %}
+                            {% elif c.status and c.status.name == 'REJECTED' %}
                                 <span class="badge bg-danger">Ditolak</span>
+                            {% else %}
+                                <span class="badge bg-secondary">-</span>
                             {% endif %}
                         </td>
                         <td>

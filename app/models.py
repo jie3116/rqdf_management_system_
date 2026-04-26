@@ -1133,6 +1133,7 @@ class Transaction(BaseModel):
 class StudentCandidate(BaseModel):
     __tablename__ = 'student_candidates'
     id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
     registration_no = db.Column(db.String(20), unique=True)
     program_type = db.Column(db.Enum(ProgramType, name="programtype"), default=ProgramType.SEKOLAH_FULLDAY)
     education_level = db.Column(db.Enum(EducationLevel))

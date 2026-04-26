@@ -73,7 +73,6 @@ from app.utils.roles import validate_role_combination, role_label, ROLE_PRIORITY
 from app.utils.money import to_rupiah_int
 from app.utils.tenant import (
     classroom_in_tenant,
-    get_default_tenant_id,
     resolve_tenant_id,
     scoped_classrooms_query,
 )
@@ -184,16 +183,46 @@ def _iter_upload_rows(file):
 @login_required
 @role_required(UserRole.ADMIN)
 def dashboard():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
     # 1. Hitung Total Siswa & Guru
-    total_students = Student.query.filter_by(is_deleted=False).count()
-    total_teachers = Teacher.query.filter_by(is_deleted=False).count()
+    total_students = (
+        Student.query.join(User, Student.user_id == User.id)
+        .filter(
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .count()
+    )
+    total_teachers = (
+        Teacher.query.join(User, Teacher.user_id == User.id)
+        .filter(
+            Teacher.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .count()
+    )
 
     # 2. Hitung Pemasukan Hari Ini (PENTING!)
     start_utc, end_utc = local_day_bounds_utc_naive()
-    income_today = db.session.query(func.sum(Transaction.amount)).filter(
-        Transaction.date >= start_utc,
-        Transaction.date < end_utc
-    ).scalar() or 0  # <--- "or 0" penting agar tidak None
+    income_today = (
+        db.session.query(func.sum(Transaction.amount))
+        .join(Invoice, Invoice.id == Transaction.invoice_id)
+        .join(Student, Student.id == Invoice.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            Transaction.date >= start_utc,
+            Transaction.date < end_utc,
+            Invoice.is_deleted.is_(False),
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .scalar()
+        or 0
+    )  # <--- "or 0" penting agar tidak None
 
     # 3. Kirim variabel ke HTML (income_today wajib ada)
     return render_template('admin/dashboard.html',
@@ -434,24 +463,28 @@ def _display_assignment_note(note):
 @login_required
 @role_required(UserRole.ADMIN)
 def teacher_assignments(id):
-    teacher = Teacher.query.get_or_404(id)
     tenant_id = _current_tenant_id()
-    teacher_tenant_id = teacher.user.tenant_id if teacher.user else None
 
     if tenant_id is None:
         flash('Tenant default tidak ditemukan.', 'danger')
         return redirect(url_for('admin.manage_teachers'))
 
-    if teacher_tenant_id is not None and teacher_tenant_id != tenant_id:
-        flash('Akses assignment guru lintas tenant tidak diizinkan.', 'danger')
-        return redirect(url_for('admin.manage_teachers'))
+    teacher = (
+        Teacher.query.join(User, Teacher.user_id == User.id)
+        .filter(
+            Teacher.id == id,
+            Teacher.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .first_or_404()
+    )
 
     assignment_rows = (
         StaffAssignment.query
         .outerjoin(Program, StaffAssignment.program_id == Program.id)
         .outerjoin(ProgramGroup, StaffAssignment.group_id == ProgramGroup.id)
         .filter(
-            StaffAssignment.tenant_id == (teacher_tenant_id or tenant_id),
+            StaffAssignment.tenant_id == tenant_id,
             StaffAssignment.person_id == teacher.person_id,
             StaffAssignment.is_deleted == False,
         )
@@ -520,7 +553,20 @@ def teacher_assignments(id):
 @login_required
 @role_required(UserRole.ADMIN)
 def delete_teacher(id):
-    teacher = Teacher.query.get_or_404(id)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_teachers'))
+
+    teacher = (
+        Teacher.query.join(User, Teacher.user_id == User.id)
+        .filter(
+            Teacher.id == id,
+            Teacher.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .first_or_404()
+    )
     teacher.delete()
     if teacher.user:
         teacher.user.delete()
@@ -609,8 +655,21 @@ def upload_teachers():
 @login_required
 @role_required(UserRole.ADMIN)
 def edit_teacher(id):
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_teachers'))
+
     # Ambil data guru, return 404 jika tidak ada
-    teacher = Teacher.query.get_or_404(id)
+    teacher = (
+        Teacher.query.join(User, Teacher.user_id == User.id)
+        .filter(
+            Teacher.id == id,
+            Teacher.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .first_or_404()
+    )
 
     if request.method == 'POST':
         # Ambil data dari form
@@ -726,7 +785,20 @@ def manage_staff():
 @login_required
 @role_required(UserRole.ADMIN)
 def delete_staff(id):
-    staff = Staff.query.get_or_404(id)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_staff'))
+
+    staff = (
+        Staff.query.join(User, Staff.user_id == User.id)
+        .filter(
+            Staff.id == id,
+            Staff.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .first_or_404()
+    )
     staff.delete()
     if staff.user:
         staff.user.delete()
@@ -739,8 +811,21 @@ def delete_staff(id):
 @login_required
 @role_required(UserRole.ADMIN)
 def edit_staff(id):
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_staff'))
+
     # Ambil data staff, jika tidak ada return 404
-    staff = Staff.query.get_or_404(id)
+    staff = (
+        Staff.query.join(User, Staff.user_id == User.id)
+        .filter(
+            Staff.id == id,
+            Staff.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .first_or_404()
+    )
 
     if request.method == 'POST':
         # Ambil data input
@@ -977,9 +1062,17 @@ def delete_class(class_id):
 @login_required
 @role_required(UserRole.ADMIN)
 def manage_extracurriculars():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
     if request.method == 'POST':
         name = request.form.get('name')
-        supervisor_id = request.form.get('supervisor_id')
+        supervisor_id = request.form.get('supervisor_id', type=int)
+        if supervisor_id and _tenant_teachers_query(tenant_id).filter(Teacher.id == supervisor_id).first() is None:
+            flash('Pembina ekstrakurikuler tidak valid untuk tenant aktif.', 'warning')
+            return redirect(url_for('admin.manage_extracurriculars'))
 
         ekskul = Extracurricular(name=name, supervisor_teacher_id=supervisor_id)
         db.session.add(ekskul)
@@ -988,7 +1081,7 @@ def manage_extracurriculars():
         return redirect(url_for('admin.manage_extracurriculars'))
 
     ekskuls = Extracurricular.query.filter_by(is_deleted=False).all()
-    teachers = Teacher.query.filter_by(is_deleted=False).all()
+    teachers = _tenant_teachers_query(tenant_id).order_by(Teacher.full_name.asc()).all()
     return render_template('admin/student_affairs/extracurriculars.html', ekskuls=ekskuls, teachers=teachers)
 
 
@@ -1207,11 +1300,23 @@ def edit_student(student_id):
 @login_required
 @role_required(UserRole.ADMIN)
 def list_students():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
     query = (request.args.get('q') or '').strip()
     query_majlis = (request.args.get('q_majlis') or '').strip()
     active_category = (request.args.get('category') or 'all').strip().lower()
 
-    students_query = Student.query.filter_by(is_deleted=False).outerjoin(ClassRoom, Student.current_class_id == ClassRoom.id)
+    students_query = (
+        Student.query.join(User, Student.user_id == User.id)
+        .filter(
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .outerjoin(ClassRoom, Student.current_class_id == ClassRoom.id)
+    )
 
     if query:
         students_query = students_query.outerjoin(Parent, Student.parent_id == Parent.id).filter(
@@ -1286,7 +1391,7 @@ def list_students():
             student.id: get_student_bahasa_classroom(student)
             for student in students
         }
-    majlis_participants = list_active_majlis_participants(search=query_majlis)
+    majlis_participants = list_active_majlis_participants(search=query_majlis, tenant_id=tenant_id)
 
     return render_template(
         'student/list_students.html',
@@ -1456,7 +1561,20 @@ def upload_students():
 @login_required
 @role_required(UserRole.ADMIN)
 def delete_student(id):
-    student = Student.query.get_or_404(id)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.list_students'))
+
+    student = (
+        Student.query.join(User, Student.user_id == User.id)
+        .filter(
+            Student.id == id,
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .first_or_404()
+    )
     student.delete()  # Menggunakan method Soft Delete dari BaseModel
     flash('Data siswa berhasil dihapus (Soft Delete).', 'warning')
     return redirect(url_for('admin.list_students'))
@@ -1572,8 +1690,20 @@ def generate_invoices(fee_id):
     Menggunakan logika yang sama seperti modul TU dengan guard agar tidak error
     jika relasi student_candidate belum tersedia.
     """
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_fee_types'))
+
     fee = FeeType.query.get_or_404(fee_id)
-    students = Student.query.all()
+    students = (
+        Student.query.join(User, Student.user_id == User.id)
+        .filter(
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .all()
+    )
 
     count_success = 0
     bulan_tahun = local_now().strftime("%Y%m")
@@ -1629,8 +1759,13 @@ def generate_invoices(fee_id):
 @login_required
 @role_required(UserRole.ADMIN)
 def ppdb_list():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
     query = (request.args.get('q') or '').strip()
-    candidates_query = StudentCandidate.query.filter_by(is_deleted=False)
+    candidates_query = StudentCandidate.query.filter_by(tenant_id=tenant_id, is_deleted=False)
     if query:
         candidates_query = candidates_query.filter(
             or_(
@@ -1649,7 +1784,12 @@ def ppdb_list():
 @login_required
 @role_required(UserRole.ADMIN)
 def accept_candidate(candidate_id):
-    calon = StudentCandidate.query.filter_by(id=candidate_id, is_deleted=False).first_or_404()
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    calon = StudentCandidate.query.filter_by(id=candidate_id, tenant_id=tenant_id, is_deleted=False).first_or_404()
 
     if calon.status == RegistrationStatus.ACCEPTED:
         flash('Siswa ini sudah diproses sebelumnya.', 'warning')
@@ -1664,11 +1804,8 @@ def accept_candidate(candidate_id):
 
             majlis_user = User.query.filter_by(username=nomor_majelis).first()
             if not majlis_user:
-                default_tenant_id = _current_tenant_id()
-                if default_tenant_id is None:
-                    raise ValueError('Tenant default tidak ditemukan.')
                 majlis_user = User(
-                    tenant_id=default_tenant_id,
+                    tenant_id=tenant_id,
                     username=nomor_majelis,
                     email=f"majlis.{calon.id}@sekolah.id",
                     password_hash=generate_password_hash(nomor_majelis or "123456"),
@@ -1677,7 +1814,7 @@ def accept_candidate(candidate_id):
                 )
                 db.session.add(majlis_user)
                 db.session.flush()
-            elif majlis_user.tenant_id != _current_tenant_id():
+            elif majlis_user.tenant_id != tenant_id:
                 raise ValueError('Akun Majelis lintas tenant tidak diizinkan.')
 
             ensure_majlis_participant_acceptance(
@@ -1692,10 +1829,6 @@ def accept_candidate(candidate_id):
             db.session.commit()
             flash(f"Peserta Majelis {calon.full_name} berhasil diterima.", 'success')
             return redirect(url_for('admin.ppdb_list'))
-
-        tenant_id = current_user.tenant_id or get_default_tenant_id()
-        if tenant_id is None:
-            raise ValueError('Tenant default tidak ditemukan.')
 
         # --- 1. PROSES AKUN ---
         nis_baru = generate_nis()

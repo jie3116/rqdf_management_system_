@@ -19,6 +19,7 @@ from app.forms import PPDBForm
 from app.decorators import role_required
 from app.services.majlis_enrollment_service import resolve_majlis_classroom
 from app.services.ppdb_fee_service import get_public_ppdb_fee_preview
+from app.utils.tenant import resolve_tenant_id, scoped_classrooms_query
 from app.utils.timezone import local_now
 
 # Kita hapus import model Student, Tahfidz, Schedule dll karena tidak dipakai lagi di sini
@@ -67,6 +68,12 @@ def _get_majlis_announcements(limit=None):
     if class_id is None and parent_profile and getattr(parent_profile, "person_id", None):
         majlis_class = resolve_majlis_classroom(current_user.tenant_id, parent_profile.person_id)
         class_id = majlis_class.id if majlis_class else None
+
+    tenant_id = resolve_tenant_id(current_user, fallback_default=False)
+    if tenant_id and class_id:
+        scoped_class = scoped_classrooms_query(tenant_id).filter_by(id=class_id).first()
+        if scoped_class is None:
+            class_id = None
 
     announcements, _ = get_announcements_for_dashboard(
         current_user,
@@ -201,7 +208,7 @@ def majlis_dashboard():
 
     weekly_schedule = {day: [] for day in ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']}
     if majlis_class:
-        schedules = Schedule.query.filter_by(class_id=majlis_class.id).order_by(Schedule.start_time).all()
+        schedules = Schedule.query.filter_by(class_id=majlis_class.id, is_deleted=False).order_by(Schedule.start_time).all()
         for sch in schedules:
             if sch.day in weekly_schedule:
                 weekly_schedule[sch.day].append(sch)
@@ -257,6 +264,13 @@ def ppdb_register():
             is_majlis = program_type == ProgramType.MAJLIS_TALIM
             is_rqdf = program_type == ProgramType.RQDF_SORE
 
+            tenant_id = resolve_tenant_id(
+                current_user if getattr(current_user, "is_authenticated", False) else None
+            )
+            if tenant_id is None:
+                flash("Tenant default tidak ditemukan. Pendaftaran belum bisa diproses.", "danger")
+                return _render_ppdb_form(form)
+
             # Validasi kontak berdasarkan jenis program
             if is_majlis:
                 contact_phone = form.personal_phone.data
@@ -276,6 +290,7 @@ def ppdb_register():
             ]
 
             candidate = StudentCandidate(
+                tenant_id=tenant_id,
                 status=RegistrationStatus.PENDING,
                 program_type=program_type,
                 education_level=education_level,

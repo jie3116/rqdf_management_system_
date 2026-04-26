@@ -18,6 +18,7 @@ from app.models import (
     User,
     local_today,
 )
+from app.utils.tenant import classroom_in_tenant
 
 
 def _active_majlis_enrollment_query(tenant_id, person_id):
@@ -72,7 +73,7 @@ def resolve_majlis_classroom(tenant_id, person_id):
     )
 
 
-def list_active_majlis_participants(search=None):
+def list_active_majlis_participants(search=None, tenant_id=None):
     search = (search or "").strip()
 
     query = (
@@ -92,6 +93,8 @@ def list_active_majlis_participants(search=None):
         )
         .order_by(Person.full_name.asc(), ProgramEnrollment.id.asc())
     )
+    if tenant_id is not None:
+        query = query.filter(ProgramEnrollment.tenant_id == tenant_id)
 
     if search:
         query = query.outerjoin(
@@ -129,21 +132,34 @@ def list_active_majlis_participants(search=None):
     return rows
 
 
-def assign_majlis_class(participant_id, class_id):
+def assign_majlis_class(participant_id, class_id, tenant_id=None):
     participant = MajlisParticipant.query.filter_by(id=participant_id, is_deleted=False).first()
     if participant is None:
+        return False
+    participant_tenant_id = participant.user.tenant_id if participant.user else None
+    if participant_tenant_id is None and participant.person_id:
+        person = Person.query.filter_by(id=participant.person_id, is_deleted=False).first()
+        participant_tenant_id = person.tenant_id if person else None
+
+    if tenant_id is None:
+        tenant_id = participant_tenant_id
+    elif participant_tenant_id is not None and participant_tenant_id != tenant_id:
+        return False
+    if tenant_id is None:
         return False
 
     target_class = None
     if class_id:
         target_class = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+        if target_class is None or not classroom_in_tenant(target_class, tenant_id):
+            return False
 
-    participant.majlis_class_id = class_id
+    participant.majlis_class_id = target_class.id if target_class else None
 
     if not participant.person_id:
         return True
 
-    enrollment = get_active_majlis_enrollment(participant.user.tenant_id if participant.user else None, participant.person_id)
+    enrollment = get_active_majlis_enrollment(tenant_id, participant.person_id)
     if enrollment is None:
         return True
 
@@ -270,6 +286,8 @@ def ensure_majlis_participant_acceptance(user, full_name, phone, address, job=No
     target_class = None
     if class_id:
         target_class = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+        if target_class is None or not classroom_in_tenant(target_class, user.tenant_id):
+            raise RuntimeError("Kelas Majlis tidak valid untuk tenant aktif.")
 
     active_year = _active_academic_year()
     enrollment.academic_year_id = (
@@ -283,5 +301,6 @@ def ensure_majlis_participant_acceptance(user, full_name, phone, address, job=No
     enrollment.notes = "Sinkron dari penerimaan PPDB majlis"
     db.session.flush()
 
-    assign_majlis_class(participant.id, class_id)
+    if not assign_majlis_class(participant.id, class_id, tenant_id=user.tenant_id):
+        raise RuntimeError("Sinkronisasi kelas Majlis gagal karena scope tenant tidak valid.")
     return participant
