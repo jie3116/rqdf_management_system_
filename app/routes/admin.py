@@ -236,26 +236,31 @@ def dashboard():
 @role_required(UserRole.ADMIN)
 def manage_app_config():
     """Mengelola Variable Global (Misal: Biaya Denda, Pesan Pengumuman, dll)"""
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
     if request.method == 'POST':
         key = request.form.get('key')
         value = request.form.get('value')
         description = request.form.get('description')
 
-        config = AppConfig.query.filter_by(key=key).first()
+        config = AppConfig.query.filter_by(tenant_id=tenant_id, key=key).first()
         if config:
             config.value = value
             config.description = description
         else:
-            new_config = AppConfig(key=key, value=value, description=description)
+            new_config = AppConfig(tenant_id=tenant_id, key=key, value=value, description=description)
             db.session.add(new_config)
 
         db.session.commit()
         flash('Konfigurasi tersimpan.', 'success')
         return redirect(url_for('admin.manage_app_config'))
 
-    ensure_assignment_label_configs()
+    ensure_assignment_label_configs(tenant_id=tenant_id)
     query = (request.args.get('q') or '').strip()
-    configs_query = AppConfig.query
+    configs_query = AppConfig.query.filter(AppConfig.tenant_id == tenant_id)
     if query:
         configs_query = configs_query.filter(
             or_(
@@ -519,6 +524,7 @@ def teacher_assignments(id):
             'role': display_assignment_role(
                 assignment.assignment_role,
                 program.code,
+                tenant_id=tenant_id,
             ),
             'group_name': assignment.group.name if assignment.group else '-',
             'academic_year': assignment.academic_year.name if assignment.academic_year else '-',
@@ -537,6 +543,7 @@ def teacher_assignments(id):
             label = display_assignment_role(
                 assignment.assignment_role,
                 assignment.program.code if assignment.program else None,
+                tenant_id=tenant_id,
             )
             role_summary[label] = role_summary.get(label, 0) + 1
 
@@ -1588,12 +1595,17 @@ def delete_student(id):
 @login_required
 @role_required(UserRole.ADMIN)
 def manage_fee_types():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
     if request.method == 'POST':
         form_type = (request.form.get('form_type') or 'master_fee').strip()
 
         if form_type == 'ppdb_template':
             try:
-                changed = save_ppdb_fee_templates(request.form)
+                changed = save_ppdb_fee_templates(request.form, tenant_id=tenant_id)
                 db.session.commit()
                 if changed > 0:
                     flash(f'Template komponen biaya PPDB berhasil disimpan ({changed} perubahan).', 'success')
@@ -1615,6 +1627,7 @@ def manage_fee_types():
 
         try:
             new_fee = FeeType(
+                tenant_id=tenant_id,
                 name=name,
                 amount=amount_rupiah,
                 academic_year_id=academic_year_id
@@ -1629,7 +1642,10 @@ def manage_fee_types():
         return redirect(url_for('admin.manage_fee_types'))
 
     query = (request.args.get('q') or '').strip()
-    fees_query = FeeType.query.outerjoin(AcademicYear, FeeType.academic_year_id == AcademicYear.id)
+    fees_query = FeeType.query.filter(FeeType.tenant_id == tenant_id).outerjoin(
+        AcademicYear,
+        FeeType.academic_year_id == AcademicYear.id,
+    )
     if query:
         fees_query = fees_query.filter(
             or_(
@@ -1641,7 +1657,7 @@ def manage_fee_types():
 
     fees = fees_query.order_by(FeeType.id.desc()).all()
     years = AcademicYear.query.filter_by(is_active=True).all()
-    ppdb_fee_template_fields = get_ppdb_fee_template_admin_fields()
+    ppdb_fee_template_fields = get_ppdb_fee_template_admin_fields(tenant_id=tenant_id)
     return render_template(
         'admin/finance/fee_types.html',
         fees=fees,
@@ -1655,7 +1671,12 @@ def manage_fee_types():
 @login_required
 @role_required(UserRole.ADMIN)
 def edit_fee_type(fee_id):
-    fee = FeeType.query.get_or_404(fee_id)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_fee_types'))
+
+    fee = FeeType.query.filter_by(id=fee_id, tenant_id=tenant_id).first_or_404()
     years = AcademicYear.query.filter_by(is_active=True).all()
 
     if request.method == 'POST':
@@ -1695,7 +1716,7 @@ def generate_invoices(fee_id):
         flash('Tenant default tidak ditemukan.', 'danger')
         return redirect(url_for('admin.manage_fee_types'))
 
-    fee = FeeType.query.get_or_404(fee_id)
+    fee = FeeType.query.filter_by(id=fee_id, tenant_id=tenant_id).first_or_404()
     students = (
         Student.query.join(User, Student.user_id == User.id)
         .filter(
@@ -1880,16 +1901,20 @@ def accept_candidate(candidate_id):
         db.session.flush()
 
         # --- 2. SMART INVOICING (VERSI DINAMIS) ---
-        tagihan_list = build_candidate_fee_drafts(calon)
+        tagihan_list = build_candidate_fee_drafts(calon, tenant_id=tenant_id)
 
         due_date = local_now() + timedelta(days=14)
         inv_prefix = f"INV/{local_now().strftime('%Y%m')}/{siswa_baru.id}"
 
         ctr = 1
         for item in tagihan_list:
-            fee_type = FeeType.query.filter_by(name=item['nama']).first()
+            fee_type = FeeType.query.filter_by(tenant_id=tenant_id, name=item['nama']).first()
             if not fee_type:
-                fee_type = FeeType(name=item['nama'], amount=to_rupiah_int(item['nominal']))
+                fee_type = FeeType(
+                    tenant_id=tenant_id,
+                    name=item['nama'],
+                    amount=to_rupiah_int(item['nominal']),
+                )
                 db.session.add(fee_type)
                 db.session.flush()
 

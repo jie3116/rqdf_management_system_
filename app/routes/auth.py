@@ -18,11 +18,13 @@ def _resolve_user_for_login(login_id):
         return None, False
 
     # 1) Prioritas: username/email langsung pada tabel users
-    direct_user = User.query.filter(
+    direct_users = User.query.filter(
         or_(User.email == identifier, User.username == identifier)
-    ).first()
-    if direct_user:
-        return direct_user, False
+    ).order_by(User.id.asc()).limit(2).all()
+    if len(direct_users) > 1:
+        return None, True
+    if len(direct_users) == 1:
+        return direct_users[0], False
 
     # 2) Fallback: cari dari identifier profil lintas role
     candidate_ids = set()

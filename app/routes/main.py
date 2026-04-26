@@ -49,10 +49,13 @@ main_bp = Blueprint('main', __name__)
 
 
 def _render_ppdb_form(form):
+    tenant_id = resolve_tenant_id(
+        current_user if getattr(current_user, "is_authenticated", False) else None
+    )
     return render_template(
         "public/ppdb_form.html",
         form=form,
-        ppdb_fee_preview=get_public_ppdb_fee_preview(),
+        ppdb_fee_preview=get_public_ppdb_fee_preview(tenant_id=tenant_id),
     )
 
 

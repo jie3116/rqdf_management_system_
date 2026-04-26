@@ -88,8 +88,8 @@ def _parse_rupiah_input(raw_value, default_value):
     return to_rupiah_int(digits, default=default_value)
 
 
-def _candidate_fee_drafts(candidate):
-    return build_candidate_fee_drafts(candidate)
+def _candidate_fee_drafts(candidate, tenant_id=None):
+    return build_candidate_fee_drafts(candidate, tenant_id=tenant_id)
 
 
 def _apply_candidate_fee_overrides(drafts, source_form):
@@ -453,7 +453,7 @@ def generate_invoices(fee_id):
         flash('Tenant default tidak ditemukan.', 'danger')
         return redirect(url_for('staff.send_invoices'))
 
-    fee = FeeType.query.get_or_404(fee_id)
+    fee = FeeType.query.filter_by(id=fee_id, tenant_id=tenant_id).first_or_404()
     target, error_message = _parse_invoice_target(request.form)
     if error_message:
         flash(error_message, 'warning')
@@ -525,7 +525,7 @@ def delete_generated_invoices(fee_id):
         flash('Tenant default tidak ditemukan.', 'danger')
         return redirect(url_for('staff.send_invoices'))
 
-    fee = FeeType.query.get_or_404(fee_id)
+    fee = FeeType.query.filter_by(id=fee_id, tenant_id=tenant_id).first_or_404()
     target, error_message = _parse_invoice_target(request.form)
     if error_message:
         flash(error_message, 'warning')
@@ -590,11 +590,11 @@ def send_invoices():
             'target_class_id': None,
             'target_student_id': None,
         }
-    fees_query = FeeType.query
+    fees_query = FeeType.query.filter(FeeType.tenant_id == tenant_id)
     if selected_fee_id:
         fees_query = fees_query.filter(FeeType.id == selected_fee_id)
     fees = fees_query.order_by(FeeType.id.desc()).all()
-    fee_options = FeeType.query.order_by(FeeType.name.asc()).all()
+    fee_options = FeeType.query.filter(FeeType.tenant_id == tenant_id).order_by(FeeType.name.asc()).all()
     classes = scoped_classrooms_query(tenant_id).order_by(ClassRoom.name.asc()).all()
     students = (
         Student.query.join(User, Student.user_id == User.id)
@@ -1124,7 +1124,7 @@ def ppdb_detail(candidate_id):
     candidate = StudentCandidate.query.filter_by(id=candidate_id, tenant_id=tenant_id, is_deleted=False).first_or_404()
     fee_drafts = []
     if candidate.status == RegistrationStatus.PENDING and candidate.program_type != ProgramType.MAJLIS_TALIM:
-        fee_drafts = _candidate_fee_drafts(candidate)
+        fee_drafts = _candidate_fee_drafts(candidate, tenant_id=tenant_id)
 
     return render_template(
         'staff/ppdb/detail.html',
@@ -1234,16 +1234,23 @@ def accept_candidate(candidate_id):
         db.session.flush()
 
         # --- 2. SMART INVOICING (VERSI DINAMIS) ---
-        tagihan_list = _apply_candidate_fee_overrides(_candidate_fee_drafts(calon), request.form)
+        tagihan_list = _apply_candidate_fee_overrides(
+            _candidate_fee_drafts(calon, tenant_id=tenant_id),
+            request.form,
+        )
 
         due_date = local_now() + timedelta(days=14)
         inv_prefix = f"INV/{local_now().strftime('%Y%m')}/{siswa_baru.id}"
 
         ctr = 1
         for item in tagihan_list:
-            fee_type = FeeType.query.filter_by(name=item['nama']).first()
+            fee_type = FeeType.query.filter_by(tenant_id=tenant_id, name=item['nama']).first()
             if not fee_type:
-                fee_type = FeeType(name=item['nama'], amount=to_rupiah_int(item['nominal']))
+                fee_type = FeeType(
+                    tenant_id=tenant_id,
+                    name=item['nama'],
+                    amount=to_rupiah_int(item['nominal']),
+                )
                 db.session.add(fee_type)
                 db.session.flush()
 

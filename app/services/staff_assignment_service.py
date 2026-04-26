@@ -429,26 +429,49 @@ def list_teacher_assignment_groups_from_assignments(teacher):
     return groups
 
 
-def ensure_assignment_label_configs():
+def ensure_assignment_label_configs(tenant_id=None):
+    tenant_id = tenant_id or get_default_tenant_id()
+    if tenant_id is None:
+        return 0
+
     created = 0
     for key, (default_value, description) in ASSIGNMENT_LABEL_DEFAULTS.items():
-        existing = AppConfig.query.filter_by(key=key, is_deleted=False).first()
+        existing = AppConfig.query.filter_by(
+            tenant_id=tenant_id,
+            key=key,
+            is_deleted=False,
+        ).first()
         if existing is None:
-            db.session.add(AppConfig(key=key, value=default_value, description=description))
+            db.session.add(
+                AppConfig(
+                    tenant_id=tenant_id,
+                    key=key,
+                    value=default_value,
+                    description=description,
+                )
+            )
             created += 1
     if created:
         db.session.commit()
     return created
 
 
-def _assignment_label_config(key):
-    config = AppConfig.query.filter_by(key=key, is_deleted=False).first()
+def _assignment_label_config(key, tenant_id=None):
+    tenant_id = tenant_id or get_default_tenant_id()
+    if tenant_id is None:
+        return ASSIGNMENT_LABEL_DEFAULTS[key][0]
+
+    config = AppConfig.query.filter_by(
+        tenant_id=tenant_id,
+        key=key,
+        is_deleted=False,
+    ).first()
     if config and config.value:
         return config.value.strip()
     return ASSIGNMENT_LABEL_DEFAULTS[key][0]
 
 
-def display_assignment_role(assignment_role, program_code=None):
+def display_assignment_role(assignment_role, program_code=None, tenant_id=None):
     """
     Keep UI labels generic for SaaS readiness.
 
@@ -460,21 +483,21 @@ def display_assignment_role(assignment_role, program_code=None):
         return "-"
 
     if assignment_role == AssignmentRole.SUBJECT_TEACHER:
-        return _assignment_label_config("assignment_label.subject_teacher")
+        return _assignment_label_config("assignment_label.subject_teacher", tenant_id=tenant_id)
 
     if assignment_role == AssignmentRole.HOMEROOM:
         if program_code and program_code.startswith("SEKOLAH_"):
-            return _assignment_label_config("assignment_label.formal_homeroom")
-        return _assignment_label_config("assignment_label.nonformal_homeroom")
+            return _assignment_label_config("assignment_label.formal_homeroom", tenant_id=tenant_id)
+        return _assignment_label_config("assignment_label.nonformal_homeroom", tenant_id=tenant_id)
 
     if assignment_role == AssignmentRole.MURABBI:
-        return _assignment_label_config("assignment_label.program_companion")
+        return _assignment_label_config("assignment_label.program_companion", tenant_id=tenant_id)
 
     if assignment_role == AssignmentRole.MUSYRIF:
-        return _assignment_label_config("assignment_label.boarding_supervisor")
+        return _assignment_label_config("assignment_label.boarding_supervisor", tenant_id=tenant_id)
 
     if assignment_role == AssignmentRole.PEMBINA:
-        return _assignment_label_config("assignment_label.program_companion")
+        return _assignment_label_config("assignment_label.program_companion", tenant_id=tenant_id)
 
     return assignment_role.value
 

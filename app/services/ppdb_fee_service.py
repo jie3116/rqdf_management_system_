@@ -3,6 +3,7 @@ import json
 from app.extensions import db
 from app.models import AppConfig, FeeType, ProgramType, ScholarshipCategory
 from app.utils.money import to_rupiah_int
+from app.utils.tenant import get_default_tenant_id
 
 
 PPDB_FEE_TEMPLATE_DEFINITIONS = [
@@ -111,6 +112,10 @@ def _definition_map():
     return {item["key"]: item for item in PPDB_FEE_TEMPLATE_DEFINITIONS}
 
 
+def _resolve_tenant_id(tenant_id=None):
+    return tenant_id or get_default_tenant_id()
+
+
 def _split_fee_names(raw_value):
     if not raw_value:
         return []
@@ -147,17 +152,28 @@ def _parse_template_value(raw_value, fallback_names):
     return list(fallback_names)
 
 
-def _template_names_by_key(config_key):
+def _template_names_by_key(config_key, tenant_id=None):
     definition = _definition_map().get(config_key)
     if definition is None:
         return []
-    config = AppConfig.query.filter_by(key=config_key, is_deleted=False).first()
+    resolved_tenant_id = _resolve_tenant_id(tenant_id)
+    if resolved_tenant_id is None:
+        return list(definition["default_items"])
+
+    config = AppConfig.query.filter_by(
+        tenant_id=resolved_tenant_id,
+        key=config_key,
+        is_deleted=False,
+    ).first()
     raw_value = config.value if config else None
     return _parse_template_value(raw_value, definition["default_items"])
 
 
-def _fee_rows_from_template(config_key):
-    return [{"item": name, "harga": _fee_nominal(name)} for name in _template_names_by_key(config_key)]
+def _fee_rows_from_template(config_key, tenant_id=None):
+    return [
+        {"item": name, "harga": _fee_nominal(name, tenant_id=tenant_id)}
+        for name in _template_names_by_key(config_key, tenant_id=tenant_id)
+    ]
 
 
 def _program_template_key(program_type, scholarship_category):
@@ -172,22 +188,30 @@ def _program_template_key(program_type, scholarship_category):
     return None
 
 
-def _fee_nominal(name):
-    fee_type = FeeType.query.filter_by(name=name).first()
+def _fee_nominal(name, tenant_id=None):
+    resolved_tenant_id = _resolve_tenant_id(tenant_id)
+    fee_type_query = FeeType.query.filter_by(name=name)
+    if resolved_tenant_id is not None:
+        fee_type_query = fee_type_query.filter(FeeType.tenant_id == resolved_tenant_id)
+    fee_type = fee_type_query.order_by(FeeType.id.desc()).first()
     if fee_type:
         return to_rupiah_int(fee_type.amount)
     return to_rupiah_int(DEFAULT_FEE_AMOUNTS.get(name, 0))
 
 
-def build_candidate_fee_drafts(candidate):
+def build_candidate_fee_drafts(candidate, tenant_id=None):
     if candidate is None or not candidate.program_type:
         return []
 
+    resolved_tenant_id = _resolve_tenant_id(tenant_id or getattr(candidate, "tenant_id", None))
     template_key = _program_template_key(candidate.program_type, candidate.scholarship_category)
     if template_key is None:
         return []
 
-    drafts = [{"nama": name, "nominal": _fee_nominal(name)} for name in _template_names_by_key(template_key)]
+    drafts = [
+        {"nama": name, "nominal": _fee_nominal(name, tenant_id=resolved_tenant_id)}
+        for name in _template_names_by_key(template_key, tenant_id=resolved_tenant_id)
+    ]
 
     if candidate.program_type in (ProgramType.RQDF_SORE, ProgramType.TAKHOSUS_TAHFIDZ):
         if candidate.initial_pledge_amount and candidate.initial_pledge_amount > 0:
@@ -206,17 +230,18 @@ def build_candidate_fee_drafts(candidate):
             uniform_fee_name = None
 
         if uniform_fee_name:
-            uniform_amount = _fee_nominal(uniform_fee_name)
+            uniform_amount = _fee_nominal(uniform_fee_name, tenant_id=resolved_tenant_id)
             if uniform_amount > 0:
                 drafts.append({"nama": f"Seragam RQDF (Ukuran {uniform_size})", "nominal": uniform_amount})
 
     return drafts
 
 
-def get_ppdb_fee_template_admin_fields():
+def get_ppdb_fee_template_admin_fields(tenant_id=None):
+    resolved_tenant_id = _resolve_tenant_id(tenant_id)
     fields = []
     for definition in PPDB_FEE_TEMPLATE_DEFINITIONS:
-        names = _template_names_by_key(definition["key"])
+        names = _template_names_by_key(definition["key"], tenant_id=resolved_tenant_id)
         fields.append(
             {
                 "key": definition["key"],
@@ -229,16 +254,25 @@ def get_ppdb_fee_template_admin_fields():
     return fields
 
 
-def save_ppdb_fee_templates(form_data):
+def save_ppdb_fee_templates(form_data, tenant_id=None):
+    resolved_tenant_id = _resolve_tenant_id(tenant_id)
+    if resolved_tenant_id is None:
+        return 0
+
     changed = 0
     for definition in PPDB_FEE_TEMPLATE_DEFINITIONS:
         input_name = definition["input_name"]
         raw_value = form_data.get(input_name, "")
         names = _split_fee_names(raw_value)
         value = json.dumps(names, ensure_ascii=False)
-        config = AppConfig.query.filter_by(key=definition["key"], is_deleted=False).first()
+        config = AppConfig.query.filter_by(
+            tenant_id=resolved_tenant_id,
+            key=definition["key"],
+            is_deleted=False,
+        ).first()
         if config is None:
             config = AppConfig(
+                tenant_id=resolved_tenant_id,
                 key=definition["key"],
                 value=value,
                 description=f"Template komponen biaya PPDB - {definition['label']}",
@@ -254,18 +288,31 @@ def save_ppdb_fee_templates(form_data):
     return changed
 
 
-def get_public_ppdb_fee_preview():
+def get_public_ppdb_fee_preview(tenant_id=None):
+    resolved_tenant_id = _resolve_tenant_id(tenant_id)
     return {
-        "formal_non_beasiswa": _fee_rows_from_template("ppdb_fee_template.formal_non_beasiswa"),
-        "formal_beasiswa": _fee_rows_from_template("ppdb_fee_template.formal_beasiswa"),
-        "rqdf_sore_base": _fee_rows_from_template("ppdb_fee_template.rqdf_sore"),
-        "takhosus_tahfidz": _fee_rows_from_template("ppdb_fee_template.takhosus_tahfidz"),
+        "formal_non_beasiswa": _fee_rows_from_template(
+            "ppdb_fee_template.formal_non_beasiswa",
+            tenant_id=resolved_tenant_id,
+        ),
+        "formal_beasiswa": _fee_rows_from_template(
+            "ppdb_fee_template.formal_beasiswa",
+            tenant_id=resolved_tenant_id,
+        ),
+        "rqdf_sore_base": _fee_rows_from_template(
+            "ppdb_fee_template.rqdf_sore",
+            tenant_id=resolved_tenant_id,
+        ),
+        "takhosus_tahfidz": _fee_rows_from_template(
+            "ppdb_fee_template.takhosus_tahfidz",
+            tenant_id=resolved_tenant_id,
+        ),
         "uniform_prices": {
-            "S": _fee_nominal("Seragam RQDF (S/M)"),
-            "M": _fee_nominal("Seragam RQDF (S/M)"),
-            "L": _fee_nominal("Seragam RQDF (L/XL)"),
-            "XL": _fee_nominal("Seragam RQDF (L/XL)"),
-            "XXL": _fee_nominal("Seragam RQDF (XXL)"),
+            "S": _fee_nominal("Seragam RQDF (S/M)", tenant_id=resolved_tenant_id),
+            "M": _fee_nominal("Seragam RQDF (S/M)", tenant_id=resolved_tenant_id),
+            "L": _fee_nominal("Seragam RQDF (L/XL)", tenant_id=resolved_tenant_id),
+            "XL": _fee_nominal("Seragam RQDF (L/XL)", tenant_id=resolved_tenant_id),
+            "XXL": _fee_nominal("Seragam RQDF (XXL)", tenant_id=resolved_tenant_id),
         },
         "pledge_item_name": "Infaq Pembangunan Pesantren",
         "uniform_item_label_prefix": "Seragam RQDF (Ukuran",

@@ -234,9 +234,13 @@ boarding_schedule_dormitories = db.Table(
 class AppConfig(BaseModel):
     __tablename__ = 'app_configs'
     id = db.Column(db.Integer, primary_key=True)
-    key = db.Column(db.String(50), unique=True, nullable=False)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    key = db.Column(db.String(50), nullable=False)
     value = db.Column(db.String(255))
     description = db.Column(db.String(200))
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'key', name='uq_app_configs_tenant_key'),
+    )
 
 
 class AuditLog(db.Model):
@@ -332,12 +336,16 @@ class User(UserMixin, BaseModel):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
-    username = db.Column(db.String(64), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
+    username = db.Column(db.String(64), nullable=False)
+    email = db.Column(db.String(120), nullable=False)
     password_hash = db.Column(db.String(256))
     role = db.Column(db.Enum(UserRole, name='userrole'), default=UserRole.SISWA, nullable=False)
     last_login = db.Column(db.DateTime)
     must_change_password = db.Column(db.Boolean, default=True)
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'username', name='uq_users_tenant_username'),
+        db.UniqueConstraint('tenant_id', 'email', name='uq_users_tenant_email'),
+    )
 
     # Relationships
     student_profile = db.relationship('Student', backref='user', uselist=False, lazy='select')
@@ -1096,6 +1104,7 @@ class TahfidzEvaluation(BaseModel):
 class FeeType(BaseModel):
     __tablename__ = 'fee_types'
     id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
     name = db.Column(db.String(50))
     amount = db.Column(db.Integer)
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'))
