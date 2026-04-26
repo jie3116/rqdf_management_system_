@@ -348,7 +348,7 @@ def cashier_receipt(transaction_id):
     invoice = transaction.invoice
     student = invoice.student
 
-    payment_pic = User.query.filter_by(id=transaction.pic_id).first()
+    payment_pic = User.query.filter_by(id=transaction.pic_id, tenant_id=tenant_id).first()
     sisa_tagihan = max(0, to_rupiah_int(invoice.total_amount) - to_rupiah_int(invoice.paid_amount))
 
     return render_template(
@@ -924,14 +924,20 @@ def assign_majlis_classes():
 @login_required
 @role_required(UserRole.TU, UserRole.ADMIN)
 def edit_majlis_participant(participant_id):
-    participant = MajlisParticipant.query.filter_by(id=participant_id, is_deleted=False).first_or_404()
     tenant_id = _current_tenant_id()
     if tenant_id is None:
         flash('Tenant default tidak ditemukan.', 'danger')
         return redirect(url_for('staff.dashboard'))
-    if participant.user and participant.user.tenant_id != tenant_id:
-        flash('Peserta Majlis tidak valid untuk tenant aktif.', 'danger')
-        return redirect(url_for('staff.list_students'))
+
+    participant = (
+        MajlisParticipant.query.join(User, MajlisParticipant.user_id == User.id)
+        .filter(
+            MajlisParticipant.id == participant_id,
+            MajlisParticipant.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .first_or_404()
+    )
 
     active_role = get_active_role(current_user)
     list_endpoint = 'admin.list_students' if active_role == UserRole.ADMIN else 'staff.list_students'
