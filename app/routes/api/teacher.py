@@ -140,6 +140,26 @@ def _class_participants_for_api(user, class_id):
     return students, majlis_participants, participants
 
 
+def _serialize_participant_row(row):
+    participant_type = row.get("participant_type")
+    participant_type_key = (
+        participant_type.name if isinstance(participant_type, ParticipantType) else str(participant_type or "")
+    )
+    return {
+        "key": row.get("key") or "",
+        "display_name": row.get("display_name") or "-",
+        "identifier": row.get("identifier") or "-",
+        "identifier_label": row.get("identifier_label") or "-",
+        "participant_type": participant_type_key,
+        "student_id": row.get("student_id"),
+        "majlis_participant_id": row.get("majlis_participant_id"),
+    }
+
+
+def _serialize_participants(rows):
+    return [_serialize_participant_row(row) for row in (rows or [])]
+
+
 def _teacher_total_students(user, classes):
     student_ids = set()
     for class_room in classes:
@@ -495,7 +515,7 @@ def register_teacher_routes(api_bp):
             {
                 "classes": _classes_payload(classes),
                 "selected_class": _class_payload(selected_class),
-                "participants": participants,
+                "participants": _serialize_participants(participants),
                 "grade_types": [
                     {"key": item.name, "label": item.value}
                     for item in GradeType
@@ -645,7 +665,7 @@ def register_teacher_routes(api_bp):
                 "classes": _classes_payload(classes),
                 "selected_class": _class_payload(selected_class),
                 "selected_date": selected_date.strftime("%Y-%m-%d"),
-                "participants": participants,
+                "participants": _serialize_participants(participants),
                 "attendance_statuses": [{"key": item.name, "label": item.value} for item in AttendanceStatus],
                 "existing_attendance": existing_attendance,
             }
@@ -762,7 +782,7 @@ def register_teacher_routes(api_bp):
             {
                 "classes": _classes_payload(classes),
                 "selected_class": _class_payload(selected_class) if selected_class else {"id": 0, "name": "-"},
-                "participants": participants,
+                "participants": _serialize_participants(participants),
                 "tahfidz_types": [{"key": item.name, "label": item.value} for item in TahfidzType],
                 "recent_records": recent_records,
             }
@@ -890,7 +910,7 @@ def register_teacher_routes(api_bp):
             {
                 "classes": _classes_payload(classes),
                 "selected_class": _class_payload(selected_class) if selected_class else {"id": 0, "name": "-"},
-                "participants": participants,
+                "participants": _serialize_participants(participants),
                 "recitation_sources": [{"key": item.name, "label": item.value} for item in RecitationSource],
                 "recent_records": recent_records,
             }
@@ -1021,7 +1041,7 @@ def register_teacher_routes(api_bp):
             {
                 "classes": _classes_payload(classes),
                 "selected_class": _class_payload(selected_class) if selected_class else {"id": 0, "name": "-"},
-                "participants": participants,
+                "participants": _serialize_participants(participants),
                 "evaluation_periods": [{"key": item.name, "label": item.value} for item in EvaluationPeriod],
                 "recent_records": recent_records,
             }
@@ -1283,9 +1303,9 @@ def register_teacher_routes(api_bp):
             {
                 "classes": _classes_payload(classes),
                 "selected_class": _class_payload(selected_class) if selected_class else {"id": 0, "name": "-"},
-                "participants": participants,
+                "participants": _serialize_participants(participants),
                 "selected_participant_key": selected_participant_key,
-                "selected_participant": selected_participant or {},
+                "selected_participant": _serialize_participant_row(selected_participant) if selected_participant else {},
                 "academic_grade_rows": academic_grade_rows,
                 "academic_summary_rows": academic_summary_rows,
             }
@@ -1386,9 +1406,9 @@ def register_teacher_routes(api_bp):
             {
                 "classes": _classes_payload(classes),
                 "selected_class": _class_payload(selected_class) if selected_class else {"id": 0, "name": "-"},
-                "participants": participants,
+                "participants": _serialize_participants(participants),
                 "selected_participant_key": selected_participant_key,
-                "selected_participant": selected_participant or {},
+                "selected_participant": _serialize_participant_row(selected_participant) if selected_participant else {},
                 "class_recap": class_recap,
                 "participant_recap": participant_recap,
                 "class_attendances": class_attendances,
