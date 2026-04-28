@@ -31,7 +31,7 @@
         <div class="col-lg-7">
             <div class="card shadow mb-4">
                 <div class="card-header py-3 bg-warning text-dark">
-                    <h6 class="m-0 fw-bold">Form Laporan Perilaku ({{ selected_class.name }})</h6>
+                    <h6 class="m-0 fw-bold">Form Observasi Sikap Harian ({{ selected_class.name }})</h6>
                 </div>
                 <div class="card-body">
                     <form method="POST">
@@ -53,24 +53,53 @@
                                 <label class="form-label fw-bold">Tanggal Laporan</label>
                                 <input type="date" name="report_date" class="form-control" value="{{ local_today().strftime('%Y-%m-%d') }}" required>
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label fw-bold">Jenis Laporan</label>
-                                <select name="report_type" class="form-select" required>
-                                    {% for t in behavior_types %}
-                                    <option value="{{ t.name }}">{{ t.value }}</option>
-                                    {% endfor %}
-                                </select>
+                        </div>
+
+                        <div class="card border mb-3">
+                            <div class="card-header bg-light fw-bold">Sikap Yang Harus Dipertahankan</div>
+                            <div class="card-body">
+                                {% for row in behavior_indicators if row.group == 'positive' %}
+                                <div class="row align-items-center border-bottom py-2">
+                                    <div class="col-md-7">{{ row.label }}</div>
+                                    <div class="col-md-5">
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="ind_{{ row.key }}" id="ind_{{ row.key }}_yes" value="yes" checked>
+                                            <label class="form-check-label" for="ind_{{ row.key }}_yes">Ya</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="ind_{{ row.key }}" id="ind_{{ row.key }}_no" value="no">
+                                            <label class="form-check-label" for="ind_{{ row.key }}_no">Tidak</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="card border mb-3">
+                            <div class="card-header bg-light fw-bold">Sikap Yang Harus Dihindari</div>
+                            <div class="card-body">
+                                {% for row in behavior_indicators if row.group == 'negative' %}
+                                <div class="row align-items-center border-bottom py-2">
+                                    <div class="col-md-7">{{ row.label }}</div>
+                                    <div class="col-md-5">
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="ind_{{ row.key }}" id="ind_{{ row.key }}_yes" value="yes">
+                                            <label class="form-check-label" for="ind_{{ row.key }}_yes">Ya</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="ind_{{ row.key }}" id="ind_{{ row.key }}_no" value="no" checked>
+                                            <label class="form-check-label" for="ind_{{ row.key }}_no">Tidak</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
                             </div>
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Judul Ringkas</label>
-                            <input type="text" name="title" class="form-control" placeholder="Contoh: Kedisiplinan salat berjamaah meningkat" required>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Deskripsi Perilaku</label>
-                            <textarea name="description" class="form-control" rows="4" required></textarea>
+                            <label class="form-label fw-bold">Catatan Observasi (Opsional)</label>
+                            <textarea name="notes" class="form-control" rows="3"></textarea>
                         </div>
 
                         <div class="mb-3">
@@ -78,21 +107,8 @@
                             <textarea name="action_plan" class="form-control" rows="3"></textarea>
                         </div>
 
-                        <div class="row">
-                            <div class="col-md-8 mb-3">
-                                <label class="form-label fw-bold">Target Tindak Lanjut (Opsional)</label>
-                                <input type="date" name="follow_up_date" class="form-control">
-                            </div>
-                            <div class="col-md-4 mb-3 d-flex align-items-end">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" value="on" id="isResolved" name="is_resolved">
-                                    <label class="form-check-label" for="isResolved">Sudah Tuntas</label>
-                                </div>
-                            </div>
-                        </div>
-
                         <button type="submit" class="btn btn-warning w-100 fw-bold">
-                            <i class="fas fa-save me-1"></i>Simpan Laporan
+                            <i class="fas fa-save me-1"></i>Simpan Observasi Sikap
                         </button>
                     </form>
                 </div>
@@ -113,15 +129,18 @@
                                     <div class="fw-bold">{{ r.student.full_name }}</div>
                                     <small class="text-muted">{{ r.report_date.strftime('%d/%m/%Y') if r.report_date else '-' }}</small>
                                 </div>
-                                <span class="badge {% if r.report_type.name == 'POSITIVE' %}bg-success{% elif r.report_type.name == 'DEVELOPMENT' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
-                                    {{ r.report_type.value }}
+                                <span class="badge {% if r.indicator_group == 'positive' %}bg-success{% else %}bg-danger{% endif %}">
+                                    {{ 'YA' if r.is_yes else 'TIDAK' }}
                                 </span>
                             </div>
-                            <div class="small mt-1"><strong>{{ r.title }}</strong></div>
+                            <div class="small mt-1">
+                                <strong>{{ r.title }}</strong>
+                                <span class="text-muted">({{ 'Dipertahankan' if r.indicator_group == 'positive' else 'Dihindari' }})</span>
+                            </div>
                             <div class="small text-muted">{{ r.description|truncate(120) }}</div>
                         </div>
                         {% else %}
-                        <div class="list-group-item text-center text-muted py-4">Belum ada laporan perilaku.</div>
+                        <div class="list-group-item text-center text-muted py-4">Belum ada observasi perilaku.</div>
                         {% endfor %}
                     </div>
                 </div>

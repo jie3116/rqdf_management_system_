@@ -20,6 +20,7 @@ class QuickActionProvider extends ChangeNotifier {
   Future<void> load({
     required QuickActionModel action,
     int? childId,
+    Map<String, dynamic>? query,
   }) async {
     state = ViewState.loading;
     errorMessage = null;
@@ -28,6 +29,7 @@ class QuickActionProvider extends ChangeNotifier {
       result = await _repository.fetchQuickActionData(
         action: action,
         childId: childId,
+        query: query,
       );
       state = ViewState.success;
     } on ApiException catch (error) {

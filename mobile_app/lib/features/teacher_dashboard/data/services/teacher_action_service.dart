@@ -15,6 +15,7 @@ class TeacherActionService {
     'grade-history': '/teacher/grade-history',
     'attendance-history': '/teacher/attendance-history',
     'homeroom-students': '/teacher/homeroom-students',
+    'homeroom-student-detail': '/teacher/homeroom-students',
     'class-announcements': '/teacher/class-announcements',
   };
 

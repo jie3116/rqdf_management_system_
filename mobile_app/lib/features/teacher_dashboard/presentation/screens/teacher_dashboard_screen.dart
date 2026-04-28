@@ -371,7 +371,10 @@ class _TeacherHomeroomTab extends StatelessWidget {
       title: 'Perwalian',
       builder: (dashboard) {
         final homeroom = dashboard.homeroom;
-        if (!homeroom.available) {
+        final fallbackClass =
+            dashboard.classOptions.isNotEmpty ? dashboard.classOptions.first : null;
+        final hasFallbackClass = fallbackClass != null;
+        if (!homeroom.available && !hasFallbackClass) {
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(20),
@@ -379,11 +382,38 @@ class _TeacherHomeroomTab extends StatelessWidget {
               AppEmptyState(
                 title: 'Belum Menjadi Wali Kelas',
                 subtitle:
-                    'Menu perwalian akan aktif saat guru mendapat kelas perwalian.',
+                    'Data perwalian belum tersedia pada akun ini.',
               ),
             ],
           );
         }
+
+        final classId =
+            homeroom.classId > 0 ? homeroom.classId : (fallbackClass?.id ?? 0);
+        final className = homeroom.className != '-'
+            ? homeroom.className
+            : (fallbackClass?.name ?? '-');
+        final studentCount = homeroom.available ? homeroom.studentCount : 0;
+        final majlisCount = homeroom.available ? homeroom.majlisCount : 0;
+        final menu = homeroom.menu.isNotEmpty
+            ? homeroom.menu
+            : [
+                TeacherMenuItem(
+                  key: 'homeroom_students',
+                  label: 'Data Peserta Kelas',
+                  description: 'Lihat data siswa pada kelas yang diampu.',
+                ),
+                TeacherMenuItem(
+                  key: 'class_announcements',
+                  label: 'Pengumuman Kelas',
+                  description: 'Kelola pengumuman untuk kelas yang diampu.',
+                ),
+                TeacherMenuItem(
+                  key: 'behavior_reports',
+                  label: 'Laporan Perilaku',
+                  description: 'Input catatan perilaku siswa pada kelas yang diampu.',
+                ),
+              ];
 
         return ListView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -393,10 +423,14 @@ class _TeacherHomeroomTab extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SectionTitle(title: 'Ringkasan Perwalian'),
+                  SectionTitle(
+                    title: homeroom.available
+                        ? 'Ringkasan Perwalian'
+                        : 'Ringkasan Kelas Ajar',
+                  ),
                   const SizedBox(height: 14),
                   Text(
-                    homeroom.className,
+                    className,
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
@@ -408,7 +442,7 @@ class _TeacherHomeroomTab extends StatelessWidget {
                       Expanded(
                         child: _MetricTile(
                           label: 'Siswa',
-                          value: '${homeroom.studentCount}',
+                          value: '$studentCount',
                           icon: Icons.school_rounded,
                           accent: const Color(0xFF2563EB),
                           background: const Color(0xFFE8F1FF),
@@ -418,7 +452,7 @@ class _TeacherHomeroomTab extends StatelessWidget {
                       Expanded(
                         child: _MetricTile(
                           label: 'Peserta Majelis',
-                          value: '${homeroom.majlisCount}',
+                          value: '$majlisCount',
                           icon: Icons.groups_rounded,
                           accent: const Color(0xFF0F766E),
                           background: const Color(0xFFECFDF5),
@@ -430,9 +464,11 @@ class _TeacherHomeroomTab extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 18),
-            const SectionTitle(title: 'Menu Perwalian'),
+            SectionTitle(
+              title: homeroom.available ? 'Menu Perwalian' : 'Menu Kelas',
+            ),
             const SizedBox(height: 12),
-            ...homeroom.menu.map(
+            ...menu.map(
               (item) => _MenuTile(
                 item: item,
                 onTap: () => onOpenModule(
@@ -442,7 +478,7 @@ class _TeacherHomeroomTab extends StatelessWidget {
                           ? 'homeroom-students'
                           : 'input-behavior',
                   item.label,
-                  classId: homeroom.classId > 0 ? homeroom.classId : null,
+                  classId: classId > 0 ? classId : null,
                 ),
               ),
             ),
@@ -458,95 +494,148 @@ class _TeacherProfileTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
     return _TeacherSectionPage(
       title: 'Profil',
-      builder: (dashboard) => ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
-        children: [
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SectionTitle(title: 'Profil Guru'),
-                const SizedBox(height: 14),
-                _ProfileRow(label: 'Nama', value: dashboard.profile.fullName),
-                _ProfileRow(label: 'NIP', value: dashboard.profile.nip),
-                _ProfileRow(
-                  label: 'Wali Kelas',
-                  value: dashboard.profile.homeroomClassName,
-                ),
-                _ProfileRow(
-                  label: 'Total Kelas',
-                  value: '${dashboard.profile.totalClasses}',
-                ),
-                _ProfileRow(
-                  label: 'Total Siswa',
-                  value: '${dashboard.profile.totalStudents}',
-                ),
-              ],
+      builder: (dashboard) {
+        final authName = auth.currentUser?.name ?? '-';
+        final authUsername = auth.currentUser?.username ?? '-';
+        final profileName = dashboard.profile.fullName.trim().isNotEmpty &&
+                dashboard.profile.fullName.trim() != '-'
+            ? dashboard.profile.fullName
+            : authName;
+        final profileNip = dashboard.profile.nip.trim().isNotEmpty &&
+                dashboard.profile.nip.trim() != '-'
+            ? dashboard.profile.nip
+            : authUsername;
+
+        return ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          children: [
+            AppCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SectionTitle(title: 'Profil Guru'),
+                  const SizedBox(height: 14),
+                  _ProfileRow(label: 'Nama', value: profileName),
+                  _ProfileRow(label: 'NIP/Username', value: profileNip),
+                  _ProfileRow(
+                    label: 'Wali Kelas',
+                    value: dashboard.profile.homeroomClassName,
+                  ),
+                  _ProfileRow(
+                    label: 'Total Kelas',
+                    value: '${dashboard.profile.totalClasses}',
+                  ),
+                  _ProfileRow(
+                    label: 'Total Siswa',
+                    value: '${dashboard.profile.totalStudents}',
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SectionTitle(title: 'Boarding Hari Ini'),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _MetricTile(
-                        label: 'Hadir',
-                        value: '${dashboard.summary.boarding.hadir}',
-                        icon: Icons.check_circle_rounded,
-                        accent: const Color(0xFF0F766E),
-                        background: const Color(0xFFECFDF5),
-                      ),
+            const SizedBox(height: 12),
+            AppCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SectionTitle(title: 'Kelas Aktif'),
+                  const SizedBox(height: 12),
+                  if (dashboard.classOptions.isEmpty)
+                    const Text(
+                      'Belum ada kelas aktif pada akun guru ini.',
+                      style: TextStyle(color: Color(0xFF64748B)),
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: dashboard.classOptions.map((item) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F1FF),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            item.name,
+                            style: const TextStyle(
+                              color: Color(0xFF2563EB),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        );
+                      }).toList(),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _MetricTile(
-                        label: 'Belum input',
-                        value: '${dashboard.summary.boarding.belumInput}',
-                        icon: Icons.pending_actions_rounded,
-                        accent: const Color(0xFFB45309),
-                        background: const Color(0xFFFFF6E8),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _MetricTile(
-                        label: 'Sakit/Izin',
-                        value:
-                            '${dashboard.summary.boarding.sakit}/${dashboard.summary.boarding.izin}',
-                        icon: Icons.healing_rounded,
-                        accent: const Color(0xFF7C3AED),
-                        background: const Color(0xFFF3E8FF),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _MetricTile(
-                        label: 'Alpa',
-                        value: '${dashboard.summary.boarding.alpa}',
-                        icon: Icons.error_outline_rounded,
-                        accent: const Color(0xFFB91C1C),
-                        background: const Color(0xFFFFEEEE),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(height: 12),
+            AppCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SectionTitle(title: 'Boarding Hari Ini'),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _MetricTile(
+                          label: 'Hadir',
+                          value: '${dashboard.summary.boarding.hadir}',
+                          icon: Icons.check_circle_rounded,
+                          accent: const Color(0xFF0F766E),
+                          background: const Color(0xFFECFDF5),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _MetricTile(
+                          label: 'Belum input',
+                          value: '${dashboard.summary.boarding.belumInput}',
+                          icon: Icons.pending_actions_rounded,
+                          accent: const Color(0xFFB45309),
+                          background: const Color(0xFFFFF6E8),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _MetricTile(
+                          label: 'Sakit/Izin',
+                          value:
+                              '${dashboard.summary.boarding.sakit}/${dashboard.summary.boarding.izin}',
+                          icon: Icons.healing_rounded,
+                          accent: const Color(0xFF7C3AED),
+                          background: const Color(0xFFF3E8FF),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _MetricTile(
+                          label: 'Alpa',
+                          value: '${dashboard.summary.boarding.alpa}',
+                          icon: Icons.error_outline_rounded,
+                          accent: const Color(0xFFB91C1C),
+                          background: const Color(0xFFFFEEEE),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

@@ -947,13 +947,19 @@ class BehaviorReport(BaseModel):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False, index=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('class_rooms.id'), nullable=True, index=True)
     report_date = db.Column(db.Date, default=local_today, nullable=False, index=True)
     report_type = db.Column(db.Enum(BehaviorReportType, name='behaviorreporttype'), nullable=False)
+    indicator_key = db.Column(db.String(50), nullable=True, index=True)
+    indicator_group = db.Column(db.String(20), nullable=True)
+    is_yes = db.Column(db.Boolean, nullable=True)
     title = db.Column(db.String(120), nullable=False)
     description = db.Column(db.Text, nullable=False)
     action_plan = db.Column(db.Text, nullable=True)
     follow_up_date = db.Column(db.Date, nullable=True)
     is_resolved = db.Column(db.Boolean, default=False)
+
+    class_room = db.relationship('ClassRoom', backref='behavior_reports')
 
 
 class Extracurricular(BaseModel):

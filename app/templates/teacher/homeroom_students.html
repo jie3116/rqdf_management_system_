@@ -2,61 +2,109 @@
 {% block content %}
 <div class="container-fluid">
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
-        <h1 class="h3 mb-0 text-gray-800">Data Perwalian</h1>
-        <span class="badge bg-warning text-dark px-3 py-2 fs-6"><i class="fas fa-chalkboard-teacher me-2"></i>Kelas: {{ homeroom_class.name }}</span>
-    </div>
-
-    {% if homeroom_classes and homeroom_classes|length > 1 %}
-    <form method="GET" class="mb-3">
-        <label class="small fw-bold text-muted">Pilih Kelas Perwalian</label>
-        <select name="class_id" class="form-select" onchange="this.form.submit()">
-            {% for cls in homeroom_classes %}
-            <option value="{{ cls.id }}" {% if cls.id == homeroom_class.id %}selected{% endif %}>{{ cls.name }}</option>
-            {% endfor %}
-        </select>
-    </form>
-    {% endif %}
-
-    <div class="card shadow mb-4">
-        <div class="card-header py-3"><h6 class="m-0 fw-bold text-primary">Daftar Santri</h6></div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-bordered table-striped table-hover" width="100%">
-                    <thead class="bg-dark text-white text-center"><tr><th>NIS</th><th>Nama Lengkap</th><th>L/P</th><th>No. HP Wali</th><th>Aksi (Cetak)</th></tr></thead>
-                    <tbody>
-                        {% for student in students %}
-                        <tr>
-                            <td class="text-center">{{ student.nis }}</td><td class="fw-bold">{{ student.full_name }}</td><td class="text-center">{{ student.gender.value if student.gender else '-' }}</td><td>{{ student.parent.phone if student.parent else '-' }}</td>
-                            <td class="text-center">
-                                <a class="btn btn-primary btn-sm" href="{{ url_for('teacher.print_report_card', student_id=student.id) }}" target="_blank"><i class="fas fa-file-alt me-1"></i> Raport</a>
-                                <a class="btn btn-info btn-sm" href="{{ url_for('teacher.print_attachment', student_id=student.id) }}" target="_blank"><i class="fas fa-list-alt me-1"></i> Lampiran</a>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="5" class="text-center text-muted">Belum ada siswa di kelas ini.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+        <h1 class="h3 mb-0 text-gray-800">Raport Perwalian</h1>
+        <div class="d-flex flex-wrap gap-2">
+            <span class="badge bg-warning text-dark px-3 py-2 fs-6">
+                <i class="fas fa-chalkboard-teacher me-2"></i>Kelas: {{ homeroom_class.name }}
+            </span>
+            <span class="badge bg-light text-dark border px-3 py-2 fs-6">
+                <i class="fas fa-calendar-alt me-2"></i>
+                {% if selected_period_type == 'YEAR' %}
+                    {{ selected_year_name or '-' }} / Semua Semester
+                {% else %}
+                    {{ selected_academic_year.name if selected_academic_year else '-' }} / {{ selected_academic_year.semester if selected_academic_year else '-' }}
+                {% endif %}
+            </span>
         </div>
     </div>
 
+    <form method="GET" class="mb-3">
+        <div class="row g-2">
+            <div class="col-lg-4">
+                <label class="small fw-bold text-muted">Kelas Perwalian</label>
+                <select name="class_id" class="form-select" onchange="this.form.submit()">
+                    {% for cls in homeroom_classes %}
+                    <option value="{{ cls.id }}" {% if cls.id == homeroom_class.id %}selected{% endif %}>{{ cls.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-3">
+                <label class="small fw-bold text-muted">Periode Laporan</label>
+                <select name="period_type" class="form-select" onchange="this.form.submit()">
+                    {% for option in period_options.type_options %}
+                    <option value="{{ option.key }}" {% if selected_period_type == option.key %}selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-5">
+                {% if selected_period_type == 'YEAR' %}
+                <label class="small fw-bold text-muted">Tahun Ajaran</label>
+                <select name="year_name" class="form-select" onchange="this.form.submit()">
+                    {% for option in period_options.year_options %}
+                    <option value="{{ option.key }}" {% if selected_year_name == option.key %}selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <label class="small fw-bold text-muted">Semester</label>
+                <select name="academic_year_id" class="form-select" onchange="this.form.submit()">
+                    {% for option in period_options.semester_options %}
+                    <option value="{{ option.id }}" {% if selected_academic_year and selected_academic_year.id == option.id %}selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+            </div>
+        </div>
+    </form>
+
     <div class="card shadow mb-4">
-        <div class="card-header py-3"><h6 class="m-0 fw-bold text-success">Daftar Peserta Majlis Ta'lim</h6></div>
+        <div class="card-header py-3">
+            <h6 class="m-0 fw-bold text-primary">Daftar Siswa Perwalian</h6>
+        </div>
         <div class="card-body">
+            <div class="small text-muted mb-3">
+                Halaman ini menampilkan list siswa. Klik nama siswa untuk melihat raport lengkap.
+            </div>
             <div class="table-responsive">
-                <table class="table table-bordered table-striped table-hover" width="100%">
-                    <thead class="bg-dark text-white text-center"><tr><th>Nama Peserta</th><th>No. WhatsApp</th><th>Pekerjaan</th><th>Alamat</th></tr></thead>
-                    <tbody>
-                        {% for participant in majlis_participants %}
+                <table class="table table-bordered table-striped table-hover align-middle js-row-paginate" width="100%" data-default-per-page="12">
+                    <thead class="bg-dark text-white text-center">
                         <tr>
-                            <td class="fw-bold">{{ participant.full_name }}</td>
-                            <td class="text-center">{{ participant.phone or '-' }}</td>
-                            <td>{{ participant.job or '-' }}</td>
-                            <td>{{ participant.address or '-' }}</td>
+                            <th>NIS</th>
+                            <th>Nama Lengkap</th>
+                            <th>L/P</th>
+                            <th>No. HP Wali</th>
+                            <th>Rata-rata Akademik</th>
+                            <th>Mapel Dinilai</th>
+                            <th>Absensi (H/S/I/A)</th>
+                            <th>Perilaku YA (Positif/Negatif)</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in student_report_rows %}
+                        <tr>
+                            <td class="text-center">{{ row.nis }}</td>
+                            <td class="fw-bold">
+                                <a href="{{ url_for('teacher.homeroom_student_detail', student_id=row.id, class_id=homeroom_class.id, period_type=selected_period_type, academic_year_id=selected_academic_year.id if selected_period_type == 'SEMESTER' and selected_academic_year else None, year_name=selected_year_name if selected_period_type == 'YEAR' else None) }}">
+                                    {{ row.name }}
+                                </a>
+                            </td>
+                            <td class="text-center">{{ row.gender }}</td>
+                            <td>{{ row.parent_phone }}</td>
+                            <td class="text-center fw-bold text-primary">{{ row.academic.final_average }}</td>
+                            <td class="text-center">{{ row.academic.subject_count }}</td>
+                            <td class="text-center">{{ row.attendance.hadir }}/{{ row.attendance.sakit }}/{{ row.attendance.izin }}/{{ row.attendance.alpa }}</td>
+                            <td class="text-center">{{ row.behavior.positive_yes }}/{{ row.behavior.negative_yes }}</td>
+                            <td class="text-center">
+                                <a class="btn btn-primary btn-sm mb-1" href="{{ url_for('teacher.print_report_card', student_id=row.id) }}" target="_blank">
+                                    <i class="fas fa-file-alt me-1"></i> Raport
+                                </a>
+                                <a class="btn btn-info btn-sm mb-1" href="{{ url_for('teacher.print_attachment', student_id=row.id) }}" target="_blank">
+                                    <i class="fas fa-list-alt me-1"></i> Lampiran
+                                </a>
+                            </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="4" class="text-center text-muted">Belum ada peserta majlis di kelas ini.</td></tr>
+                        <tr><td colspan="9" class="text-center text-muted">Belum ada siswa di kelas ini.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

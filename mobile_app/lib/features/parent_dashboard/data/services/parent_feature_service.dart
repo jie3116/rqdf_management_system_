@@ -18,6 +18,7 @@ class ParentFeatureService {
   Future<Map<String, dynamic>> fetchFeature({
     required String key,
     int? childId,
+    Map<String, dynamic>? query,
   }) async {
     final suffixPath = _pathByKey[key.toLowerCase()];
     if (suffixPath == null) {
@@ -30,7 +31,21 @@ class ParentFeatureService {
         'message': 'Pilih data anak terlebih dahulu.',
       };
     }
-    final endpoint = '/parent/children/$childId$suffixPath';
+    final endpoint = '/parent/children/$childId$suffixPath${_buildQuery(query)}';
     return _apiClient.get(endpoint);
+  }
+
+  String _buildQuery(Map<String, dynamic>? query) {
+    if (query == null || query.isEmpty) return '';
+    final entries = query.entries.where((entry) {
+      final value = entry.value;
+      if (value == null) return false;
+      if (value is String) return value.trim().isNotEmpty;
+      return true;
+    }).map((entry) {
+      return '${entry.key}=${Uri.encodeQueryComponent('${entry.value}')}';
+    }).toList();
+    if (entries.isEmpty) return '';
+    return '?${entries.join('&')}';
   }
 }

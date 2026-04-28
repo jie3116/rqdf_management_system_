@@ -15,8 +15,117 @@ from app.utils.tenant import resolve_tenant_id, scoped_classrooms_query
 from app.utils.timezone import local_now, local_today
 from app.extensions import db
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
+from app.routes.teacher import _behavior_matrix_for_student
 
 parent_bp = Blueprint('parent', __name__)
+
+
+def _academic_year_date_bounds(academic_year):
+    if academic_year is None:
+        return None, None
+    name = (academic_year.name or '').strip()
+    semester = (academic_year.semester or '').strip().lower()
+    parts = [item.strip() for item in name.split('/') if item.strip()]
+    if not parts:
+        return None, None
+    try:
+        start_year = int(parts[0])
+        end_year = int(parts[1]) if len(parts) > 1 else start_year + 1
+    except ValueError:
+        return None, None
+
+    start_date = datetime(start_year, 7, 1).date()
+    end_date = datetime(end_year, 6, 30).date()
+    if 'ganjil' in semester or semester.endswith('1'):
+        return datetime(start_year, 7, 1).date(), datetime(start_year, 12, 31).date()
+    if 'genap' in semester or semester.endswith('2'):
+        return datetime(end_year, 1, 1).date(), datetime(end_year, 6, 30).date()
+    return start_date, end_date
+
+
+def _resolve_parent_report_period(period_type_raw, academic_year_id_raw, year_name_raw):
+    period_type = (period_type_raw or 'SEMESTER').strip().upper()
+    if period_type not in {'SEMESTER', 'YEAR'}:
+        period_type = 'SEMESTER'
+
+    all_years = (
+        AcademicYear.query.filter(AcademicYear.is_deleted.is_(False))
+        .order_by(AcademicYear.name.desc(), AcademicYear.id.desc())
+        .all()
+    )
+    active_year = (
+        AcademicYear.query.filter(
+            AcademicYear.is_deleted.is_(False),
+            AcademicYear.is_active.is_(True),
+        )
+        .order_by(AcademicYear.id.desc())
+        .first()
+    )
+
+    selected_year = None
+    selected_year_name = (year_name_raw or '').strip()
+    selected_year_rows = []
+
+    if period_type == 'SEMESTER':
+        if academic_year_id_raw:
+            selected_year = AcademicYear.query.filter(
+                AcademicYear.is_deleted.is_(False),
+                AcademicYear.id == academic_year_id_raw,
+            ).first()
+        if selected_year is None:
+            selected_year = active_year or (all_years[0] if all_years else None)
+        selected_year_name = selected_year.name if selected_year else ''
+        year_ids = [selected_year.id] if selected_year else []
+        start_date, end_date = _academic_year_date_bounds(selected_year) if selected_year else (None, None)
+    else:
+        if not selected_year_name:
+            selected_year_name = active_year.name if active_year else ''
+        if not selected_year_name and all_years:
+            selected_year_name = all_years[0].name
+        selected_year_rows = [row for row in all_years if (row.name or '') == selected_year_name]
+        year_ids = [row.id for row in selected_year_rows]
+        selected_year = selected_year_rows[0] if selected_year_rows else (active_year or None)
+
+        bounds = [_academic_year_date_bounds(row) for row in selected_year_rows]
+        valid_bounds = [(start, end) for start, end in bounds if start and end]
+        if valid_bounds:
+            start_date = min(item[0] for item in valid_bounds)
+            end_date = max(item[1] for item in valid_bounds)
+        else:
+            start_date, end_date = None, None
+
+    semester_options = [
+        {
+            'id': row.id,
+            'label': f'{row.name or "-"} - {row.semester or "-"}',
+            'name': row.name or '-',
+            'semester': row.semester or '-',
+        }
+        for row in all_years
+    ]
+    seen_names = []
+    for row in all_years:
+        label = (row.name or '').strip()
+        if label and label not in seen_names:
+            seen_names.append(label)
+    year_options = [{'key': label, 'label': label} for label in seen_names]
+
+    return {
+        'period_type': period_type,
+        'academic_year_ids': year_ids,
+        'selected_academic_year': selected_year,
+        'selected_year_name': selected_year_name,
+        'start_date': start_date,
+        'end_date': end_date,
+        'period_options': {
+            'type_options': [
+                {'key': 'SEMESTER', 'label': 'Per Semester'},
+                {'key': 'YEAR', 'label': 'Per Tahun Ajaran'},
+            ],
+            'semester_options': semester_options,
+            'year_options': year_options,
+        },
+    }
 
 
 @parent_bp.route('/join-majlis', methods=['GET', 'POST'])
@@ -136,6 +245,21 @@ def dashboard():
     if not student:
         student = children[0]
 
+    selected_period_type = (request.args.get('period_type') or 'SEMESTER').strip().upper()
+    selected_year_name = (request.args.get('year_name') or '').strip()
+    selected_period_academic_year_id = request.args.get('academic_year_id', type=int)
+    period_scope = _resolve_parent_report_period(
+        period_type_raw=selected_period_type,
+        academic_year_id_raw=selected_period_academic_year_id,
+        year_name_raw=selected_year_name,
+    )
+    selected_period_type = period_scope['period_type']
+    selected_academic_year = period_scope['selected_academic_year']
+    selected_year_name = period_scope['selected_year_name']
+    selected_year_ids = period_scope['academic_year_ids'] or []
+    behavior_start_date = period_scope['start_date']
+    behavior_end_date = period_scope['end_date']
+
     summary = TahfidzSummary.query.filter_by(
         student_id=student.id,
         participant_type=ParticipantType.STUDENT
@@ -201,11 +325,13 @@ def dashboard():
         for day in weekly_schedule:
             weekly_schedule[day].sort(key=lambda x: x.start_time)
 
-    active_year = AcademicYear.query.filter_by(is_active=True).first()
-    grades = []
-    if active_year:
-        grades = Grade.query.filter_by(student_id=student.id, academic_year_id=active_year.id) \
-            .order_by(Grade.subject_id, Grade.type).all()
+    active_year = selected_academic_year
+    grade_query = Grade.query.filter(Grade.student_id == student.id)
+    if selected_year_ids:
+        grade_query = grade_query.filter(Grade.academic_year_id.in_(selected_year_ids))
+    else:
+        grade_query = grade_query.filter(False)
+    grades = grade_query.order_by(Grade.subject_id, Grade.type).all()
 
     violations = Violation.query.filter_by(student_id=student.id).order_by(Violation.date.desc()).all()
     total_points = sum(v.points for v in violations)
@@ -213,11 +339,37 @@ def dashboard():
         BehaviorReport.report_date.desc(),
         BehaviorReport.created_at.desc()
     ).limit(30).all()
+    behavior_reports = [row for row in behavior_reports if row.indicator_key]
+    if behavior_start_date:
+        behavior_reports = [row for row in behavior_reports if row.report_date and row.report_date >= behavior_start_date]
+    if behavior_end_date:
+        behavior_reports = [row for row in behavior_reports if row.report_date and row.report_date <= behavior_end_date]
+
+    behavior_academic_year_ids = selected_year_ids
+    behavior_matrix = _behavior_matrix_for_student(
+        student_id=student.id,
+        class_id=active_class_id or 0,
+        academic_year_ids=behavior_academic_year_ids,
+        start_date=behavior_start_date,
+        end_date=behavior_end_date,
+        history_limit=120
+    )
+    latest_behavior_note = '-'
+    for history_row in behavior_matrix.get('history_rows') or []:
+        note = (history_row.get('notes') or '').strip()
+        if note and note != '-':
+            latest_behavior_note = note
+            break
 
     attendances = Attendance.query.filter_by(
         student_id=student.id,
         participant_type=ParticipantType.STUDENT
-    ).order_by(Attendance.date.desc(), Attendance.created_at.desc()).limit(60).all()
+    )
+    if selected_year_ids:
+        attendances = attendances.filter(Attendance.academic_year_id.in_(selected_year_ids))
+    else:
+        attendances = attendances.filter(False)
+    attendances = attendances.order_by(Attendance.date.desc(), Attendance.created_at.desc()).limit(120).all()
 
     attendance_recap = {'hadir': 0, 'sakit': 0, 'izin': 0, 'alpa': 0}
     for att in attendances:
@@ -283,6 +435,12 @@ def dashboard():
                            boarding_recap=boarding_recap,
                            violations=violations,
                            behavior_reports=behavior_reports,
+                           behavior_matrix=behavior_matrix,
+                           latest_behavior_note=latest_behavior_note,
+                           selected_period_type=selected_period_type,
+                           selected_academic_year=selected_academic_year,
+                           selected_year_name=selected_year_name,
+                           period_options=period_scope['period_options'],
                            total_points=total_points,
                            invoices=invoices,
                            total_tagihan=total_tagihan)

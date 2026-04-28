@@ -30,6 +30,8 @@ from app.models import (
     UserRole,
 )
 from app.routes.teacher import (
+    _behavior_indicator_items,
+    _behavior_matrix_for_student,
     _build_participant_rows,
     _classroom_visible_for_teacher,
     _collect_teacher_assignment_summary,
@@ -252,6 +254,301 @@ def _recent_evaluation_payload(rows):
     ]
 
 
+def _grade_subject_name(row):
+    if row.subject and row.subject.name:
+        return row.subject.name
+    if row.majlis_subject and row.majlis_subject.name:
+        return row.majlis_subject.name
+    return "-"
+
+
+def _academic_report_payload(rows, include_history=False, history_limit=120):
+    grouped = defaultdict(lambda: defaultdict(list))
+    summary_rows = []
+    history_rows = []
+
+    for row in rows or []:
+        subject_name = _grade_subject_name(row)
+        if row.type:
+            grouped[subject_name][row.type.name].append(float(row.score or 0))
+
+        if include_history and len(history_rows) < max(1, history_limit):
+            history_rows.append(
+                {
+                    "id": row.id,
+                    "subject_name": subject_name,
+                    "type": row.type.name if row.type else "-",
+                    "type_label": row.type.value if row.type else "-",
+                    "score": row.score or 0,
+                    "notes": row.notes or "-",
+                    "teacher_name": row.teacher.full_name if row.teacher and row.teacher.full_name else "-",
+                    "created_at": fmt_datetime(row.created_at),
+                }
+            )
+
+    for subject_name, type_map in grouped.items():
+        type_averages = {}
+        type_counts = {}
+        for type_name, scores in type_map.items():
+            if scores:
+                type_averages[type_name] = round(sum(scores) / len(scores), 2)
+                type_counts[type_name] = len(scores)
+        summary_rows.append(
+            {
+                "subject_name": subject_name,
+                "type_averages": type_averages,
+                "type_counts": type_counts,
+                "final_score": _calculate_weighted_final(type_averages),
+            }
+        )
+
+    summary_rows.sort(key=lambda item: (item.get("subject_name") or "").lower())
+    final_scores = [float(item.get("final_score") or 0) for item in summary_rows]
+    final_average = round(sum(final_scores) / len(final_scores), 2) if final_scores else 0
+
+    return {
+        "grade_count": len(rows or []),
+        "subject_count": len(summary_rows),
+        "final_average": final_average,
+        "summary_rows": summary_rows,
+        "history_rows": history_rows,
+    }
+
+
+def _attendance_report_payload(rows, include_history=False, history_limit=120):
+    recap = {"hadir": 0, "sakit": 0, "izin": 0, "alpa": 0, "total": 0}
+    history_rows = []
+
+    for row in rows or []:
+        recap["total"] += 1
+        if row.status == AttendanceStatus.HADIR:
+            recap["hadir"] += 1
+        elif row.status == AttendanceStatus.SAKIT:
+            recap["sakit"] += 1
+        elif row.status == AttendanceStatus.IZIN:
+            recap["izin"] += 1
+        elif row.status == AttendanceStatus.ALPA:
+            recap["alpa"] += 1
+
+        if include_history and len(history_rows) < max(1, history_limit):
+            history_rows.append(
+                {
+                    "id": row.id,
+                    "date": fmt_date(row.date),
+                    "status": row.status.name if row.status else "-",
+                    "status_label": row.status.value if row.status else "-",
+                    "notes": row.notes or "-",
+                    "teacher_name": row.teacher.full_name if row.teacher and row.teacher.full_name else "-",
+                    "class_name": row.class_room.name if row.class_room and row.class_room.name else "-",
+                }
+            )
+
+    attendance_rate = round((float(recap["hadir"]) / float(recap["total"])) * 100, 2) if recap["total"] else 0
+    return {
+        "recap": recap,
+        "attendance_rate": attendance_rate,
+        "history_rows": history_rows,
+    }
+
+
+def _behavior_report_payload(rows, include_history=False, history_limit=120):
+    recap = {"positive": 0, "development": 0, "concern": 0, "resolved": 0, "unresolved": 0, "total": 0}
+    history_rows = []
+
+    for row in rows or []:
+        recap["total"] += 1
+        if row.report_type == BehaviorReportType.POSITIVE:
+            recap["positive"] += 1
+        elif row.report_type == BehaviorReportType.DEVELOPMENT:
+            recap["development"] += 1
+        elif row.report_type == BehaviorReportType.CONCERN:
+            recap["concern"] += 1
+
+        if row.is_resolved:
+            recap["resolved"] += 1
+        else:
+            recap["unresolved"] += 1
+
+        if include_history and len(history_rows) < max(1, history_limit):
+            history_rows.append(
+                {
+                    "id": row.id,
+                    "report_date": fmt_date(row.report_date),
+                    "report_type": row.report_type.name if row.report_type else "-",
+                    "report_type_label": row.report_type.value if row.report_type else "-",
+                    "title": row.title or "-",
+                    "description": row.description or "-",
+                    "action_plan": row.action_plan or "-",
+                    "follow_up_date": fmt_date(row.follow_up_date),
+                    "is_resolved": bool(row.is_resolved),
+                    "teacher_name": row.teacher.full_name if row.teacher and row.teacher.full_name else "-",
+                }
+            )
+
+    return {"recap": recap, "history_rows": history_rows}
+
+
+def _behavior_summary_from_indicator_rows(rows):
+    total = 0
+    positive_yes = 0
+    negative_yes = 0
+    for row in rows or []:
+        key = (row.indicator_key or "").strip().lower()
+        group = (row.indicator_group or "").strip().lower()
+        if not key or group not in {"positive", "negative"}:
+            continue
+        total += 1
+        if bool(row.is_yes):
+            if group == "positive":
+                positive_yes += 1
+            else:
+                negative_yes += 1
+    return {
+        "total_observations": total,
+        "positive_yes": positive_yes,
+        "negative_yes": negative_yes,
+    }
+
+
+def _quran_report_payload(tahfidz_rows, recitation_rows, evaluation_rows):
+    tahfidz_scores = [float(item.score or 0) for item in tahfidz_rows]
+    recitation_scores = [float(item.score or 0) for item in recitation_rows]
+    evaluation_scores = [float(item.score or 0) for item in evaluation_rows]
+    return {
+        "tahfidz_summary": {
+            "count": len(tahfidz_rows),
+            "average_score": round(sum(tahfidz_scores) / len(tahfidz_scores), 2) if tahfidz_scores else 0,
+        },
+        "recitation_summary": {
+            "count": len(recitation_rows),
+            "average_score": round(sum(recitation_scores) / len(recitation_scores), 2) if recitation_scores else 0,
+        },
+        "evaluation_summary": {
+            "count": len(evaluation_rows),
+            "average_score": round(sum(evaluation_scores) / len(evaluation_scores), 2) if evaluation_scores else 0,
+        },
+        "tahfidz_history": _recent_tahfidz_payload(tahfidz_rows),
+        "recitation_history": _recent_recitation_payload(recitation_rows),
+        "evaluation_history": _recent_evaluation_payload(evaluation_rows),
+    }
+
+
+def _academic_year_date_bounds(academic_year):
+    if academic_year is None:
+        return None, None
+    name = (academic_year.name or "").strip()
+    semester = (academic_year.semester or "").strip().lower()
+    parts = [item.strip() for item in name.split("/") if item.strip()]
+    if not parts:
+        return None, None
+    try:
+        start_year = int(parts[0])
+        end_year = int(parts[1]) if len(parts) > 1 else start_year + 1
+    except ValueError:
+        return None, None
+
+    # Default: satu tahun ajaran penuh (Juli - Juni)
+    start_date = datetime(start_year, 7, 1).date()
+    end_date = datetime(end_year, 6, 30).date()
+
+    if "ganjil" in semester or semester.endswith("1"):
+        return datetime(start_year, 7, 1).date(), datetime(start_year, 12, 31).date()
+    if "genap" in semester or semester.endswith("2"):
+        return datetime(end_year, 1, 1).date(), datetime(end_year, 6, 30).date()
+    return start_date, end_date
+
+
+def _resolve_report_period(raw_period_type, raw_academic_year_id, raw_year_name):
+    period_type = (raw_period_type or "SEMESTER").strip().upper()
+    if period_type not in {"SEMESTER", "YEAR"}:
+        period_type = "SEMESTER"
+
+    all_academic_years = (
+        AcademicYear.query.filter(AcademicYear.is_deleted.is_(False))
+        .order_by(AcademicYear.name.desc(), AcademicYear.id.desc())
+        .all()
+    )
+
+    active_academic_year = (
+        AcademicYear.query.filter(
+            AcademicYear.is_deleted.is_(False),
+            AcademicYear.is_active.is_(True),
+        )
+        .order_by(AcademicYear.id.desc())
+        .first()
+    )
+
+    selected_academic_year = None
+    selected_year_name = (raw_year_name or "").strip()
+    selected_year_rows = []
+
+    if period_type == "SEMESTER":
+        if raw_academic_year_id:
+            selected_academic_year = (
+                AcademicYear.query.filter(
+                    AcademicYear.is_deleted.is_(False),
+                    AcademicYear.id == raw_academic_year_id,
+                ).first()
+            )
+        if selected_academic_year is None:
+            selected_academic_year = active_academic_year or (all_academic_years[0] if all_academic_years else None)
+        selected_year_name = selected_academic_year.name if selected_academic_year else ""
+        year_ids = [selected_academic_year.id] if selected_academic_year else []
+        if selected_academic_year:
+            start_date, end_date = _academic_year_date_bounds(selected_academic_year)
+        else:
+            start_date, end_date = None, None
+    else:
+        if not selected_year_name:
+            selected_year_name = active_academic_year.name if active_academic_year else ""
+        if not selected_year_name and all_academic_years:
+            selected_year_name = all_academic_years[0].name
+        selected_year_rows = [row for row in all_academic_years if (row.name or "") == selected_year_name]
+        year_ids = [row.id for row in selected_year_rows]
+        selected_academic_year = selected_year_rows[0] if selected_year_rows else (active_academic_year or None)
+
+        bounds = [_academic_year_date_bounds(row) for row in selected_year_rows]
+        valid_bounds = [(start, end) for start, end in bounds if start and end]
+        if valid_bounds:
+            start_date = min(item[0] for item in valid_bounds)
+            end_date = max(item[1] for item in valid_bounds)
+        else:
+            start_date, end_date = None, None
+
+    semester_options = [
+        {
+            "id": row.id,
+            "label": f"{row.name or '-'} - {row.semester or '-'}",
+            "name": row.name or "-",
+            "semester": row.semester or "-",
+        }
+        for row in all_academic_years
+    ]
+    seen_year_names = []
+    for row in all_academic_years:
+        label = (row.name or "").strip()
+        if label and label not in seen_year_names:
+            seen_year_names.append(label)
+    year_options = [{"key": label, "label": label} for label in seen_year_names]
+
+    return {
+        "period_type": period_type,
+        "academic_year_ids": year_ids,
+        "selected_academic_year": selected_academic_year,
+        "selected_year_name": selected_year_name,
+        "start_date": start_date,
+        "end_date": end_date,
+        "period_options": {
+            "type_options": [
+                {"key": "SEMESTER", "label": "Per Semester"},
+                {"key": "YEAR", "label": "Per Tahun Ajaran"},
+            ],
+            "semester_options": semester_options,
+            "year_options": year_options,
+        },
+    }
+
+
 def register_teacher_routes(api_bp):
     @api_bp.get("/teacher/dashboard")
     @mobile_auth_required(UserRole.GURU)
@@ -354,8 +651,8 @@ def register_teacher_routes(api_bp):
                 "menu": [
                     {
                         "key": "homeroom_students",
-                        "label": "Data Peserta",
-                        "description": "Lihat data siswa dan peserta aktif kelas perwalian.",
+                        "label": "Raport Perwalian",
+                        "description": "Pantau ringkasan raport siswa: nilai mapel, absensi, perilaku, dan riwayatnya.",
                     },
                     {
                         "key": "class_announcements",
@@ -366,6 +663,33 @@ def register_teacher_routes(api_bp):
                         "key": "behavior_reports",
                         "label": "Laporan Perilaku",
                         "description": "Catat perkembangan perilaku siswa kelas perwalian.",
+                    },
+                ],
+            }
+        elif my_classes:
+            fallback_class = my_classes[0]
+            fallback_students, fallback_majlis, _ = _class_participants_for_api(user, fallback_class.id)
+            homeroom_payload = {
+                "available": True,
+                "class_id": fallback_class.id,
+                "class_name": fallback_class.name or "-",
+                "student_count": len(fallback_students),
+                "majlis_count": len(fallback_majlis),
+                "menu": [
+                    {
+                        "key": "homeroom_students",
+                        "label": "Ringkasan Raport Kelas",
+                        "description": "Pantau pencapaian akademik, absensi, dan perilaku siswa kelas yang diampu.",
+                    },
+                    {
+                        "key": "class_announcements",
+                        "label": "Pengumuman Kelas",
+                        "description": "Kelola pengumuman untuk kelas yang diampu.",
+                    },
+                    {
+                        "key": "behavior_reports",
+                        "label": "Laporan Perilaku",
+                        "description": "Input catatan perilaku siswa pada kelas yang diampu.",
                     },
                 ],
             }
@@ -1142,6 +1466,7 @@ def register_teacher_routes(api_bp):
         query_text = (request.args.get("q") or "").strip().lower()
         students = []
         recent_reports = []
+        behavior_indicators = _behavior_indicator_items()
         if selected_class:
             students, _, _ = _class_participants_for_api(user, selected_class.id)
             if query_text:
@@ -1154,7 +1479,10 @@ def register_teacher_routes(api_bp):
             student_ids = [item.id for item in students]
             if student_ids:
                 recent_rows = (
-                    BehaviorReport.query.filter(BehaviorReport.student_id.in_(student_ids))
+                    BehaviorReport.query.filter(
+                        BehaviorReport.student_id.in_(student_ids),
+                        BehaviorReport.indicator_key.isnot(None),
+                    )
                     .order_by(BehaviorReport.report_date.desc(), BehaviorReport.created_at.desc())
                     .limit(30)
                     .all()
@@ -1164,11 +1492,12 @@ def register_teacher_routes(api_bp):
                         "id": row.id,
                         "student_id": row.student_id,
                         "student_name": row.student.full_name if row.student else "-",
-                        "report_type": row.report_type.name if row.report_type else "-",
-                        "report_type_label": row.report_type.value if row.report_type else "-",
-                        "title": row.title or "-",
+                        "indicator_key": row.indicator_key or "-",
+                        "indicator_label": row.title or "-",
+                        "indicator_group": row.indicator_group or "-",
+                        "is_yes": bool(row.is_yes),
                         "description": row.description or "-",
-                        "is_resolved": bool(row.is_resolved),
+                        "teacher_name": row.teacher.full_name if row.teacher and row.teacher.full_name else "-",
                         "report_date": fmt_date(row.report_date),
                     }
                     for row in recent_rows
@@ -1179,7 +1508,7 @@ def register_teacher_routes(api_bp):
                 "classes": _classes_payload(classes),
                 "selected_class": _class_payload(selected_class) if selected_class else {"id": 0, "name": "-"},
                 "students": [{"id": row.id, "name": row.full_name or "-", "nis": row.nis or "-"} for row in students],
-                "behavior_types": [{"key": item.name, "label": item.value} for item in BehaviorReportType],
+                "behavior_indicators": behavior_indicators,
                 "recent_reports": recent_reports,
             }
         )
@@ -1205,32 +1534,79 @@ def register_teacher_routes(api_bp):
         if student is None:
             return api_error("forbidden", "Siswa tidak berada pada kelas yang dipilih.", 403)
 
-        report_type = (payload.get("report_type") or "").strip().upper()
-        if report_type not in {item.name for item in BehaviorReportType}:
-            return api_error("invalid_request", "Tipe laporan perilaku tidak valid.", 400)
-
-        title = (payload.get("title") or "").strip()
-        description = (payload.get("description") or "").strip()
-        if not title or not description:
-            return api_error("invalid_request", "Judul dan deskripsi laporan wajib diisi.", 400)
-
         report_date = _safe_parse_date(payload.get("report_date")) or local_today()
-        follow_up_date = _safe_parse_date(payload.get("follow_up_date"))
+        notes = (payload.get("notes") or "").strip()
+        action_plan = (payload.get("action_plan") or "").strip() or None
 
-        new_row = BehaviorReport(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            report_date=report_date,
-            report_type=BehaviorReportType[report_type],
-            title=title,
-            description=description,
-            action_plan=(payload.get("action_plan") or "").strip() or None,
-            follow_up_date=follow_up_date,
-            is_resolved=_bool_value(payload.get("is_resolved")),
-        )
-        db.session.add(new_row)
+        submitted_entries = payload.get("behavior_entries")
+        entries = []
+        if isinstance(submitted_entries, list) and submitted_entries:
+            for item in submitted_entries:
+                if not isinstance(item, dict):
+                    continue
+                key = (item.get("key") or "").strip().lower()
+                group = (item.get("group") or "").strip().lower()
+                label = (item.get("label") or "").strip()
+                if key and group in {"positive", "negative"} and label:
+                    entries.append(
+                        {
+                            "key": key,
+                            "group": group,
+                            "label": label,
+                            "is_yes": _bool_value(item.get("is_yes")),
+                        }
+                    )
+        if not entries:
+            entries = []
+            for item in _behavior_indicator_items():
+                key = item["key"]
+                raw_value = payload.get(f"ind_{key}")
+                if isinstance(raw_value, str):
+                    is_yes = raw_value.strip().lower() in {"yes", "ya", "true", "1", "on"}
+                elif raw_value is None:
+                    is_yes = bool(item["default_yes"])
+                else:
+                    is_yes = _bool_value(raw_value)
+                entries.append(
+                    {
+                        "key": key,
+                        "group": item["group"],
+                        "label": item["label"],
+                        "is_yes": is_yes,
+                    }
+                )
+
+        if not entries:
+            return api_error("invalid_request", "Data indikator perilaku belum diisi.", 400)
+
+        created_rows = []
+        for entry in entries:
+            report_type = BehaviorReportType.POSITIVE if entry["group"] == "positive" else BehaviorReportType.CONCERN
+            description = notes or (
+                f"Observasi indikator sikap '{entry['label']}': {'YA' if entry['is_yes'] else 'TIDAK'}."
+            )
+            new_row = BehaviorReport(
+                student_id=student.id,
+                teacher_id=teacher.id,
+                class_id=class_id,
+                report_date=report_date,
+                report_type=report_type,
+                indicator_key=entry["key"],
+                indicator_group=entry["group"],
+                is_yes=bool(entry["is_yes"]),
+                title=entry["label"],
+                description=description,
+                action_plan=action_plan,
+                follow_up_date=None,
+                is_resolved=False,
+            )
+            db.session.add(new_row)
+            created_rows.append(new_row)
         db.session.commit()
-        return api_success({"report_id": new_row.id}, message="Laporan perilaku berhasil disimpan.")
+        return api_success(
+            {"report_ids": [row.id for row in created_rows], "count": len(created_rows)},
+            message="Observasi perilaku berhasil disimpan.",
+        )
 
     @api_bp.get("/teacher/grade-history")
     @mobile_auth_required(UserRole.GURU)
@@ -1424,35 +1800,251 @@ def register_teacher_routes(api_bp):
             return api_error("not_found", "Profil guru tidak ditemukan.", 404)
 
         homeroom_classes = _get_teacher_homeroom_classes(teacher)
-        if not homeroom_classes:
+        available_classes = homeroom_classes or _get_teacher_classes(teacher)
+        if not available_classes:
             return api_success(
                 {
                     "homeroom_classes": [],
                     "selected_class": {"id": 0, "name": "-"},
+                    "report_period": {
+                        "period_type": "SEMESTER",
+                        "academic_year_id": 0,
+                        "academic_year_name": "-",
+                        "semester": "-",
+                        "year_name": "-",
+                        "is_active": False,
+                        "behavior_scope": "period_filtered",
+                    },
+                    "report_period_options": {
+                        "type_options": [
+                            {"key": "SEMESTER", "label": "Per Semester"},
+                            {"key": "YEAR", "label": "Per Tahun Ajaran"},
+                        ],
+                        "semester_options": [],
+                        "year_options": [],
+                    },
                     "students": [],
+                    "selected_student_id": 0,
+                    "selected_student_report": {},
                     "majlis_participants": [],
                 }
             )
 
         class_id = request.args.get("class_id", type=int)
-        selected_class = _selected_class(homeroom_classes, class_id)
+        selected_class = _selected_class(available_classes, class_id)
         if selected_class is None:
             return api_error("forbidden", "Akses kelas tidak diizinkan.", 403)
 
+        period_scope = _resolve_report_period(
+            raw_period_type=request.args.get("period_type"),
+            raw_academic_year_id=request.args.get("academic_year_id", type=int),
+            raw_year_name=request.args.get("year_name"),
+        )
+        selected_academic_year = period_scope["selected_academic_year"]
+        selected_year_name = period_scope["selected_year_name"]
+        selected_period_type = period_scope["period_type"]
+        selected_year_ids = period_scope["academic_year_ids"] or []
+        behavior_start_date = period_scope["start_date"]
+        behavior_end_date = period_scope["end_date"]
+
+        history_limit = max(20, min(400, _safe_parse_int(request.args.get("history_limit"), default=120)))
+        selected_student_id = request.args.get("student_id", type=int)
+        include_detail = _bool_value(request.args.get("include_detail", "0"))
+
         students, majlis_participants, _ = _class_participants_for_api(user, selected_class.id)
+        students = sorted(students, key=lambda row: row.full_name or "")
+        student_ids = [row.id for row in students]
+
+        grade_rows_by_student = defaultdict(list)
+        attendance_rows_by_student = defaultdict(list)
+        behavior_rows_by_student = defaultdict(list)
+
+        if student_ids:
+            grade_query = Grade.query.filter(
+                Grade.is_deleted.is_(False),
+                Grade.participant_type == ParticipantType.STUDENT,
+                Grade.student_id.in_(student_ids),
+            )
+            if selected_year_ids:
+                grade_query = grade_query.filter(Grade.academic_year_id.in_(selected_year_ids))
+            else:
+                grade_query = grade_query.filter(False)
+            grade_rows = grade_query.order_by(Grade.created_at.desc(), Grade.id.desc()).all()
+            for row in grade_rows:
+                grade_rows_by_student[row.student_id].append(row)
+
+            attendance_query = Attendance.query.filter(
+                Attendance.is_deleted.is_(False),
+                Attendance.class_id == selected_class.id,
+                Attendance.participant_type == ParticipantType.STUDENT,
+                Attendance.student_id.in_(student_ids),
+            )
+            if selected_year_ids:
+                attendance_query = attendance_query.filter(Attendance.academic_year_id.in_(selected_year_ids))
+            else:
+                attendance_query = attendance_query.filter(False)
+            attendance_rows = attendance_query.order_by(Attendance.date.desc(), Attendance.created_at.desc()).all()
+            for row in attendance_rows:
+                attendance_rows_by_student[row.student_id].append(row)
+
+            behavior_rows = (
+                BehaviorReport.query.filter(
+                    BehaviorReport.is_deleted.is_(False),
+                    BehaviorReport.student_id.in_(student_ids),
+                )
+                .order_by(BehaviorReport.report_date.desc(), BehaviorReport.created_at.desc())
+                .all()
+            )
+            if behavior_start_date:
+                behavior_rows = [row for row in behavior_rows if row.report_date and row.report_date >= behavior_start_date]
+            if behavior_end_date:
+                behavior_rows = [row for row in behavior_rows if row.report_date and row.report_date <= behavior_end_date]
+            for row in behavior_rows:
+                behavior_rows_by_student[row.student_id].append(row)
+
+        selected_student = None
+        if selected_student_id:
+            selected_student = next((row for row in students if row.id == selected_student_id), None)
+            if selected_student is None:
+                return api_error("forbidden", "Siswa tidak berada pada kelas perwalian yang dipilih.", 403)
+        elif include_detail and students:
+            selected_student = students[0]
+            selected_student_id = selected_student.id
+
+        students_payload = []
+        for row in students:
+            academic_report = _academic_report_payload(grade_rows_by_student.get(row.id, []), include_history=False)
+            attendance_report = _attendance_report_payload(attendance_rows_by_student.get(row.id, []), include_history=False)
+            behavior_summary = _behavior_summary_from_indicator_rows(behavior_rows_by_student.get(row.id, []))
+            students_payload.append(
+                {
+                    "id": row.id,
+                    "name": row.full_name or "-",
+                    "identifier_label": "NIS",
+                    "identifier": row.nis or "-",
+                    "gender": row.gender.value if row.gender else "-",
+                    "parent_phone": row.parent.phone if row.parent and row.parent.phone else "-",
+                    "report_summary": {
+                        "academic": {
+                            "grade_count": academic_report["grade_count"],
+                            "subject_count": academic_report["subject_count"],
+                            "final_average": academic_report["final_average"],
+                        },
+                        "attendance": {
+                            **attendance_report["recap"],
+                            "attendance_rate": attendance_report["attendance_rate"],
+                        },
+                        "behavior": behavior_summary,
+                    },
+                }
+            )
+
+        selected_student_report = {}
+        if selected_student:
+            selected_grade_rows = grade_rows_by_student.get(selected_student.id, [])
+            selected_attendance_rows = attendance_rows_by_student.get(selected_student.id, [])
+            academic_report = _academic_report_payload(
+                selected_grade_rows,
+                include_history=True,
+                history_limit=history_limit,
+            )
+            attendance_report = _attendance_report_payload(
+                selected_attendance_rows,
+                include_history=True,
+                history_limit=history_limit,
+            )
+            behavior_report = _behavior_matrix_for_student(
+                student_id=selected_student.id,
+                class_id=selected_class.id,
+                academic_year_ids=selected_year_ids,
+                start_date=behavior_start_date,
+                end_date=behavior_end_date,
+                history_limit=history_limit,
+            )
+            latest_behavior_note = "-"
+            for history_row in behavior_report.get("history_rows") or []:
+                note = (history_row.get("notes") or "").strip()
+                if note and note != "-":
+                    latest_behavior_note = note
+                    break
+
+            tahfidz_rows = (
+                TahfidzRecord.query.filter(
+                    TahfidzRecord.is_deleted.is_(False),
+                    TahfidzRecord.participant_type == ParticipantType.STUDENT,
+                    TahfidzRecord.student_id == selected_student.id,
+                )
+                .order_by(TahfidzRecord.date.desc(), TahfidzRecord.id.desc())
+                .limit(history_limit)
+                .all()
+            )
+            recitation_rows = (
+                RecitationRecord.query.filter(
+                    RecitationRecord.is_deleted.is_(False),
+                    RecitationRecord.participant_type == ParticipantType.STUDENT,
+                    RecitationRecord.student_id == selected_student.id,
+                )
+                .order_by(RecitationRecord.date.desc(), RecitationRecord.id.desc())
+                .limit(history_limit)
+                .all()
+            )
+            evaluation_rows = (
+                TahfidzEvaluation.query.filter(
+                    TahfidzEvaluation.is_deleted.is_(False),
+                    TahfidzEvaluation.participant_type == ParticipantType.STUDENT,
+                    TahfidzEvaluation.student_id == selected_student.id,
+                )
+                .order_by(TahfidzEvaluation.date.desc(), TahfidzEvaluation.id.desc())
+                .limit(history_limit)
+                .all()
+            )
+            quran_report = _quran_report_payload(tahfidz_rows, recitation_rows, evaluation_rows)
+
+            selected_student_report = {
+                "student": {
+                    "id": selected_student.id,
+                    "name": selected_student.full_name or "-",
+                    "identifier_label": "NIS",
+                    "identifier": selected_student.nis or "-",
+                    "gender": selected_student.gender.value if selected_student.gender else "-",
+                    "parent_phone": (
+                        selected_student.parent.phone
+                        if selected_student.parent and selected_student.parent.phone
+                        else "-"
+                    ),
+                },
+                "academic": academic_report,
+                "attendance": attendance_report,
+                "behavior": behavior_report,
+                "quran": quran_report,
+                "report_projection": {
+                    "academic_final_average": academic_report["final_average"],
+                    "attendance_recap": attendance_report["recap"],
+                    "behavior_recap": _behavior_summary_from_indicator_rows(
+                        behavior_rows_by_student.get(selected_student.id, [])
+                    ),
+                    "behavior_total_meetings": behavior_report.get("total_meetings", 0),
+                    "latest_behavior_note": latest_behavior_note,
+                },
+            }
+
         return api_success(
             {
-                "homeroom_classes": _classes_payload(homeroom_classes),
+                "homeroom_classes": _classes_payload(available_classes),
                 "selected_class": _class_payload(selected_class),
-                "students": [
-                    {
-                        "id": row.id,
-                        "name": row.full_name or "-",
-                        "identifier_label": "NIS",
-                        "identifier": row.nis or "-",
-                    }
-                    for row in students
-                ],
+                "report_period": {
+                    "period_type": selected_period_type,
+                    "academic_year_id": selected_academic_year.id if selected_academic_year else 0,
+                    "academic_year_name": selected_academic_year.name if selected_academic_year else "-",
+                    "semester": selected_academic_year.semester if selected_academic_year else "-",
+                    "year_name": selected_year_name or "-",
+                    "is_active": bool(selected_academic_year.is_active) if selected_academic_year else False,
+                    "behavior_scope": "period_filtered",
+                },
+                "report_period_options": period_scope["period_options"],
+                "students": students_payload,
+                "selected_student_id": selected_student_id or 0,
+                "selected_student_report": selected_student_report,
                 "majlis_participants": [
                     {
                         "id": row.id,

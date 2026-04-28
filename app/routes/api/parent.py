@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import datetime
 
 from flask import g, request
 
@@ -25,6 +26,7 @@ from app.services.formal_service import get_student_formal_classroom
 from app.utils.announcements import get_announcements_for_dashboard
 from app.utils.tenant import resolve_tenant_id, scoped_classrooms_query
 from app.utils.timezone import local_today
+from app.routes.teacher import _behavior_matrix_for_student
 
 from .common import (
     DAY_NAMES,
@@ -92,6 +94,118 @@ def _calculate_weighted_final(type_averages):
     if total_weight <= 0:
         return 0
     return round(total_weighted / total_weight, 2)
+
+
+def _academic_year_date_bounds(academic_year):
+    if academic_year is None:
+        return None, None
+    name = (academic_year.name or "").strip()
+    semester = (academic_year.semester or "").strip().lower()
+    parts = [item.strip() for item in name.split("/") if item.strip()]
+    if not parts:
+        return None, None
+    try:
+        start_year = int(parts[0])
+        end_year = int(parts[1]) if len(parts) > 1 else start_year + 1
+    except ValueError:
+        return None, None
+
+    start_date = datetime(start_year, 7, 1).date()
+    end_date = datetime(end_year, 6, 30).date()
+    if "ganjil" in semester or semester.endswith("1"):
+        return datetime(start_year, 7, 1).date(), datetime(start_year, 12, 31).date()
+    if "genap" in semester or semester.endswith("2"):
+        return datetime(end_year, 1, 1).date(), datetime(end_year, 6, 30).date()
+    return start_date, end_date
+
+
+def _resolve_report_period(raw_period_type, raw_academic_year_id, raw_year_name):
+    period_type = (raw_period_type or "SEMESTER").strip().upper()
+    if period_type not in {"SEMESTER", "YEAR"}:
+        period_type = "SEMESTER"
+
+    all_academic_years = (
+        AcademicYear.query.filter(AcademicYear.is_deleted.is_(False))
+        .order_by(AcademicYear.name.desc(), AcademicYear.id.desc())
+        .all()
+    )
+    active_academic_year = (
+        AcademicYear.query.filter(
+            AcademicYear.is_deleted.is_(False),
+            AcademicYear.is_active.is_(True),
+        )
+        .order_by(AcademicYear.id.desc())
+        .first()
+    )
+
+    selected_academic_year = None
+    selected_year_name = (raw_year_name or "").strip()
+    selected_year_rows = []
+
+    if period_type == "SEMESTER":
+        if raw_academic_year_id:
+            selected_academic_year = (
+                AcademicYear.query.filter(
+                    AcademicYear.is_deleted.is_(False),
+                    AcademicYear.id == raw_academic_year_id,
+                ).first()
+            )
+        if selected_academic_year is None:
+            selected_academic_year = active_academic_year or (
+                all_academic_years[0] if all_academic_years else None
+            )
+        selected_year_name = selected_academic_year.name if selected_academic_year else ""
+        year_ids = [selected_academic_year.id] if selected_academic_year else []
+        start_date, end_date = _academic_year_date_bounds(selected_academic_year) if selected_academic_year else (None, None)
+    else:
+        if not selected_year_name:
+            selected_year_name = active_academic_year.name if active_academic_year else ""
+        if not selected_year_name and all_academic_years:
+            selected_year_name = all_academic_years[0].name
+        selected_year_rows = [row for row in all_academic_years if (row.name or "") == selected_year_name]
+        year_ids = [row.id for row in selected_year_rows]
+        selected_academic_year = selected_year_rows[0] if selected_year_rows else (active_academic_year or None)
+
+        bounds = [_academic_year_date_bounds(row) for row in selected_year_rows]
+        valid_bounds = [(start, end) for start, end in bounds if start and end]
+        if valid_bounds:
+            start_date = min(item[0] for item in valid_bounds)
+            end_date = max(item[1] for item in valid_bounds)
+        else:
+            start_date, end_date = None, None
+
+    semester_options = [
+        {
+            "id": row.id,
+            "label": f"{row.name or '-'} - {row.semester or '-'}",
+            "name": row.name or "-",
+            "semester": row.semester or "-",
+        }
+        for row in all_academic_years
+    ]
+    seen_year_names = []
+    for row in all_academic_years:
+        label = (row.name or "").strip()
+        if label and label not in seen_year_names:
+            seen_year_names.append(label)
+    year_options = [{"key": label, "label": label} for label in seen_year_names]
+
+    return {
+        "period_type": period_type,
+        "academic_year_ids": year_ids,
+        "selected_academic_year": selected_academic_year,
+        "selected_year_name": selected_year_name,
+        "start_date": start_date,
+        "end_date": end_date,
+        "period_options": {
+            "type_options": [
+                {"key": "SEMESTER", "label": "Per Semester"},
+                {"key": "YEAR", "label": "Per Tahun Ajaran"},
+            ],
+            "semester_options": semester_options,
+            "year_options": year_options,
+        },
+    }
 
 
 def register_parent_routes(api_bp):
@@ -529,13 +643,21 @@ def register_parent_routes(api_bp):
         if selected_child is None:
             return api_error("forbidden", "Akses data siswa tidak diizinkan.", 403)
 
-        active_year = AcademicYear.query.filter_by(is_active=True).first()
+        period_scope = _resolve_report_period(
+            raw_period_type=request.args.get("period_type"),
+            raw_academic_year_id=request.args.get("academic_year_id", type=int),
+            raw_year_name=request.args.get("year_name"),
+        )
+        active_year = period_scope["selected_academic_year"]
+        selected_year_ids = period_scope["academic_year_ids"] or []
         grade_query = Grade.query.filter(
             Grade.participant_type == ParticipantType.STUDENT,
             Grade.student_id == selected_child.id,
         )
-        if active_year:
-            grade_query = grade_query.filter(Grade.academic_year_id == active_year.id)
+        if selected_year_ids:
+            grade_query = grade_query.filter(Grade.academic_year_id.in_(selected_year_ids))
+        else:
+            grade_query = grade_query.filter(False)
 
         grade_rows = grade_query.order_by(Grade.created_at.desc(), Grade.id.desc()).all()
         grouped = defaultdict(lambda: defaultdict(list))
@@ -567,6 +689,14 @@ def register_parent_routes(api_bp):
                     "name": active_year.name if active_year else "-",
                     "semester": active_year.semester if active_year else "-",
                 },
+                "report_period": {
+                    "period_type": period_scope["period_type"],
+                    "academic_year_id": active_year.id if active_year else 0,
+                    "academic_year_name": active_year.name if active_year else "-",
+                    "semester": active_year.semester if active_year else "-",
+                    "year_name": period_scope["selected_year_name"] or "-",
+                },
+                "report_period_options": period_scope["period_options"],
                 "summary": summary_rows,
                 "grades": [
                     {
@@ -598,11 +728,24 @@ def register_parent_routes(api_bp):
         if selected_child is None:
             return api_error("forbidden", "Akses data siswa tidak diizinkan.", 403)
 
+        period_scope = _resolve_report_period(
+            raw_period_type=request.args.get("period_type"),
+            raw_academic_year_id=request.args.get("academic_year_id", type=int),
+            raw_year_name=request.args.get("year_name"),
+        )
+        active_year = period_scope["selected_academic_year"]
+        selected_year_ids = period_scope["academic_year_ids"] or []
+
+        attendance_query = Attendance.query.filter(
+            Attendance.participant_type == ParticipantType.STUDENT,
+            Attendance.student_id == selected_child.id,
+        )
+        if selected_year_ids:
+            attendance_query = attendance_query.filter(Attendance.academic_year_id.in_(selected_year_ids))
+        else:
+            attendance_query = attendance_query.filter(False)
         attendance_rows = (
-            Attendance.query.filter(
-                Attendance.participant_type == ParticipantType.STUDENT,
-                Attendance.student_id == selected_child.id,
-            )
+            attendance_query
             .order_by(Attendance.date.desc(), Attendance.created_at.desc())
             .limit(120)
             .all()
@@ -644,6 +787,14 @@ def register_parent_routes(api_bp):
         return api_success(
             {
                 "student": _student_payload(user, selected_child),
+                "report_period": {
+                    "period_type": period_scope["period_type"],
+                    "academic_year_id": active_year.id if active_year else 0,
+                    "academic_year_name": active_year.name if active_year else "-",
+                    "semester": active_year.semester if active_year else "-",
+                    "year_name": period_scope["selected_year_name"] or "-",
+                },
+                "report_period_options": period_scope["period_options"],
                 "recap": recap,
                 "records": [
                     {
@@ -687,8 +838,42 @@ def register_parent_routes(api_bp):
         if selected_child is None:
             return api_error("forbidden", "Akses data siswa tidak diizinkan.", 403)
 
+        period_scope = _resolve_report_period(
+            raw_period_type=request.args.get("period_type"),
+            raw_academic_year_id=request.args.get("academic_year_id", type=int),
+            raw_year_name=request.args.get("year_name"),
+        )
+        active_year = period_scope["selected_academic_year"]
+        selected_year_ids = period_scope["academic_year_ids"] or []
+        behavior_start_date = period_scope["start_date"]
+        behavior_end_date = period_scope["end_date"]
+
+        active_class, active_class_id = _resolve_child_class(user, selected_child)
+        behavior_matrix = _behavior_matrix_for_student(
+            student_id=selected_child.id,
+            class_id=active_class_id or 0,
+            academic_year_ids=selected_year_ids,
+            start_date=behavior_start_date,
+            end_date=behavior_end_date,
+            history_limit=120,
+        )
+        latest_behavior_note = "-"
+        for row in behavior_matrix.get("history_rows") or []:
+            note = (row.get("notes") or "").strip()
+            if note and note != "-":
+                latest_behavior_note = note
+                break
+
+        reports_query = BehaviorReport.query.filter(
+            BehaviorReport.student_id == selected_child.id,
+            BehaviorReport.indicator_key.isnot(None),
+        )
+        if behavior_start_date is not None:
+            reports_query = reports_query.filter(BehaviorReport.report_date >= behavior_start_date)
+        if behavior_end_date is not None:
+            reports_query = reports_query.filter(BehaviorReport.report_date <= behavior_end_date)
         reports = (
-            BehaviorReport.query.filter(BehaviorReport.student_id == selected_child.id)
+            reports_query
             .order_by(BehaviorReport.report_date.desc(), BehaviorReport.created_at.desc())
             .limit(120)
             .all()
@@ -703,23 +888,34 @@ def register_parent_routes(api_bp):
         return api_success(
             {
                 "student": _student_payload(user, selected_child),
+                "report_period": {
+                    "period_type": period_scope["period_type"],
+                    "academic_year_id": active_year.id if active_year else 0,
+                    "academic_year_name": active_year.name if active_year else "-",
+                    "semester": active_year.semester if active_year else "-",
+                    "year_name": period_scope["selected_year_name"] or "-",
+                },
+                "report_period_options": period_scope["period_options"],
                 "summary": {
                     "point_total": point_total,
                     "violation_count": len(violations),
                     "behavior_report_count": len(reports),
+                    "total_meetings": behavior_matrix.get("total_meetings", 0),
+                    "latest_note": latest_behavior_note,
                 },
+                "matrix": behavior_matrix.get("matrix", {"positive": [], "negative": []}),
+                "legend": behavior_matrix.get("legend", {"SL": "SELALU", "SR": "SERING", "K": "KURANG/KADANG", "TP": "TIDAK PERNAH"}),
                 "reports": [
                     {
                         "id": row.id,
                         "date": fmt_date(row.report_date),
-                        "report_type": row.report_type.name if row.report_type else "-",
-                        "report_type_label": row.report_type.value if row.report_type else "-",
+                        "group": row.indicator_group or "-",
                         "teacher_name": (
                             row.teacher.full_name if row.teacher and row.teacher.full_name else "-"
                         ),
-                        "title": row.title or "-",
+                        "indicator_label": row.title or "-",
                         "description": row.description or "-",
-                        "is_resolved": bool(row.is_resolved),
+                        "is_yes": bool(row.is_yes),
                     }
                     for row in reports
                 ],

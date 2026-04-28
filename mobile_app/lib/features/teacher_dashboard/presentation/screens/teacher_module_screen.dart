@@ -20,12 +20,20 @@ class TeacherModuleArgs {
     required this.title,
     this.classId,
     this.participantKey,
+    this.studentId,
+    this.periodType,
+    this.academicYearId,
+    this.yearName,
   });
 
   final String key;
   final String title;
   final int? classId;
   final String? participantKey;
+  final int? studentId;
+  final String? periodType;
+  final int? academicYearId;
+  final String? yearName;
 }
 
 class TeacherModuleScreen extends StatefulWidget {
@@ -47,6 +55,9 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
   String? _selectedParticipantKey;
   String? _selectedChoice;
   String? _selectedExtraChoice;
+  String? _selectedPeriodType;
+  int? _selectedAcademicYearId;
+  String? _selectedYearName;
   bool _flag = false;
 
   final _titleController = TextEditingController();
@@ -66,6 +77,7 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
   final _actionPlanController = TextEditingController();
   final _queryController = TextEditingController();
   final List<_EvaluationQuestionInput> _evaluationQuestions = [];
+  final Map<String, bool> _behaviorChoices = {};
 
   final Map<String, int> _counters = {
     'tajwid_errors': 0,
@@ -79,6 +91,12 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
     super.initState();
     _selectedClassId = widget.args.classId;
     _selectedParticipantKey = widget.args.participantKey;
+    if (widget.args.studentId != null && widget.args.studentId! > 0) {
+      _selectedExtraChoice = '${widget.args.studentId}';
+    }
+    _selectedPeriodType = widget.args.periodType;
+    _selectedAcademicYearId = widget.args.academicYearId;
+    _selectedYearName = widget.args.yearName;
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -120,6 +138,24 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
                   widget.args.key == 'attendance-history') &&
               (_selectedParticipantKey ?? '').isNotEmpty)
             'participant': _selectedParticipantKey,
+          if (widget.args.key == 'homeroom-student-detail' &&
+              (_selectedExtraChoice ?? '').isNotEmpty)
+            'student_id': _selectedExtraChoice,
+          if ((widget.args.key == 'homeroom-students' ||
+                  widget.args.key == 'homeroom-student-detail') &&
+              (_selectedPeriodType ?? '').isNotEmpty)
+            'period_type': _selectedPeriodType,
+          if ((widget.args.key == 'homeroom-students' ||
+                  widget.args.key == 'homeroom-student-detail') &&
+              (_selectedPeriodType ?? '') == 'SEMESTER' &&
+              _selectedAcademicYearId != null)
+            'academic_year_id': _selectedAcademicYearId,
+          if ((widget.args.key == 'homeroom-students' ||
+                  widget.args.key == 'homeroom-student-detail') &&
+              (_selectedPeriodType ?? '') == 'YEAR' &&
+              (_selectedYearName ?? '').isNotEmpty)
+            'year_name': _selectedYearName,
+          if (widget.args.key == 'homeroom-student-detail') 'include_detail': 1,
           if (widget.args.key == 'input-behavior' &&
               _queryController.text.trim().isNotEmpty)
             'q': _queryController.text.trim(),
@@ -165,16 +201,45 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
       }
     } else if (widget.args.key == 'input-behavior') {
       _selectedExtraChoice ??= _firstId(payload['students']);
-      _selectedChoice ??= _firstKey(payload['behavior_types']);
+      final indicators = JsonHelper.asList(payload['behavior_indicators']);
+      for (final item in indicators) {
+        final row = JsonHelper.asMap(item);
+        final key = JsonHelper.asString(row['key']);
+        if (key.isEmpty) continue;
+        _behaviorChoices[key] = _behaviorChoices[key] ?? (row['default_yes'] == true);
+      }
       if (_dateController.text.isEmpty) {
         _dateController.text =
             DateTime.now().toIso8601String().split('T').first;
       }
+    } else if (widget.args.key == 'homeroom-students' ||
+        widget.args.key == 'homeroom-student-detail') {
+      if (widget.args.key == 'homeroom-student-detail') {
+        final selectedStudentId = JsonHelper.asInt(payload['selected_student_id']);
+        if (selectedStudentId > 0) {
+          _selectedExtraChoice = '$selectedStudentId';
+        } else if ((_selectedExtraChoice ?? '').isEmpty) {
+          _selectedExtraChoice = _firstId(payload['students']);
+        }
+      }
+      final reportPeriod = JsonHelper.asMap(payload['report_period']);
+      _selectedPeriodType = JsonHelper.asString(
+        reportPeriod['period_type'],
+        fallback: _selectedPeriodType ?? 'SEMESTER',
+      );
+      final selectedAcademicYearId = JsonHelper.asInt(
+        reportPeriod['academic_year_id'],
+      );
+      _selectedAcademicYearId =
+          selectedAcademicYearId > 0 ? selectedAcademicYearId : null;
+      _selectedYearName = JsonHelper.asString(
+        reportPeriod['year_name'],
+        fallback: _selectedYearName ?? '',
+      );
     } else if (widget.args.key == 'grade-history' ||
         widget.args.key == 'attendance-history') {
-      _selectedParticipantKey ??=
-          widget.args.participantKey ??
-              JsonHelper.asString(payload['selected_participant_key']);
+      _selectedParticipantKey ??= widget.args.participantKey ??
+          JsonHelper.asString(payload['selected_participant_key']);
     }
   }
 
@@ -265,16 +330,26 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
           'notes': _notesController.text.trim(),
         };
       case 'input-behavior':
+        final indicators = JsonHelper.asList(
+          JsonHelper.asMap(_payload)['behavior_indicators'],
+        );
+        final behaviorEntries = indicators.map((item) {
+          final row = JsonHelper.asMap(item);
+          final key = JsonHelper.asString(row['key']);
+          return {
+            'key': key,
+            'label': JsonHelper.asString(row['label']),
+            'group': JsonHelper.asString(row['group']),
+            'is_yes': _behaviorChoices[key] ?? (row['default_yes'] == true),
+          };
+        }).toList();
         return {
           'class_id': _selectedClassId,
           'student_id': _selectedExtraChoice,
-          'report_type': _selectedChoice,
           'report_date': _dateController.text.trim(),
-          'title': _titleController.text.trim(),
-          'description': _contentController.text.trim(),
+          'notes': _contentController.text.trim(),
           'action_plan': _actionPlanController.text.trim(),
-          'follow_up_date': _followUpDateController.text.trim(),
-          'is_resolved': _flag,
+          'behavior_entries': behaviorEntries,
         };
       case 'class-announcements':
         return {
@@ -303,6 +378,7 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
     _questionDetailsController.clear();
     _actionPlanController.clear();
     _followUpDateController.clear();
+    _behaviorChoices.clear();
     _flag = false;
     for (final item in _evaluationQuestions) {
       item.dispose();
@@ -335,7 +411,8 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: hideAppBarTitle ? const SizedBox.shrink() : Text(widget.args.title),
+        title:
+            hideAppBarTitle ? const SizedBox.shrink() : Text(widget.args.title),
       ),
       body: _loading
           ? const AppLoadingView(message: 'Memuat data...')
@@ -374,6 +451,8 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
         return _attendanceHistory();
       case 'homeroom-students':
         return _homeroomStudents();
+      case 'homeroom-student-detail':
+        return _homeroomStudentDetail();
       case 'class-announcements':
         return _classAnnouncements();
       default:
@@ -391,7 +470,8 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
     return [
       _moduleHeaderCard(
         title: 'Input Tahfidz',
-        subtitle: 'Pilih peserta, isi setoran surah dan ayat, lalu simpan hasil penilaian.',
+        subtitle:
+            'Pilih peserta, isi setoran surah dan ayat, lalu simpan hasil penilaian.',
         icon: Icons.menu_book_outlined,
       ),
       const SizedBox(height: 18),
@@ -438,14 +518,13 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
           (row) =>
               '${JsonHelper.asString(row['participant_name'])}\n${JsonHelper.asString(row['surah'])}',
           (row) {
-            final ayatStart = JsonHelper.asString(row['ayat_start']);
-            final ayatEnd = JsonHelper.asString(row['ayat_end']);
-            final ayat = ayatStart.isNotEmpty && ayatEnd.isNotEmpty
-                ? '\nAyat $ayatStart-$ayatEnd'
-                : '';
-            return '${JsonHelper.asString(row['type_label'])}$ayat';
-          },
-          (row) => JsonHelper.asString(row['score'])),
+        final ayatStart = JsonHelper.asString(row['ayat_start']);
+        final ayatEnd = JsonHelper.asString(row['ayat_end']);
+        final ayat = ayatStart.isNotEmpty && ayatEnd.isNotEmpty
+            ? '\nAyat $ayatStart-$ayatEnd'
+            : '';
+        return '${JsonHelper.asString(row['type_label'])}$ayat';
+      }, (row) => JsonHelper.asString(row['score'])),
     ];
   }
 
@@ -455,7 +534,8 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
     return [
       _moduleHeaderCard(
         title: 'Input Bacaan',
-        subtitle: 'Catat bacaan Al-Qur\'an atau buku sumber sesuai materi yang diuji.',
+        subtitle:
+            'Catat bacaan Al-Qur\'an atau buku sumber sesuai materi yang diuji.',
         icon: Icons.auto_stories_outlined,
       ),
       const SizedBox(height: 18),
@@ -507,29 +587,26 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
       const SizedBox(height: 18),
       const SectionTitle(title: 'Riwayat Terbaru'),
       const SizedBox(height: 10),
-      ..._cards(
-          JsonHelper.asList(payload['recent_records']),
-          (row) => JsonHelper.asString(row['participant_name']),
-          (row) {
-            final sourceLabel = JsonHelper.asString(row['recitation_source_label']);
-            final surah = JsonHelper.asString(row['surah']);
-            final bookName = JsonHelper.asString(row['book_name']);
-            final ayatStart = JsonHelper.asString(row['ayat_start']);
-            final ayatEnd = JsonHelper.asString(row['ayat_end']);
-            final pageStart = JsonHelper.asString(row['page_start']);
-            final pageEnd = JsonHelper.asString(row['page_end']);
-            if (bookName.isNotEmpty && bookName != '-') {
-              final pages = pageStart.isNotEmpty && pageEnd.isNotEmpty
-                  ? '\nHal. $pageStart-$pageEnd'
-                  : '';
-              return '$sourceLabel\n$bookName$pages';
-            }
-            final ayat = ayatStart.isNotEmpty && ayatEnd.isNotEmpty
-                ? '\nAyat $ayatStart-$ayatEnd'
-                : '';
-            return '$sourceLabel\n$surah$ayat';
-          },
-          (row) => JsonHelper.asString(row['score'])),
+      ..._cards(JsonHelper.asList(payload['recent_records']),
+          (row) => JsonHelper.asString(row['participant_name']), (row) {
+        final sourceLabel = JsonHelper.asString(row['recitation_source_label']);
+        final surah = JsonHelper.asString(row['surah']);
+        final bookName = JsonHelper.asString(row['book_name']);
+        final ayatStart = JsonHelper.asString(row['ayat_start']);
+        final ayatEnd = JsonHelper.asString(row['ayat_end']);
+        final pageStart = JsonHelper.asString(row['page_start']);
+        final pageEnd = JsonHelper.asString(row['page_end']);
+        if (bookName.isNotEmpty && bookName != '-') {
+          final pages = pageStart.isNotEmpty && pageEnd.isNotEmpty
+              ? '\nHal. $pageStart-$pageEnd'
+              : '';
+          return '$sourceLabel\n$bookName$pages';
+        }
+        final ayat = ayatStart.isNotEmpty && ayatEnd.isNotEmpty
+            ? '\nAyat $ayatStart-$ayatEnd'
+            : '';
+        return '$sourceLabel\n$surah$ayat';
+      }, (row) => JsonHelper.asString(row['score'])),
     ];
   }
 
@@ -540,7 +617,8 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
     return [
       _moduleHeaderCard(
         title: 'Input Evaluasi Tahfidz',
-        subtitle: 'Tambahkan soal satu per satu. Nilai akhir dihitung dari rata-rata nilai setiap soal.',
+        subtitle:
+            'Tambahkan soal satu per satu. Nilai akhir dihitung dari rata-rata nilai setiap soal.',
         icon: Icons.fact_check_outlined,
       ),
       const SizedBox(height: 18),
@@ -569,8 +647,7 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
         }),
       ),
       const SizedBox(height: 12),
-      _text(_questionDetailsController, 'Keterangan materi uji',
-          maxLines: 3),
+      _text(_questionDetailsController, 'Keterangan materi uji', maxLines: 3),
       const SizedBox(height: 12),
       Row(
         children: [
@@ -633,25 +710,28 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
           (row) =>
               '${JsonHelper.asString(row['participant_name'])}\n${JsonHelper.asString(row['period_type_label'])}',
           (row) {
-            final questionCount =
-                JsonHelper.asString(row['question_count'], fallback: '0');
-            final questionDetails = JsonHelper.asString(row['question_details']);
-            final questionItems = JsonHelper.asList(row['question_items']);
-            final previewLines = questionItems.take(4).map((item) {
+        final questionCount =
+            JsonHelper.asString(row['question_count'], fallback: '0');
+        final questionDetails = JsonHelper.asString(row['question_details']);
+        final questionItems = JsonHelper.asList(row['question_items']);
+        final previewLines = questionItems
+            .take(4)
+            .map((item) {
               final question = JsonHelper.asMap(item);
               return '• ${JsonHelper.asString(question['surah'])} ayat ${JsonHelper.asString(question['ayat'])}: ${JsonHelper.asString(question['score'])}';
-            }).where((item) => item.trim().isNotEmpty).join('\n');
-            final moreCount =
-                questionItems.length > 4 ? '\n+${questionItems.length - 4} soal lainnya' : '';
-            final detailText = questionDetails.trim().isNotEmpty
-                ? '\nMateri: $questionDetails'
-                : '';
-            final questionText =
-                previewLines.isEmpty ? '' : '\n$previewLines$moreCount';
-            return '${JsonHelper.asString(row['period_label'])}\n$questionCount pertanyaan$detailText$questionText';
-          },
-          (row) =>
-              'Rata-rata ${JsonHelper.asString(row['score'])}'),
+            })
+            .where((item) => item.trim().isNotEmpty)
+            .join('\n');
+        final moreCount = questionItems.length > 4
+            ? '\n+${questionItems.length - 4} soal lainnya'
+            : '';
+        final detailText = questionDetails.trim().isNotEmpty
+            ? '\nMateri: $questionDetails'
+            : '';
+        final questionText =
+            previewLines.isEmpty ? '' : '\n$previewLines$moreCount';
+        return '${JsonHelper.asString(row['period_label'])}\n$questionCount pertanyaan$detailText$questionText';
+      }, (row) => 'Rata-rata ${JsonHelper.asString(row['score'])}'),
     ];
   }
 
@@ -731,6 +811,48 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
 
   List<Widget> _inputBehavior() {
     final payload = _payload ?? const <String, dynamic>{};
+    final indicators = JsonHelper.asList(payload['behavior_indicators']);
+    final positiveIndicators = indicators
+        .where((item) => JsonHelper.asString(JsonHelper.asMap(item)['group']) == 'positive')
+        .toList();
+    final negativeIndicators = indicators
+        .where((item) => JsonHelper.asString(JsonHelper.asMap(item)['group']) == 'negative')
+        .toList();
+
+    List<Widget> buildIndicatorList(List<dynamic> items) {
+      return items.map((item) {
+        final row = JsonHelper.asMap(item);
+        final key = JsonHelper.asString(row['key']);
+        final label = JsonHelper.asString(row['label']);
+        final value = _behaviorChoices[key] ?? (row['default_yes'] == true);
+        return AppCard(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  ChoiceChip(
+                    label: const Text('Ya'),
+                    selected: value,
+                    onSelected: (_) => setState(() => _behaviorChoices[key] = true),
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('Tidak'),
+                    selected: !value,
+                    onSelected: (_) => setState(() => _behaviorChoices[key] = false),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      }).toList();
+    }
+
     return [
       _classDropdown(JsonHelper.asList(payload['classes'])),
       const SizedBox(height: 12),
@@ -746,47 +868,42 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
           }).toList(),
           (value) => setState(() => _selectedExtraChoice = value)),
       const SizedBox(height: 12),
-      _dropdown(
-          'Tipe Laporan',
-          _selectedChoice,
-          JsonHelper.asList(payload['behavior_types']),
-          (value) => setState(() => _selectedChoice = value)),
-      const SizedBox(height: 12),
       _text(_dateController, 'Tanggal laporan (YYYY-MM-DD)'),
       const SizedBox(height: 12),
-      _text(_titleController, 'Judul'),
+      const SectionTitle(title: 'Sikap Yang Harus Dipertahankan'),
       const SizedBox(height: 12),
-      _text(_contentController, 'Deskripsi', maxLines: 3),
+      ...buildIndicatorList(positiveIndicators),
       const SizedBox(height: 12),
-      _text(_actionPlanController, 'Rencana tindak lanjut'),
+      const SectionTitle(title: 'Sikap Yang Harus Dihindari'),
       const SizedBox(height: 12),
-      _text(_followUpDateController, 'Tanggal follow up (YYYY-MM-DD)'),
-      CheckboxListTile(
-          value: _flag,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (value) => setState(() => _flag = value ?? false),
-          title: const Text('Sudah selesai')),
+      ...buildIndicatorList(negativeIndicators),
+      const SizedBox(height: 12),
+      _text(_contentController, 'Catatan observasi (opsional)', maxLines: 3),
+      const SizedBox(height: 12),
+      _text(_actionPlanController, 'Rencana tindak lanjut (opsional)'),
       const SizedBox(height: 12),
       AppButton(
-          label: 'Simpan Laporan Perilaku',
+          label: 'Simpan Observasi Perilaku',
           onPressed: _submitting ? null : _submit,
           loading: _submitting,
           icon: Icons.save_outlined),
       const SizedBox(height: 18),
-      const SectionTitle(title: 'Laporan Terbaru'),
+      const SectionTitle(title: 'Observasi Terbaru'),
       const SizedBox(height: 10),
       ..._cards(
           JsonHelper.asList(payload['recent_reports']),
           (row) =>
-              '${JsonHelper.asString(row['student_name'])}\n${JsonHelper.asString(row['title'])}',
-          (row) => JsonHelper.asString(row['report_type_label']),
-          (row) => row['is_resolved'] == true ? 'Selesai' : 'Open'),
+              '${JsonHelper.asString(row['student_name'])}\n${JsonHelper.asString(row['indicator_label'])}',
+          (row) =>
+              '${JsonHelper.asString(row['indicator_group'])}\n${JsonHelper.asString(row['description'])}',
+          (row) => row['is_yes'] == true ? 'YA' : 'TIDAK'),
     ];
   }
 
   List<Widget> _gradeHistory() {
     final payload = _payload ?? const <String, dynamic>{};
-    final selectedParticipant = JsonHelper.asMap(payload['selected_participant']);
+    final selectedParticipant =
+        JsonHelper.asMap(payload['selected_participant']);
     final selectedClass = JsonHelper.asMap(payload['selected_class']);
     return [
       if (selectedParticipant.isNotEmpty) ...[
@@ -813,11 +930,13 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
       ],
       const SectionTitle(title: 'Ringkasan Nilai (Rata-rata)'),
       const SizedBox(height: 10),
-      ..._academicSummaryCards(JsonHelper.asList(payload['academic_summary_rows'])),
+      ..._academicSummaryCards(
+          JsonHelper.asList(payload['academic_summary_rows'])),
       const SizedBox(height: 18),
       const SectionTitle(title: 'Riwayat Akademik'),
       const SizedBox(height: 10),
-      ..._academicHistoryCards(JsonHelper.asList(payload['academic_grade_rows'])),
+      ..._academicHistoryCards(
+          JsonHelper.asList(payload['academic_grade_rows'])),
     ];
   }
 
@@ -854,26 +973,365 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
 
   List<Widget> _homeroomStudents() {
     final payload = _payload ?? const <String, dynamic>{};
+    final students = JsonHelper.asList(payload['students']);
+    final reportPeriod = JsonHelper.asMap(payload['report_period']);
+    final reportPeriodOptions =
+        JsonHelper.asMap(payload['report_period_options']);
+    final semesterOptions =
+        JsonHelper.asList(reportPeriodOptions['semester_options']);
+    final yearOptions = JsonHelper.asList(reportPeriodOptions['year_options']);
+
     return [
-      _classDropdown(JsonHelper.asList(payload['homeroom_classes'])),
+      _classDropdown(
+        JsonHelper.asList(payload['homeroom_classes']),
+        reloadParticipant: true,
+      ),
+      const SizedBox(height: 12),
+      _dropdown(
+        'Periode Laporan',
+        _selectedPeriodType ?? JsonHelper.asString(reportPeriod['period_type']),
+        JsonHelper.asList(reportPeriodOptions['type_options']),
+        (value) {
+          setState(() {
+            _selectedPeriodType = value;
+            _selectedAcademicYearId = null;
+            _selectedYearName = null;
+          });
+          _load();
+        },
+      ),
+      if ((_selectedPeriodType ??
+              JsonHelper.asString(reportPeriod['period_type'])) ==
+          'YEAR') ...[
+        const SizedBox(height: 12),
+        if (yearOptions.isEmpty)
+          const AppCard(
+            child: Text('Pilihan tahun ajaran belum tersedia.'),
+          )
+        else
+          _dropdown(
+            'Tahun Ajaran',
+            _selectedYearName ?? JsonHelper.asString(reportPeriod['year_name']),
+            yearOptions,
+            (value) {
+              setState(() => _selectedYearName = value);
+              _load();
+            },
+          ),
+      ] else ...[
+        const SizedBox(height: 12),
+        if (semesterOptions.isEmpty)
+          const AppCard(
+            child: Text('Pilihan semester belum tersedia.'),
+          )
+        else
+          DropdownButtonFormField<int>(
+            initialValue: () {
+              final selectedId = _selectedAcademicYearId ??
+                  JsonHelper.asInt(reportPeriod['academic_year_id']);
+              final ids = semesterOptions
+                  .map((item) => JsonHelper.asInt(JsonHelper.asMap(item)['id']))
+                  .toSet();
+              return ids.contains(selectedId) ? selectedId : null;
+            }(),
+            items: semesterOptions
+                .map(
+                  (item) => DropdownMenuItem<int>(
+                    value: JsonHelper.asInt(JsonHelper.asMap(item)['id']),
+                    child: Text(
+                      JsonHelper.asString(JsonHelper.asMap(item)['label']),
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              setState(() => _selectedAcademicYearId = value);
+              _load();
+            },
+            decoration: const InputDecoration(labelText: 'Semester'),
+          ),
+      ],
       const SizedBox(height: 18),
-      const SectionTitle(title: 'Siswa Perwalian'),
+      const SectionTitle(title: 'Periode Raport'),
+      const SizedBox(height: 10),
+      AppCard(
+        child: Text(
+          ((_selectedPeriodType ??
+                      JsonHelper.asString(reportPeriod['period_type'])) ==
+                  'YEAR')
+              ? '${JsonHelper.asString(reportPeriod['year_name'], fallback: '-')} / Semua Semester'
+              : '${JsonHelper.asString(reportPeriod['academic_year_name'], fallback: '-')} / ${JsonHelper.asString(reportPeriod['semester'], fallback: '-')}',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      const SizedBox(height: 18),
+      const SectionTitle(title: 'Ringkasan Raport Siswa'),
+      const SizedBox(height: 10),
+      if (students.isEmpty)
+        const AppEmptyState(
+          title: 'Belum Ada Siswa',
+          subtitle: 'Data siswa perwalian belum tersedia pada kelas ini.',
+        )
+      else
+        ...students.map((item) {
+          final row = JsonHelper.asMap(item);
+          final rowId = JsonHelper.asInt(row['id']);
+          final summary = JsonHelper.asMap(row['report_summary']);
+          final academicSummary = JsonHelper.asMap(summary['academic']);
+          final attendanceSummary = JsonHelper.asMap(summary['attendance']);
+          final behaviorSummary = JsonHelper.asMap(summary['behavior']);
+          return InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              Navigator.of(context).pushNamed(
+                TeacherModuleScreen.routeName,
+                arguments: TeacherModuleArgs(
+                  key: 'homeroom-student-detail',
+                  title: 'Detail Raport Siswa',
+                  classId: JsonHelper.asInt(
+                    JsonHelper.asMap(payload['selected_class'])['id'],
+                  ),
+                  studentId: rowId,
+                  periodType: _selectedPeriodType ??
+                      JsonHelper.asString(reportPeriod['period_type']),
+                  academicYearId: _selectedAcademicYearId ??
+                      JsonHelper.asInt(reportPeriod['academic_year_id']),
+                  yearName: _selectedYearName ??
+                      JsonHelper.asString(reportPeriod['year_name']),
+                ),
+              );
+            },
+            child: AppCard(
+              padding: EdgeInsets.zero,
+              margin: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      JsonHelper.asString(row['name']),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${JsonHelper.asString(row['identifier_label'])}: ${JsonHelper.asString(row['identifier'])}',
+                      style: const TextStyle(color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _pill(
+                          'Akad: ${JsonHelper.asString(academicSummary['final_average'])}',
+                        ),
+                        _pill(
+                          'Mapel: ${JsonHelper.asString(academicSummary['subject_count'])}',
+                        ),
+                        _pill(
+                          'Absen H: ${JsonHelper.asString(attendanceSummary['hadir'])}',
+                        ),
+                        _pill(
+                          'Perilaku YA (+/-): ${JsonHelper.asString(behaviorSummary['positive_yes'])}/${JsonHelper.asString(behaviorSummary['negative_yes'])}',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Buka detail',
+                      style: TextStyle(
+                        color: Color(0xFF2563EB),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+    ];
+  }
+
+  List<Widget> _homeroomStudentDetail() {
+    final payload = _payload ?? const <String, dynamic>{};
+    final report = JsonHelper.asMap(payload['selected_student_report']);
+    if (report.isEmpty) {
+      return const [
+        AppEmptyState(
+          title: 'Detail Belum Tersedia',
+          subtitle: 'Pilih siswa dari halaman perwalian untuk melihat detail.',
+        ),
+      ];
+    }
+    final student = JsonHelper.asMap(report['student']);
+    final academic = JsonHelper.asMap(report['academic']);
+    final attendance = JsonHelper.asMap(report['attendance']);
+    final behavior = JsonHelper.asMap(report['behavior']);
+    final quran = JsonHelper.asMap(report['quran']);
+    final reportPeriod = JsonHelper.asMap(payload['report_period']);
+    final reportPeriodOptions =
+        JsonHelper.asMap(payload['report_period_options']);
+    final semesterOptions =
+        JsonHelper.asList(reportPeriodOptions['semester_options']);
+    final yearOptions = JsonHelper.asList(reportPeriodOptions['year_options']);
+    final attendanceRecap = JsonHelper.asMap(attendance['recap']);
+    final behaviorMatrix = JsonHelper.asMap(behavior['matrix']);
+    final positiveRows = JsonHelper.asList(behaviorMatrix['positive']);
+    final negativeRows = JsonHelper.asList(behaviorMatrix['negative']);
+
+    return [
+      _classDropdown(
+        JsonHelper.asList(payload['homeroom_classes']),
+        reloadParticipant: true,
+      ),
+      const SizedBox(height: 12),
+      _dropdown(
+        'Periode Laporan',
+        _selectedPeriodType ?? JsonHelper.asString(reportPeriod['period_type']),
+        JsonHelper.asList(reportPeriodOptions['type_options']),
+        (value) {
+          setState(() {
+            _selectedPeriodType = value;
+            _selectedAcademicYearId = null;
+            _selectedYearName = null;
+          });
+          _load();
+        },
+      ),
+      if ((_selectedPeriodType ??
+              JsonHelper.asString(reportPeriod['period_type'])) ==
+          'YEAR') ...[
+        const SizedBox(height: 12),
+        _dropdown(
+          'Tahun Ajaran',
+          _selectedYearName ?? JsonHelper.asString(reportPeriod['year_name']),
+          yearOptions,
+          (value) {
+            setState(() => _selectedYearName = value);
+            _load();
+          },
+        ),
+      ] else ...[
+        const SizedBox(height: 12),
+        DropdownButtonFormField<int>(
+          initialValue: () {
+            final selectedId = _selectedAcademicYearId ??
+                JsonHelper.asInt(reportPeriod['academic_year_id']);
+            final ids = semesterOptions
+                .map((item) => JsonHelper.asInt(JsonHelper.asMap(item)['id']))
+                .toSet();
+            return ids.contains(selectedId) ? selectedId : null;
+          }(),
+          items: semesterOptions
+              .map(
+                (item) => DropdownMenuItem<int>(
+                  value: JsonHelper.asInt(JsonHelper.asMap(item)['id']),
+                  child: Text(
+                    JsonHelper.asString(JsonHelper.asMap(item)['label']),
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: (value) {
+            setState(() => _selectedAcademicYearId = value);
+            _load();
+          },
+          decoration: const InputDecoration(labelText: 'Semester'),
+        ),
+      ],
+      const SizedBox(height: 18),
+      _recapCard(
+        'Akademik',
+        {
+          'Siswa': JsonHelper.asString(student['name']),
+          'NIS': JsonHelper.asString(student['identifier']),
+          'Rata-rata akhir': JsonHelper.asString(academic['final_average']),
+          'Mapel dinilai': JsonHelper.asString(academic['subject_count']),
+          'Entri nilai': JsonHelper.asString(academic['grade_count']),
+        },
+      ),
+      const SizedBox(height: 10),
+      _recapCard(
+        'Absensi',
+        {
+          'Hadir': JsonHelper.asString(attendanceRecap['hadir']),
+          'Sakit': JsonHelper.asString(attendanceRecap['sakit']),
+          'Izin': JsonHelper.asString(attendanceRecap['izin']),
+          'Alpa': JsonHelper.asString(attendanceRecap['alpa']),
+          'Persentase hadir':
+              '${JsonHelper.asString(attendance['attendance_rate'])}%',
+        },
+      ),
+      const SizedBox(height: 18),
+      const SectionTitle(title: 'Sikap Yang Harus Dipertahankan'),
+      const SizedBox(height: 10),
+      _behaviorMatrixTable(positiveRows),
+      const SizedBox(height: 12),
+      const SectionTitle(title: 'Sikap Yang Harus Dihindari'),
+      const SizedBox(height: 10),
+      _behaviorMatrixTable(negativeRows),
+      const SizedBox(height: 18),
+      const SectionTitle(title: 'Ringkasan Nilai Semua Mapel'),
+      const SizedBox(height: 10),
+      ..._academicSummaryCards(JsonHelper.asList(academic['summary_rows'])),
+      const SizedBox(height: 18),
+      const SectionTitle(title: 'Riwayat Nilai'),
+      const SizedBox(height: 10),
+      ..._academicHistoryCards(JsonHelper.asList(academic['history_rows'])),
+      const SizedBox(height: 18),
+      const SectionTitle(title: 'Riwayat Absensi'),
       const SizedBox(height: 10),
       ..._cards(
-          JsonHelper.asList(payload['students']),
-          (row) => JsonHelper.asString(row['name']),
-          (row) =>
-              '${JsonHelper.asString(row['identifier_label'])}: ${JsonHelper.asString(row['identifier'])}',
-          (_) => ''),
+        JsonHelper.asList(attendance['history_rows']),
+        (row) =>
+            '${JsonHelper.asString(row['date'])} - ${JsonHelper.asString(row['status_label'])}',
+        (row) =>
+            'Guru: ${JsonHelper.asString(row['teacher_name'])}\nCatatan: ${JsonHelper.asString(row['notes'])}',
+        (_) => '',
+      ),
       const SizedBox(height: 18),
-      const SectionTitle(title: 'Peserta Majelis'),
+      const SectionTitle(title: 'Riwayat Perilaku'),
       const SizedBox(height: 10),
       ..._cards(
-          JsonHelper.asList(payload['majlis_participants']),
-          (row) => JsonHelper.asString(row['name']),
+        JsonHelper.asList(behavior['history_rows']),
+        (row) => JsonHelper.asString(row['indicator_label']),
+        (row) {
+          final groupKey = JsonHelper.asString(row['group']).toLowerCase();
+          final groupLabel =
+              groupKey == 'positive' ? 'Dipertahankan' : 'Dihindari';
+          return '${JsonHelper.asString(row['report_date'])} - $groupLabel\n${JsonHelper.asString(row['notes'])}';
+        },
+        (row) => row['is_yes'] == true ? 'YA' : 'TIDAK',
+      ),
+      if (quran.isNotEmpty) ...[
+        const SizedBox(height: 18),
+        _recapCard(
+          'Tahfidz / Bacaan / Evaluasi',
+          {
+            'Setoran Tahfidz': JsonHelper.asString(
+                JsonHelper.asMap(quran['tahfidz_summary'])['count']),
+            'Setoran Bacaan': JsonHelper.asString(
+                JsonHelper.asMap(quran['recitation_summary'])['count']),
+            'Evaluasi Tahfidz': JsonHelper.asString(
+                JsonHelper.asMap(quran['evaluation_summary'])['count']),
+          },
+        ),
+        const SizedBox(height: 12),
+        ..._cards(
+          JsonHelper.asList(quran['tahfidz_history']),
+          (row) => JsonHelper.asString(row['surah']),
           (row) =>
-              '${JsonHelper.asString(row['identifier_label'])}: ${JsonHelper.asString(row['identifier'])}',
-          (_) => ''),
+              '${JsonHelper.asString(row['date'])}\nAyat ${JsonHelper.asString(row['ayat_start'])}-${JsonHelper.asString(row['ayat_end'])}',
+          (row) => JsonHelper.asString(row['score']),
+        ),
+      ],
     ];
   }
 
@@ -981,11 +1439,32 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
       onChanged: (value) {
         setState(() {
           _selectedClassId = value;
-          if (reloadParticipant) _selectedParticipantKey = null;
+          if (reloadParticipant) {
+            _selectedParticipantKey = null;
+            _selectedExtraChoice = null;
+          }
         });
         _load();
       },
       decoration: const InputDecoration(labelText: 'Kelas'),
+    );
+  }
+
+  Widget _pill(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F1FF),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Color(0xFF2563EB),
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+        ),
+      ),
     );
   }
 
@@ -1330,7 +1809,8 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
     if (values.isEmpty) {
       return null;
     }
-    final average = values.reduce((left, right) => left + right) / values.length;
+    final average =
+        values.reduce((left, right) => left + right) / values.length;
     return average.toStringAsFixed(2);
   }
 
@@ -1421,7 +1901,9 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
               child: Text(
                 label,
                 style: TextStyle(
-                  color: emphasize ? const Color(0xFF0F172A) : AppColors.textSecondary,
+                  color: emphasize
+                      ? const Color(0xFF0F172A)
+                      : AppColors.textSecondary,
                   fontWeight: emphasize ? FontWeight.w800 : FontWeight.w600,
                 ),
               ),
@@ -1430,7 +1912,9 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
             Text(
               value,
               style: TextStyle(
-                color: emphasize ? const Color(0xFF2563EB) : const Color(0xFF0F172A),
+                color: emphasize
+                    ? const Color(0xFF2563EB)
+                    : const Color(0xFF0F172A),
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -1508,15 +1992,15 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 8),
-                  infoLine('Tipe nilai', JsonHelper.asString(row['type_label'])),
+                  infoLine(
+                      'Tipe nilai', JsonHelper.asString(row['type_label'])),
                   infoLine(
                     'Tanggal',
                     AppDateFormatter.shortDate(
                       JsonHelper.asString(row['created_at']),
                     ),
                   ),
-                  if (notes.trim().isNotEmpty)
-                    infoLine('Catatan', notes),
+                  if (notes.trim().isNotEmpty) infoLine('Catatan', notes),
                 ],
               ),
             ),
@@ -1539,6 +2023,59 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
         ),
       );
     }).toList();
+  }
+
+  Widget _behaviorMatrixTable(List<dynamic> rows) {
+    if (rows.isEmpty) {
+      return const AppCard(
+        child: Text('Belum ada data perilaku untuk periode ini.'),
+      );
+    }
+    return AppCard(
+      child: Column(
+        children: [
+          const Row(
+            children: [
+              Expanded(
+                flex: 4,
+                child: Text(
+                  'Indikator',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              Expanded(child: Center(child: Text('SL'))),
+              Expanded(child: Center(child: Text('SR'))),
+              Expanded(child: Center(child: Text('K'))),
+              Expanded(child: Center(child: Text('TP'))),
+            ],
+          ),
+          const Divider(height: 18),
+          ...rows.map((item) {
+            final row = JsonHelper.asMap(item);
+            String mark(String key) =>
+                JsonHelper.asString(row['category_key']) == key ? '✓' : '';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 4,
+                    child: Text(
+                      JsonHelper.asString(row['label']),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  Expanded(child: Center(child: Text(mark('SL')))),
+                  Expanded(child: Center(child: Text(mark('SR')))),
+                  Expanded(child: Center(child: Text(mark('K')))),
+                  Expanded(child: Center(child: Text(mark('TP')))),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
   }
 
   Widget _recapCard(String title, Map<String, dynamic> values) {

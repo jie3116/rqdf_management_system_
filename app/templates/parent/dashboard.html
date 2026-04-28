@@ -25,7 +25,7 @@
                 {% for child in children %}
                 <li>
                     <a class="dropdown-item d-flex align-items-center justify-content-between {% if child.id == student.id %}active{% endif %}"
-                       href="{{ url_for('parent.dashboard', student_id=child.id) }}">
+                       href="{{ url_for('parent.dashboard', student_id=child.id, top_tab=top_tab, ann='all' if show_all_announcements else None, period_type=selected_period_type, academic_year_id=selected_academic_year.id if selected_period_type == 'SEMESTER' and selected_academic_year else None, year_name=selected_year_name if selected_period_type == 'YEAR' else None) }}">
                         <span>{{ child.full_name }}</span>
                         {% if child.id == student.id %}
                             <i class="fas fa-check text-white ms-2"></i>
@@ -62,7 +62,7 @@
 
     <ul class="nav nav-tabs mb-4">
         <li class="nav-item">
-            <a class="nav-link {% if top_tab == 'ann' %}active{% endif %}" href="{{ url_for('parent.dashboard', student_id=student.id, top_tab='ann', ann='all' if show_all_announcements else None) }}">
+            <a class="nav-link {% if top_tab == 'ann' %}active{% endif %}" href="{{ url_for('parent.dashboard', student_id=student.id, top_tab='ann', ann='all' if show_all_announcements else None, period_type=selected_period_type, academic_year_id=selected_academic_year.id if selected_period_type == 'SEMESTER' and selected_academic_year else None, year_name=selected_year_name if selected_period_type == 'YEAR' else None) }}">
                 Pengumuman
                 {% if unread_announcements_count > 0 %}
                 <span class="badge bg-danger ms-1">{{ unread_announcements_count }}</span>
@@ -70,18 +70,53 @@
             </a>
         </li>
         <li class="nav-item">
-            <a class="nav-link {% if top_tab != 'ann' %}active{% endif %}" href="{{ url_for('parent.dashboard', student_id=student.id, top_tab='main') }}">Dashboard</a>
+            <a class="nav-link {% if top_tab != 'ann' %}active{% endif %}" href="{{ url_for('parent.dashboard', student_id=student.id, top_tab='main', period_type=selected_period_type, academic_year_id=selected_academic_year.id if selected_period_type == 'SEMESTER' and selected_academic_year else None, year_name=selected_year_name if selected_period_type == 'YEAR' else None) }}">Dashboard</a>
         </li>
     </ul>
+
+    <form method="GET" class="mb-4">
+        <input type="hidden" name="student_id" value="{{ student.id }}">
+        <input type="hidden" name="top_tab" value="{{ top_tab }}">
+        {% if show_all_announcements %}
+        <input type="hidden" name="ann" value="all">
+        {% endif %}
+        <div class="row g-2">
+            <div class="col-lg-3">
+                <label class="small fw-bold text-muted">Periode Laporan</label>
+                <select name="period_type" class="form-select" onchange="this.form.submit()">
+                    {% for option in period_options.type_options %}
+                    <option value="{{ option.key }}" {% if selected_period_type == option.key %}selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-5">
+                {% if selected_period_type == 'YEAR' %}
+                <label class="small fw-bold text-muted">Tahun Ajaran</label>
+                <select name="year_name" class="form-select" onchange="this.form.submit()">
+                    {% for option in period_options.year_options %}
+                    <option value="{{ option.key }}" {% if selected_year_name == option.key %}selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <label class="small fw-bold text-muted">Semester</label>
+                <select name="academic_year_id" class="form-select" onchange="this.form.submit()">
+                    {% for option in period_options.semester_options %}
+                    <option value="{{ option.id }}" {% if selected_academic_year and selected_academic_year.id == option.id %}selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+            </div>
+        </div>
+    </form>
 
     {% if top_tab == 'ann' %}
     <div class="card shadow mb-4">
         <div class="card-header py-3 d-flex justify-content-between align-items-center">
             <h6 class="m-0 fw-bold text-primary"><i class="fas fa-bullhorn me-2"></i>Pengumuman</h6>
             {% if show_all_announcements %}
-            <a href="{{ url_for('parent.dashboard', student_id=student.id, top_tab='ann') }}" class="btn btn-sm btn-outline-secondary">Terbaru Saja</a>
+            <a href="{{ url_for('parent.dashboard', student_id=student.id, top_tab='ann', period_type=selected_period_type, academic_year_id=selected_academic_year.id if selected_period_type == 'SEMESTER' and selected_academic_year else None, year_name=selected_year_name if selected_period_type == 'YEAR' else None) }}" class="btn btn-sm btn-outline-secondary">Terbaru Saja</a>
             {% else %}
-            <a href="{{ url_for('parent.dashboard', student_id=student.id, top_tab='ann', ann='all') }}" class="btn btn-sm btn-outline-primary">Lihat Semua</a>
+            <a href="{{ url_for('parent.dashboard', student_id=student.id, top_tab='ann', ann='all', period_type=selected_period_type, academic_year_id=selected_academic_year.id if selected_period_type == 'SEMESTER' and selected_academic_year else None, year_name=selected_year_name if selected_period_type == 'YEAR' else None) }}" class="btn btn-sm btn-outline-primary">Lihat Semua</a>
             {% endif %}
         </div>
         <div class="card-body">
@@ -579,6 +614,67 @@
 
         <div class="tab-pane fade" id="pills-perilaku">
             <div class="card shadow mb-4">
+                <div class="card-header py-3 bg-warning text-dark">
+                    <h6 class="m-0 fw-bold">Raport Perilaku (SL/SR/K/TP)</h6>
+                </div>
+                <div class="card-body">
+                    {% set pos_rows = behavior_matrix.matrix.positive if behavior_matrix else [] %}
+                    {% set neg_rows = behavior_matrix.matrix.negative if behavior_matrix else [] %}
+                    {% set row_count = [pos_rows|length, neg_rows|length]|max %}
+                    <div class="small text-muted mb-2">
+                        Total pertemuan periode aktif: <strong>{{ behavior_matrix.total_meetings if behavior_matrix else 0 }}</strong>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle text-center">
+                            <thead class="table-light">
+                                <tr>
+                                    <th rowspan="2">No</th>
+                                    <th rowspan="2">Sikap Yang Harus Dipertahankan</th>
+                                    <th colspan="4">Frekuensi</th>
+                                    <th rowspan="2">Sikap Yang Harus Dihindari</th>
+                                    <th colspan="4">Frekuensi</th>
+                                </tr>
+                                <tr>
+                                    <th>SL</th><th>SR</th><th>K</th><th>TP</th>
+                                    <th>SL</th><th>SR</th><th>K</th><th>TP</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for idx in range(row_count) %}
+                                {% set pos = pos_rows[idx] if idx < pos_rows|length else None %}
+                                {% set neg = neg_rows[idx] if idx < neg_rows|length else None %}
+                                <tr>
+                                    <td>{{ idx + 1 }}</td>
+                                    <td class="text-start">{{ pos.label if pos else '-' }}</td>
+                                    <td>{% if pos and pos.is_SL %}&#10003;{% endif %}</td>
+                                    <td>{% if pos and pos.is_SR %}&#10003;{% endif %}</td>
+                                    <td>{% if pos and pos.is_K %}&#10003;{% endif %}</td>
+                                    <td>{% if pos and pos.is_TP %}&#10003;{% endif %}</td>
+                                    <td class="text-start">{{ neg.label if neg else '-' }}</td>
+                                    <td>{% if neg and neg.is_SL %}&#10003;{% endif %}</td>
+                                    <td>{% if neg and neg.is_SR %}&#10003;{% endif %}</td>
+                                    <td>{% if neg and neg.is_K %}&#10003;{% endif %}</td>
+                                    <td>{% if neg and neg.is_TP %}&#10003;{% endif %}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="small fw-bold mb-2">
+                        Keterangan:
+                        SL = {{ behavior_matrix.legend.SL if behavior_matrix else 'SELALU' }},
+                        SR = {{ behavior_matrix.legend.SR if behavior_matrix else 'SERING' }},
+                        K = {{ behavior_matrix.legend.K if behavior_matrix else 'KURANG/KADANG' }},
+                        TP = {{ behavior_matrix.legend.TP if behavior_matrix else 'TIDAK PERNAH' }}
+                    </div>
+                    <div class="alert alert-light border mb-0">
+                        <strong>Catatan Wali Kelas:</strong><br>
+                        {{ latest_behavior_note }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow mb-4">
                 <div class="card-header py-3 bg-primary text-white">
                     <h6 class="m-0 fw-bold">Laporan Perilaku dari Guru</h6>
                 </div>
@@ -588,12 +684,11 @@
                             <thead>
                                 <tr>
                                     <th>Tanggal</th>
-                                    <th>Jenis</th>
+                                    <th>Kelompok</th>
                                     <th>Guru</th>
-                                    <th>Judul</th>
+                                    <th>Indikator</th>
                                     <th>Catatan</th>
-                                    <th>Tindak Lanjut</th>
-                                    <th>Status</th>
+                                    <th>Jawaban</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -602,30 +697,20 @@
                                     <tr>
                                         <td>{{ r.report_date.strftime('%d %b %Y') if r.report_date else '-' }}</td>
                                         <td>
-                                            <span class="badge {% if r.report_type.name == 'POSITIVE' %}bg-success{% elif r.report_type.name == 'DEVELOPMENT' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
-                                                {{ r.report_type.value }}
+                                            <span class="badge {% if r.indicator_group == 'positive' %}bg-success{% else %}bg-danger{% endif %}">
+                                                {{ 'Dipertahankan' if r.indicator_group == 'positive' else 'Dihindari' }}
                                             </span>
                                         </td>
                                         <td>{{ r.teacher.full_name if r.teacher else '-' }}</td>
                                         <td class="fw-bold">{{ r.title }}</td>
                                         <td>{{ r.description }}</td>
                                         <td>
-                                            {{ r.action_plan or '-' }}
-                                            {% if r.follow_up_date %}
-                                            <div><small class="text-muted">Target: {{ r.follow_up_date.strftime('%d %b %Y') }}</small></div>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if r.is_resolved %}
-                                                <span class="badge bg-success">Tuntas</span>
-                                            {% else %}
-                                                <span class="badge bg-secondary">Proses</span>
-                                            {% endif %}
+                                            <span class="badge {% if r.is_yes %}bg-success{% else %}bg-secondary{% endif %}">{{ 'YA' if r.is_yes else 'TIDAK' }}</span>
                                         </td>
                                     </tr>
                                     {% endfor %}
                                 {% else %}
-                                    <tr><td colspan="7" class="text-center text-muted py-4">Belum ada laporan perilaku dari guru.</td></tr>
+                                    <tr><td colspan="6" class="text-center text-muted py-4">Belum ada laporan perilaku dari guru.</td></tr>
                                 {% endif %}
                             </tbody>
                         </table>

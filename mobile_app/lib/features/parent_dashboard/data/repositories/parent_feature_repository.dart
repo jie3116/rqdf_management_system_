@@ -10,10 +10,12 @@ class ParentFeatureRepository {
   Future<QuickActionResultModel> fetchQuickActionData({
     required QuickActionModel action,
     int? childId,
+    Map<String, dynamic>? query,
   }) async {
     final payload = await _service.fetchFeature(
       key: action.key,
       childId: childId,
+      query: query,
     );
     return QuickActionResultModel(
       key: action.key,

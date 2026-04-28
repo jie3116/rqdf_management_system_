@@ -53,6 +53,10 @@ class QuickActionContent extends StatefulWidget {
 }
 
 class _QuickActionContentState extends State<QuickActionContent> {
+  String? _selectedPeriodType;
+  int? _selectedAcademicYearId;
+  String? _selectedYearName;
+
   @override
   void initState() {
     super.initState();
@@ -70,9 +74,48 @@ class _QuickActionContentState extends State<QuickActionContent> {
 
   Future<void> _load() {
     if (widget.childId == null || widget.childId! <= 0) return Future.value();
+    final query = _supportsPeriod(widget.action.key)
+        ? <String, dynamic>{
+            if ((_selectedPeriodType ?? '').isNotEmpty)
+              'period_type': _selectedPeriodType,
+            if ((_selectedPeriodType ?? 'SEMESTER') == 'SEMESTER' &&
+                _selectedAcademicYearId != null)
+              'academic_year_id': _selectedAcademicYearId,
+            if ((_selectedPeriodType ?? '') == 'YEAR' &&
+                (_selectedYearName ?? '').isNotEmpty)
+              'year_name': _selectedYearName,
+          }
+        : null;
     return context
         .read<QuickActionProvider>()
-        .load(action: widget.action, childId: widget.childId);
+        .load(action: widget.action, childId: widget.childId, query: query)
+        .then((_) {
+      if (!mounted) return;
+      final payload = context.read<QuickActionProvider>().result?.payload;
+      if (payload == null) return;
+      _syncPeriodFromPayload(payload);
+    });
+  }
+
+  bool _supportsPeriod(String actionKey) {
+    final key = actionKey.toLowerCase();
+    return key == 'nilai' || key == 'absensi' || key == 'perilaku';
+  }
+
+  void _syncPeriodFromPayload(Map<String, dynamic> payload) {
+    if (!_supportsPeriod(widget.action.key)) return;
+    final reportPeriod = JsonHelper.asMap(payload['report_period']);
+    if (reportPeriod.isEmpty) return;
+    _selectedPeriodType = JsonHelper.asString(
+      reportPeriod['period_type'],
+      fallback: _selectedPeriodType ?? 'SEMESTER',
+    );
+    final yearId = JsonHelper.asInt(reportPeriod['academic_year_id']);
+    _selectedAcademicYearId = yearId > 0 ? yearId : null;
+    _selectedYearName = JsonHelper.asString(
+      reportPeriod['year_name'],
+      fallback: _selectedYearName ?? '',
+    );
   }
 
   @override
@@ -103,7 +146,35 @@ class _QuickActionContentState extends State<QuickActionContent> {
               onRetry: _load,
             )
           else if (provider.result != null)
-            _Renderer(action: widget.action, payload: provider.result!.payload)
+            _Renderer(
+              action: widget.action,
+              payload: provider.result!.payload,
+              selectedPeriodType: _selectedPeriodType,
+              selectedAcademicYearId: _selectedAcademicYearId,
+              selectedYearName: _selectedYearName,
+              onPeriodTypeChanged: _supportsPeriod(widget.action.key)
+                  ? (value) {
+                      setState(() {
+                        _selectedPeriodType = value;
+                        _selectedAcademicYearId = null;
+                        _selectedYearName = null;
+                      });
+                      _load();
+                    }
+                  : null,
+              onSemesterChanged: _supportsPeriod(widget.action.key)
+                  ? (value) {
+                      setState(() => _selectedAcademicYearId = value);
+                      _load();
+                    }
+                  : null,
+              onYearNameChanged: _supportsPeriod(widget.action.key)
+                  ? (value) {
+                      setState(() => _selectedYearName = value);
+                      _load();
+                    }
+                  : null,
+            )
           else
             const AppErrorState(message: 'Data tidak tersedia.'),
         ],
@@ -113,20 +184,114 @@ class _QuickActionContentState extends State<QuickActionContent> {
 }
 
 class _Renderer extends StatelessWidget {
-  const _Renderer({required this.action, required this.payload});
+  const _Renderer({
+    required this.action,
+    required this.payload,
+    this.selectedPeriodType,
+    this.selectedAcademicYearId,
+    this.selectedYearName,
+    this.onPeriodTypeChanged,
+    this.onSemesterChanged,
+    this.onYearNameChanged,
+  });
   final QuickActionModel action;
   final Map<String, dynamic> payload;
+  final String? selectedPeriodType;
+  final int? selectedAcademicYearId;
+  final String? selectedYearName;
+  final ValueChanged<String?>? onPeriodTypeChanged;
+  final ValueChanged<int?>? onSemesterChanged;
+  final ValueChanged<String?>? onYearNameChanged;
 
   @override
   Widget build(BuildContext context) {
     final key = action.key.toLowerCase();
     final accent = _accent(key);
     final student = JsonHelper.asMap(payload['student']);
+    final supportsPeriod = key == 'nilai' || key == 'absensi' || key == 'perilaku';
+    final period = JsonHelper.asMap(payload['report_period']);
+    final options = JsonHelper.asMap(payload['report_period_options']);
+    final periodType =
+        selectedPeriodType ?? JsonHelper.asString(period['period_type'], fallback: 'SEMESTER');
+    final semesterOptions = JsonHelper.asList(options['semester_options']);
+    final yearOptions = JsonHelper.asList(options['year_options']);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _StudentCard(student: student, accent: accent),
+        if (supportsPeriod) ...[
+          const SizedBox(height: 14),
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Periode Laporan',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: periodType,
+                  items: JsonHelper.asList(options['type_options']).map((item) {
+                    final row = JsonHelper.asMap(item);
+                    final value = JsonHelper.asString(row['key']);
+                    final label = JsonHelper.asString(row['label'], fallback: value);
+                    return DropdownMenuItem<String>(value: value, child: Text(label));
+                  }).toList(),
+                  onChanged: onPeriodTypeChanged,
+                  decoration: const InputDecoration(labelText: 'Jenis Periode'),
+                ),
+                const SizedBox(height: 10),
+                if (periodType == 'YEAR')
+                  DropdownButtonFormField<String>(
+                    initialValue: () {
+                      final value =
+                          selectedYearName ?? JsonHelper.asString(period['year_name']);
+                      final allowed = yearOptions
+                          .map((item) => JsonHelper.asString(JsonHelper.asMap(item)['key']))
+                          .toSet();
+                      return value.isNotEmpty && allowed.contains(value) ? value : null;
+                    }(),
+                    items: yearOptions.map((item) {
+                      final row = JsonHelper.asMap(item);
+                      final value = JsonHelper.asString(row['key']);
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(JsonHelper.asString(row['label'], fallback: value)),
+                      );
+                    }).toList(),
+                    onChanged: onYearNameChanged,
+                    decoration: const InputDecoration(labelText: 'Tahun Ajaran'),
+                  )
+                else
+                  DropdownButtonFormField<int>(
+                    initialValue: () {
+                      final fromPayload = JsonHelper.asInt(period['academic_year_id']);
+                      final candidate =
+                          selectedAcademicYearId ?? (fromPayload > 0 ? fromPayload : null);
+                      final allowed = semesterOptions
+                          .map((item) => JsonHelper.asInt(JsonHelper.asMap(item)['id']))
+                          .toSet();
+                      return candidate != null && allowed.contains(candidate)
+                          ? candidate
+                          : null;
+                    }(),
+                    items: semesterOptions.map((item) {
+                      final row = JsonHelper.asMap(item);
+                      final id = JsonHelper.asInt(row['id']);
+                      return DropdownMenuItem<int>(
+                        value: id,
+                        child: Text(JsonHelper.asString(row['label'], fallback: '$id')),
+                      );
+                    }).toList(),
+                    onChanged: onSemesterChanged,
+                    decoration: const InputDecoration(labelText: 'Semester'),
+                  ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 14),
         if (key == 'pengumuman') ..._announcementSections(payload, accent),
         if (key == 'keuangan') ..._financeSections(payload, accent),
@@ -492,6 +657,9 @@ List<Widget> _attendanceSections(Map<String, dynamic> payload, Color accent) {
 
 List<Widget> _behaviorSections(Map<String, dynamic> payload, Color accent) {
   final summary = JsonHelper.asMap(payload['summary']);
+  final matrix = JsonHelper.asMap(payload['matrix']);
+  final positiveRows = JsonHelper.asList(matrix['positive']);
+  final negativeRows = JsonHelper.asList(matrix['negative']);
   return [
     _MetricGrid(
       title: 'Ringkasan Perilaku',
@@ -500,18 +668,36 @@ List<Widget> _behaviorSections(Map<String, dynamic> payload, Color accent) {
         MapEntry('Total poin', '${JsonHelper.asInt(summary['point_total'])}'),
         MapEntry('Pelanggaran', '${JsonHelper.asInt(summary['violation_count'])}'),
         MapEntry('Laporan guru', '${JsonHelper.asInt(summary['behavior_report_count'])}'),
+        MapEntry('Pertemuan', '${JsonHelper.asInt(summary['total_meetings'])}'),
       ],
     ),
+    const SizedBox(height: 20),
+    _InfoCard(
+      accent: accent,
+      title: 'Catatan wali kelas',
+      subtitle: JsonHelper.asString(summary['latest_note'], fallback: '-'),
+    ),
+    const SizedBox(height: 20),
+    const SectionTitle(title: 'Sikap Yang Harus Dipertahankan'),
+    const SizedBox(height: 10),
+    _BehaviorMatrixCards(rows: positiveRows),
+    const SizedBox(height: 16),
+    const SectionTitle(title: 'Sikap Yang Harus Dihindari'),
+    const SizedBox(height: 10),
+    _BehaviorMatrixCards(rows: negativeRows),
     const SizedBox(height: 20),
     const SectionTitle(title: 'Laporan Perilaku Guru'),
     const SizedBox(height: 10),
     _CardList(
       items: JsonHelper.asList(payload['reports']),
       emptySubtitle: 'Belum ada laporan perilaku dari guru.',
-      titleBuilder: (row) => JsonHelper.asString(row['title'], fallback: '-'),
+      titleBuilder: (row) => JsonHelper.asString(
+        row['indicator_label'] ?? row['title'],
+        fallback: '-',
+      ),
       subtitleBuilder: (row) =>
           '${JsonHelper.asString(row['teacher_name'], fallback: '-')}\n${JsonHelper.asString(row['description'], fallback: '-')}',
-      badgeBuilder: (row) => JsonHelper.asString(row['report_type_label'], fallback: ''),
+      badgeBuilder: (row) => row['is_yes'] == true ? 'YA' : 'TIDAK',
       accent: accent,
     ),
     const SizedBox(height: 20),
@@ -527,6 +713,55 @@ List<Widget> _behaviorSections(Map<String, dynamic> payload, Color accent) {
       accent: accent,
     ),
   ];
+}
+
+class _BehaviorMatrixCards extends StatelessWidget {
+  const _BehaviorMatrixCards({required this.rows});
+
+  final List<dynamic> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rows.isEmpty) {
+      return const AppEmptyState(
+        title: 'Belum Ada Data',
+        subtitle: 'Data indikator perilaku belum tersedia.',
+      );
+    }
+    return Column(
+      children: rows.map((item) {
+        final row = JsonHelper.asMap(item);
+        final category = JsonHelper.asString(row['category_key'], fallback: 'TP');
+        return AppCard(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  JsonHelper.asString(row['label'], fallback: '-'),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F1FF),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  category,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1D4ED8),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
 }
 
 class _MetricGrid extends StatelessWidget {
