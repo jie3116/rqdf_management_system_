@@ -941,18 +941,16 @@ class _MetricTile extends StatelessWidget {
                 ),
           ),
           const SizedBox(height: 4),
-          Expanded(
-            child: Text(
-              value,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF0F172A),
-                    fontSize: 12.5,
-                    height: 1.2,
-                  ),
-            ),
+          Text(
+            value,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF0F172A),
+                  fontSize: 12.5,
+                  height: 1.2,
+                ),
           ),
         ],
       ),
