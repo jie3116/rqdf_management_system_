@@ -5,15 +5,77 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kwitansi Pembayaran</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    {% set printable_width_mm = paper.width_mm - (paper.margin_mm * 2) %}
     <style>
+        @page {
+            size: {{ paper.page_size_css }};
+            margin: {{ paper.margin_mm }}mm;
+        }
+
         body { background-color: #f8f9fa; }
         .receipt-wrapper {
-            max-width: 760px;
+            max-width: min(760px, {{ printable_width_mm }}mm);
             margin: 24px auto;
             background: #fff;
             border: 1px solid #dee2e6;
             border-radius: 10px;
-            padding: 24px;
+            padding: {% if paper.compact %}14px{% else %}24px{% endif %};
+        }
+        .receipt-wrapper.compact {
+            font-size: 0.72rem;
+            line-height: 1.08;
+        }
+        .receipt-wrapper.compact .table {
+            font-size: 0.68rem;
+        }
+        .receipt-wrapper.compact .table > :not(caption) > * > * {
+            padding: 0.12rem 0.22rem;
+        }
+        .receipt-wrapper.compact .signature-box {
+            min-width: 130px !important;
+        }
+        .receipt-wrapper.compact h4 {
+            font-size: 0.82rem;
+            margin-bottom: 0.1rem !important;
+        }
+        .receipt-wrapper.compact .small {
+            font-size: 0.62rem !important;
+        }
+        .receipt-wrapper.compact .fw-bold {
+            line-height: 1.04;
+        }
+        .receipt-wrapper.compact .header-block {
+            margin-bottom: 0.16rem !important;
+        }
+        .receipt-wrapper.compact hr {
+            margin: 0.12rem 0;
+        }
+        .receipt-wrapper.compact .info-grid {
+            --bs-gutter-x: 0.35rem;
+            --bs-gutter-y: 0.1rem;
+            row-gap: 0.1rem !important;
+        }
+        .receipt-wrapper.compact .info-grid > .col-md-6 {
+            width: 50%;
+        }
+        .receipt-wrapper.compact .amount-table {
+            margin-top: 0.2rem !important;
+        }
+        .receipt-wrapper.compact .footer-block {
+            margin-top: 0.28rem !important;
+        }
+        .receipt-wrapper.compact .footer-note {
+            font-size: 0.58rem;
+            display: none;
+        }
+        .receipt-wrapper.compact .signature-label {
+            margin-bottom: 0.75rem !important;
+        }
+        .receipt-wrapper.compact .mb-1 {
+            margin-bottom: 0.1rem !important;
+        }
+        .receipt-wrapper.compact .pt-1 {
+            padding-top: 0.08rem !important;
         }
         @media print {
             body { background: #fff; }
@@ -22,15 +84,19 @@
                 margin: 0;
                 border: none;
                 border-radius: 0;
-                max-width: 100%;
+                max-width: {{ printable_width_mm }}mm;
                 padding: 0;
+            }
+            .receipt-wrapper.compact {
+                break-inside: avoid;
+                page-break-inside: avoid;
             }
         }
     </style>
 </head>
 <body>
-    <div class="receipt-wrapper">
-        <div class="d-flex justify-content-between align-items-start mb-3">
+    <div class="receipt-wrapper {% if paper.compact %}compact{% endif %}">
+        <div class="d-flex justify-content-between align-items-start mb-3 header-block">
             <div>
                 <h4 class="mb-1 fw-bold">Kwitansi Pembayaran</h4>
                 <div class="text-muted small">No. Transaksi: TRX-{{ transaction.id }}</div>
@@ -43,7 +109,7 @@
 
         <hr>
 
-        <div class="row g-3">
+        <div class="row g-3 info-grid">
             <div class="col-md-6">
                 <div class="fw-bold mb-1">Data Siswa</div>
                 <div>{{ student.full_name }}</div>
@@ -56,7 +122,7 @@
             </div>
         </div>
 
-        <div class="table-responsive mt-4">
+        <div class="table-responsive mt-4 amount-table">
             <table class="table table-bordered align-middle mb-0">
                 <tbody>
                     <tr>
@@ -91,22 +157,32 @@
             </table>
         </div>
 
-        <div class="mt-4 d-flex justify-content-between align-items-end">
-            <div class="small text-muted">
+        <div class="mt-4 d-flex justify-content-between align-items-end footer-block">
+            <div class="small text-muted footer-note">
                 Dokumen ini dicetak dari sistem kasir.
             </div>
-            <div class="text-center" style="min-width: 220px;">
-                <div class="small text-muted mb-5">Petugas</div>
+            <div class="text-center signature-box" style="min-width: 220px;">
+                <div class="small text-muted mb-5 signature-label">Petugas</div>
                 <div class="border-top pt-1">{{ payment_pic.username if payment_pic else '-' }}</div>
             </div>
         </div>
     </div>
 
-    <div class="text-center mb-4 no-print">
-        <button class="btn btn-primary me-2" onclick="window.print()">
+    <div class="mb-4 no-print">
+        <div class="d-flex flex-wrap justify-content-center align-items-center gap-2">
+            <form method="GET" class="d-flex align-items-center gap-2 mb-0">
+                <label for="paper" class="small text-muted mb-0">Ukuran Cetak</label>
+                <select id="paper" name="paper" class="form-select form-select-sm" onchange="this.form.submit()">
+                    {% for option in paper_options %}
+                    <option value="{{ option.key }}" {% if option.key == paper.key %}selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+            <button class="btn btn-primary" onclick="window.print()">
             <i class="fas fa-print me-1"></i> Cetak
-        </button>
-        <a href="{{ url_for('staff.cashier_pay', student_id=student.id) }}" class="btn btn-outline-secondary">Kembali ke Kasir</a>
+            </button>
+            <a href="{{ url_for('staff.cashier_pay', student_id=student.id) }}" class="btn btn-outline-secondary">Kembali ke Kasir</a>
+        </div>
     </div>
 </body>
 </html>

@@ -42,6 +42,33 @@ from app.utils.tenant import classroom_in_tenant, resolve_tenant_id, scoped_clas
 
 staff_bp = Blueprint('staff', __name__)
 
+_RECEIPT_PAPER_OPTIONS = (
+    {
+        'key': 'a4',
+        'label': 'A4 Landscape',
+        'width_mm': 297,
+        'height_mm': 210,
+        'margin_mm': 10,
+        'compact': False,
+    },
+    {
+        'key': 'a6',
+        'label': 'A6 Landscape / 1-4 HVS',
+        'width_mm': 148,
+        'height_mm': 105,
+        'margin_mm': 3,
+        'compact': True,
+    },
+    {
+        'key': 'dl',
+        'label': 'DL Landscape / amplop',
+        'width_mm': 220,
+        'height_mm': 110,
+        'margin_mm': 4,
+        'compact': True,
+    },
+)
+
 
 def _current_tenant_id():
     return resolve_tenant_id(current_user)
@@ -86,6 +113,14 @@ def _parse_rupiah_input(raw_value, default_value):
     if not digits:
         return default_value
     return to_rupiah_int(digits, default=default_value)
+
+
+def _resolve_receipt_paper(paper_key):
+    selected_key = (paper_key or 'a4').strip().lower()
+    options_by_key = {item['key']: item for item in _RECEIPT_PAPER_OPTIONS}
+    selected = options_by_key.get(selected_key, options_by_key['a4']).copy()
+    selected['page_size_css'] = f"{selected['width_mm']}mm {selected['height_mm']}mm"
+    return selected
 
 
 def _candidate_fee_drafts(candidate, tenant_id=None):
@@ -350,6 +385,7 @@ def cashier_receipt(transaction_id):
 
     payment_pic = User.query.filter_by(id=transaction.pic_id, tenant_id=tenant_id).first()
     sisa_tagihan = max(0, to_rupiah_int(invoice.total_amount) - to_rupiah_int(invoice.paid_amount))
+    paper = _resolve_receipt_paper(request.args.get('paper'))
 
     return render_template(
         'staff/cashier_receipt.html',
@@ -358,6 +394,8 @@ def cashier_receipt(transaction_id):
         student=student,
         payment_pic=payment_pic,
         sisa_tagihan=sisa_tagihan,
+        paper=paper,
+        paper_options=_RECEIPT_PAPER_OPTIONS,
     )
 
 
