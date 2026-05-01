@@ -6,13 +6,17 @@
     <title>Kwitansi Pembayaran</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     {% set printable_width_mm = paper.width_mm - (paper.margin_mm * 2) %}
+    {% set printable_height_mm = paper.height_mm - (paper.margin_mm * 2) %}
     <style>
         @page {
             size: {{ paper.page_size_css }};
             margin: {{ paper.margin_mm }}mm;
         }
 
-        body { background-color: #f8f9fa; }
+        body {
+            margin: 0;
+            background-color: #f8f9fa;
+        }
         .receipt-wrapper {
             max-width: min(760px, {{ printable_width_mm }}mm);
             margin: 24px auto;
@@ -23,16 +27,13 @@
         }
         .receipt-wrapper.compact {
             font-size: 0.72rem;
-            line-height: 1.08;
+            line-height: 1.18;
         }
         .receipt-wrapper.compact .table {
             font-size: 0.68rem;
         }
         .receipt-wrapper.compact .table > :not(caption) > * > * {
-            padding: 0.12rem 0.22rem;
-        }
-        .receipt-wrapper.compact .signature-box {
-            min-width: 130px !important;
+            padding: 0.18rem 0.26rem;
         }
         .receipt-wrapper.compact h4 {
             font-size: 0.82rem;
@@ -45,10 +46,10 @@
             line-height: 1.04;
         }
         .receipt-wrapper.compact .header-block {
-            margin-bottom: 0.16rem !important;
+            margin-bottom: 0.22rem !important;
         }
         .receipt-wrapper.compact hr {
-            margin: 0.12rem 0;
+            margin: 0.18rem 0;
         }
         .receipt-wrapper.compact .info-grid {
             --bs-gutter-x: 0.35rem;
@@ -56,13 +57,13 @@
             row-gap: 0.1rem !important;
         }
         .receipt-wrapper.compact .info-grid > .col-md-6 {
-            width: 50%;
+            width: 100%;
         }
         .receipt-wrapper.compact .amount-table {
-            margin-top: 0.2rem !important;
+            margin-top: 0.3rem !important;
         }
         .receipt-wrapper.compact .footer-block {
-            margin-top: 0.28rem !important;
+            margin-top: 0.34rem !important;
         }
         .receipt-wrapper.compact .footer-note {
             font-size: 0.58rem;
@@ -72,19 +73,47 @@
             margin-bottom: 0.75rem !important;
         }
         .receipt-wrapper.compact .mb-1 {
-            margin-bottom: 0.1rem !important;
+            margin-bottom: 0.16rem !important;
         }
         .receipt-wrapper.compact .pt-1 {
             padding-top: 0.08rem !important;
         }
+        .receipt-wrapper.compact .table th,
+        .receipt-wrapper.compact .table td {
+            white-space: normal;
+            word-break: break-word;
+        }
+        .receipt-wrapper.compact .table th {
+            width: 42%;
+        }
+        .receipt-wrapper.compact .signature-box {
+            min-width: 110px !important;
+        }
+        .receipt-wrapper .issuer-block {
+            margin-bottom: 0.22rem;
+        }
+        .receipt-wrapper .issuer-name {
+            font-weight: 700;
+            line-height: 1.24;
+        }
+        .receipt-wrapper .issuer-meta {
+            line-height: 1.24;
+        }
         @media print {
-            body { background: #fff; }
+            html, body {
+                width: {{ paper.width_mm }}mm;
+                height: {{ paper.height_mm }}mm;
+                margin: 0;
+                padding: 0;
+                background: #fff;
+            }
             .no-print { display: none !important; }
             .receipt-wrapper {
                 margin: 0;
                 border: none;
                 border-radius: 0;
                 max-width: {{ printable_width_mm }}mm;
+                min-height: {{ printable_height_mm }}mm;
                 padding: 0;
             }
             .receipt-wrapper.compact {
@@ -96,6 +125,12 @@
 </head>
 <body>
     <div class="receipt-wrapper {% if paper.compact %}compact{% endif %}">
+        <div class="issuer-block">
+            <div class="issuer-name">{{ issuer.name }}</div>
+            <div class="issuer-meta small text-muted">{{ issuer.address }}</div>
+            <div class="issuer-meta small text-muted">Telp: {{ issuer.phone }}</div>
+        </div>
+
         <div class="d-flex justify-content-between align-items-start mb-3 header-block">
             <div>
                 <h4 class="mb-1 fw-bold">Kwitansi Pembayaran</h4>

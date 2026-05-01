@@ -82,7 +82,9 @@
             <ul class="nav nav-pills flex-column mb-auto">
 
                 <li class="nav-item">
-                    {% if active_role_value == 'admin' %}
+                    {% if active_role_value == 'super_admin' %}
+                        <a href="{{ url_for('admin.manage_tenants') }}" class="nav-link"><i class="fas fa-building me-2"></i> Dashboard Platform</a>
+                    {% elif active_role_value == 'admin' %}
                         <a href="{{ url_for('admin.dashboard') }}" class="nav-link"><i class="fas fa-tachometer-alt me-2"></i> Dashboard</a>
                     {% elif active_role_value == 'teacher' %}
                         <a href="{{ url_for('teacher.dashboard') }}" class="nav-link"><i class="fas fa-chalkboard-teacher me-2"></i> Dashboard Guru</a>
@@ -98,6 +100,7 @@
                 </li>
 
                 {% if active_role_value == 'admin' %}
+                    {% if module_school_enabled %}
                     <div class="nav-header">Master Data</div>
                     <li><a href="{{ url_for('admin.manage_academic_years') }}"><i class="fas fa-calendar-alt me-2"></i> Tahun Ajaran</a></li>
                     <li><a href="{{ url_for('admin.manage_classes') }}"><i class="fas fa-school me-2"></i> Data Kelas</a></li>
@@ -114,6 +117,11 @@
                     <li><a href="{{ url_for('admin.manage_teachers') }}"><i class="fas fa-chalkboard-teacher me-2"></i> Data Guru</a></li>
                     <li><a href="{{ url_for('admin.manage_staff') }}"><i class="fas fa-user-tie me-2"></i> Data Staff</a></li>
                     <li><a href="{{ url_for('boarding.manage_guardians') }}"><i class="fas fa-user-shield me-2"></i> Wali Asrama</a></li>
+                    {% endif %}
+                    {% if module_rumah_quran_enabled and not module_school_enabled %}
+                    <div class="nav-header">SDM</div>
+                    <li><a href="{{ url_for('admin.manage_staff') }}"><i class="fas fa-user-tie me-2"></i> Data Staff</a></li>
+                    {% endif %}
 
                     <div class="nav-header">Keuangan</div>
                     <li><a href="{{ url_for('admin.manage_fee_types') }}"><i class="fas fa-money-check-alt me-2"></i> Master Biaya</a></li>
@@ -127,7 +135,12 @@
 
                 {% endif %}
 
-                {% if active_role_value == 'teacher' %}
+                {% if active_role_value == 'super_admin' %}
+                    <div class="nav-header">Platform</div>
+                    <li><a href="{{ url_for('admin.manage_tenants') }}"><i class="fas fa-building me-2"></i> Manajemen Tenant</a></li>
+                {% endif %}
+
+                {% if active_role_value == 'teacher' and module_school_enabled %}
                     {% for group in teacher_sidebar_groups %}
                     <div class="nav-header d-flex justify-content-between align-items-center">
                         <span><i class="{{ group.icon }} me-2"></i>{{ group.title }}</span>
@@ -146,7 +159,7 @@
                     {% endfor %}
                 {% endif %}
 
-                {% if active_role_value == 'tata_usaha' %}
+                {% if active_role_value == 'tata_usaha' and module_rumah_quran_enabled %}
                     <div class="nav-header">Operasional</div>
                     <li><a href="{{ url_for('staff.cashier_search') }}" class="text-warning fw-bold"><i class="fas fa-cash-register me-2"></i> Kasir</a></li>
                     <li><a href="{{ url_for('staff.ppdb_list') }}"><i class="fas fa-user-plus me-2"></i> Verifikasi PPDB</a></li>
@@ -156,7 +169,7 @@
                     <li><a href="{{ url_for('staff.manage_announcements') }}"><i class="fas fa-bullhorn me-2"></i> Pengumuman</a></li>
                 {% endif %}
 
-                {% if active_role_value == 'wali_asrama' %}
+                {% if active_role_value == 'wali_asrama' and module_school_enabled %}
                     <div class="nav-header">Boarding</div>
                     <li><a href="{{ url_for('boarding.dashboard') }}"><i class="fas fa-house-user me-2"></i> Dashboard Boarding</a></li>
                     <li><a href="{{ url_for('boarding.input_attendance') }}"><i class="fas fa-clipboard-check me-2"></i> Absensi Harian</a></li>

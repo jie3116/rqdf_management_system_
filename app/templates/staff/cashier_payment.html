@@ -36,7 +36,7 @@
             <div>
                 Pembayaran berhasil tersimpan: <strong>Rp {{ "{:,.0f}".format(highlighted_transaction.amount) }}</strong>
             </div>
-            <a href="{{ url_for('staff.cashier_receipt', transaction_id=highlighted_transaction.id) }}" class="btn btn-sm btn-outline-success" target="_blank">
+            <a href="{{ url_for('staff.cashier_receipt', transaction_id=highlighted_transaction.id, paper='a6') }}" class="btn btn-sm btn-outline-success" target="_blank">
                 <i class="fas fa-print me-1"></i>Cetak Kwitansi
             </a>
         </div>
@@ -123,7 +123,7 @@
                                 <td>{{ trx.method or '-' }}</td>
                                 <td class="text-end">Rp {{ "{:,.0f}".format(trx.amount or 0) }}</td>
                                 <td class="text-center">
-                                    <a href="{{ url_for('staff.cashier_receipt', transaction_id=trx.id) }}" class="btn btn-sm btn-outline-primary" target="_blank">
+                                    <a href="{{ url_for('staff.cashier_receipt', transaction_id=trx.id, paper='a6') }}" class="btn btn-sm btn-outline-primary" target="_blank">
                                         <i class="fas fa-print"></i>
                                     </a>
                                 </td>

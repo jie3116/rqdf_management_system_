@@ -15,6 +15,11 @@ class TeacherDashboardProvider extends ChangeNotifier {
   TeacherDashboardModel? dashboard;
   String? errorMessage;
   bool _isAuthenticated = false;
+  int _announcementSignal = 0;
+  int _lastAnnouncementDelta = 0;
+
+  int get announcementSignal => _announcementSignal;
+  int get lastAnnouncementDelta => _lastAnnouncementDelta;
 
   void setSession({required bool isAuthenticated}) {
     _isAuthenticated = isAuthenticated;
@@ -22,6 +27,8 @@ class TeacherDashboardProvider extends ChangeNotifier {
       state = ViewState.initial;
       dashboard = null;
       errorMessage = null;
+      _announcementSignal = 0;
+      _lastAnnouncementDelta = 0;
       notifyListeners();
     }
   }
@@ -36,7 +43,15 @@ class TeacherDashboardProvider extends ChangeNotifier {
     errorMessage = null;
     notifyListeners();
     try {
+      final previousUnread = dashboard?.unreadAnnouncementsCount;
       dashboard = await _repository.getDashboard();
+      _lastAnnouncementDelta = 0;
+      if (previousUnread != null &&
+          dashboard!.unreadAnnouncementsCount > previousUnread) {
+        _lastAnnouncementDelta =
+            dashboard!.unreadAnnouncementsCount - previousUnread;
+        _announcementSignal += 1;
+      }
       state = ViewState.success;
     } on ApiException catch (error) {
       state = ViewState.error;

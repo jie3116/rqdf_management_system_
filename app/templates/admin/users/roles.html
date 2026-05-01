@@ -57,13 +57,11 @@
                                 <input type="hidden" name="q" value="{{ query or '' }}">
 
                                 {% for role in all_roles %}
-                                    {% if role.name != 'ADMIN' %}
                                     {% set checked = role in u.all_roles() %}
                                     <div class="form-check form-check-inline">
                                         <input class="form-check-input" type="checkbox" name="roles" value="{{ role.name }}" id="u{{ u.id }}_{{ role.name }}" {% if checked %}checked{% endif %}>
                                         <label class="form-check-label small" for="u{{ u.id }}_{{ role.name }}">{{ role_label(role) }}</label>
                                     </div>
-                                    {% endif %}
                                 {% endfor %}
                                 <button class="btn btn-sm btn-success" type="submit">Simpan</button>
                             </form>
@@ -77,7 +75,7 @@
         </div>
 
         <div class="alert alert-warning mt-3 mb-0 small">
-            Aturan kombinasi dijaga sistem. Contoh: Admin tidak boleh digabung role lain; Santri boleh dirangkap Guru/Wali Asrama, tetapi tidak boleh dirangkap Staf TU atau Wali Murid. Peserta Majlis boleh dirangkap Guru.
+            Aturan kombinasi dijaga sistem. Contoh: Super Admin/Admin tidak boleh digabung role lain; Santri boleh dirangkap Guru/Wali Asrama, tetapi tidak boleh dirangkap Staf TU atau Wali Murid. Peserta Majlis boleh dirangkap Guru.
         </div>
     </div>
 </div>

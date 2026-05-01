@@ -47,6 +47,7 @@ class BaseModel(db.Model):
 # 1. ENUMS
 # ==========================================
 class UserRole(enum.Enum):
+    SUPER_ADMIN = "super_admin"
     ADMIN = "admin"
     GURU = "teacher"
     SISWA = "student"
@@ -418,6 +419,21 @@ class MobileRateLimitBucket(db.Model):
     window_ends_at = db.Column(db.DateTime, nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=utc_now_naive, nullable=False)
     updated_at = db.Column(db.DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+
+class MobileDeviceToken(BaseModel):
+    __tablename__ = 'mobile_device_tokens'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    token = db.Column(db.String(255), nullable=False, unique=True, index=True)
+    platform = db.Column(db.String(20), nullable=False, default='unknown')
+    device_name = db.Column(db.String(120), nullable=True)
+    app_version = db.Column(db.String(40), nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    last_seen_at = db.Column(db.DateTime, default=utc_now_naive, nullable=False, index=True)
+
+    user = db.relationship('User', backref=db.backref('mobile_device_tokens', lazy='dynamic'))
 
 
 class Person(BaseModel):

@@ -15,3 +15,8 @@ venv/
 .vscode/
 
 migrations/__pycache__/
+
+secrets/
+*.service-account.json
+*firebase-admin*.json
+google-services.json

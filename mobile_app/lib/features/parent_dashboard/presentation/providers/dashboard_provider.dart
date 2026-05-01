@@ -19,8 +19,12 @@ class DashboardProvider extends ChangeNotifier {
   int? selectedChildId;
   bool _isAuthenticated = false;
   String? _userName;
+  int _announcementSignal = 0;
+  int _lastAnnouncementDelta = 0;
 
   bool get hasDashboard => dashboard != null;
+  int get announcementSignal => _announcementSignal;
+  int get lastAnnouncementDelta => _lastAnnouncementDelta;
   String get greetingName => dashboard?.guardianName.isNotEmpty == true
       ? dashboard!.guardianName
       : (_userName?.isNotEmpty == true ? _userName! : '-');
@@ -46,6 +50,8 @@ class DashboardProvider extends ChangeNotifier {
       errorMessage = null;
       selectedBottomNavIndex = 0;
       selectedChildId = null;
+      _announcementSignal = 0;
+      _lastAnnouncementDelta = 0;
       notifyListeners();
     }
   }
@@ -53,6 +59,7 @@ class DashboardProvider extends ChangeNotifier {
   Future<void> fetchDashboard({
     bool forceRefresh = false,
     int? studentId,
+    bool notifyAnnouncementChange = true,
   }) async {
     if (!_isAuthenticated) return;
     final requestedStudentId = studentId ?? selectedChildId;
@@ -67,10 +74,18 @@ class DashboardProvider extends ChangeNotifier {
     errorMessage = null;
     notifyListeners();
     try {
+      final previousUnread = dashboard?.unreadAnnouncementsCount;
       final result =
           await _dashboardRepository.getDashboard(studentId: requestedStudentId);
       dashboard = result;
       selectedChildId = result.selectedChild?.id;
+      _lastAnnouncementDelta = 0;
+      if (notifyAnnouncementChange &&
+          previousUnread != null &&
+          result.unreadAnnouncementsCount > previousUnread) {
+        _lastAnnouncementDelta = result.unreadAnnouncementsCount - previousUnread;
+        _announcementSignal += 1;
+      }
       state = ViewState.success;
     } on ApiException catch (error) {
       state = ViewState.error;
@@ -90,7 +105,11 @@ class DashboardProvider extends ChangeNotifier {
   Future<void> selectChild(ChildModel child) async {
     selectedChildId = child.id;
     notifyListeners();
-    await fetchDashboard(forceRefresh: true, studentId: child.id);
+    await fetchDashboard(
+      forceRefresh: true,
+      studentId: child.id,
+      notifyAnnouncementChange: false,
+    );
   }
 }
 

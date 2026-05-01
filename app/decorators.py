@@ -25,4 +25,4 @@ def role_required(*roles):
     return wrapper
 
 def admin_required(fn):
-    return role_required(UserRole.ADMIN)(fn)
+    return role_required(UserRole.SUPER_ADMIN, UserRole.ADMIN)(fn)

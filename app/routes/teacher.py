@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
 from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -19,6 +19,7 @@ from app.services.staff_assignment_service import (
     list_teacher_subject_classes_from_assignments,
 )
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
+from app.utils.push_notifications import notify_announcement_created
 from app.utils.tenant import classroom_in_tenant, resolve_tenant_id, scoped_classrooms_query
 from app.utils.timezone import local_day_bounds_utc_naive, local_today, utc_now_naive
 
@@ -2249,6 +2250,10 @@ def class_announcements():
         )
         db.session.add(announcement)
         db.session.commit()
+        try:
+            notify_announcement_created(announcement)
+        except Exception:
+            current_app.logger.exception("Gagal mengirim push notification pengumuman kelas.")
         flash("Pengumuman kelas berhasil dibuat.", "success")
         return redirect(url_for('teacher.class_announcements', class_id=class_id))
 

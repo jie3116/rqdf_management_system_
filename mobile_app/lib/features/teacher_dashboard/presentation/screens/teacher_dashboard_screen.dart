@@ -28,6 +28,8 @@ class TeacherDashboardScreen extends StatefulWidget {
 
 class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   int _selectedIndex = 0;
+  TeacherDashboardProvider? _dashboardProvider;
+  int _lastAnnouncementSignal = 0;
 
   @override
   void initState() {
@@ -35,6 +37,47 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<TeacherDashboardProvider>().fetchDashboard();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final provider = context.read<TeacherDashboardProvider>();
+    if (!identical(_dashboardProvider, provider)) {
+      _dashboardProvider?.removeListener(_onDashboardProviderChanged);
+      _dashboardProvider = provider;
+      _lastAnnouncementSignal = provider.announcementSignal;
+      provider.addListener(_onDashboardProviderChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    _dashboardProvider?.removeListener(_onDashboardProviderChanged);
+    super.dispose();
+  }
+
+  void _onDashboardProviderChanged() {
+    if (!mounted) return;
+    final provider = _dashboardProvider;
+    if (provider == null) return;
+    if (provider.announcementSignal == _lastAnnouncementSignal) return;
+
+    _lastAnnouncementSignal = provider.announcementSignal;
+    final delta = provider.lastAnnouncementDelta;
+    if (delta <= 0) return;
+
+    final label = delta == 1
+        ? 'Ada 1 pengumuman baru.'
+        : 'Ada $delta pengumuman baru.';
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(label),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override

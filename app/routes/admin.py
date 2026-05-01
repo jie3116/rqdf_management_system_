@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, date
 import csv
+import re
 from urllib.parse import urlsplit
 from io import TextIOWrapper
 from flask import Blueprint, render_template, redirect, url_for, flash, request
@@ -48,9 +49,9 @@ from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
     # Base & Enums
-    UserRole, Gender, PaymentStatus, RegistrationStatus, ProgramType, EducationLevel, AssignmentRole,
+    UserRole, Gender, PaymentStatus, RegistrationStatus, ProgramType, EducationLevel, AssignmentRole, TenantStatus,
     # Users
-    User, UserRoleAssignment, Student, Parent, Teacher, Staff, MajlisParticipant, BoardingGuardian,
+    User, UserRoleAssignment, Student, Parent, Teacher, Staff, MajlisParticipant, BoardingGuardian, Tenant,
     # Academic
     AcademicYear, ClassRoom, Subject, Schedule, Program, ProgramGroup, StaffAssignment,
     # Finance
@@ -71,6 +72,13 @@ from app.models import (
 from app.utils.nis import generate_nip, generate_nis
 from app.utils.roles import validate_role_combination, role_label, ROLE_PRIORITY
 from app.utils.money import to_rupiah_int
+from app.utils.invoice import generate_invoice_number
+from app.utils.tenant_modules import (
+    PACKAGE_FULL,
+    PACKAGE_OPTIONS,
+    TENANT_PACKAGE_KEY,
+    normalize_tenant_package,
+)
 from app.utils.tenant import (
     classroom_in_tenant,
     resolve_tenant_id,
@@ -133,6 +141,47 @@ def _infer_user_phone(user):
     if user.majlis_profile and user.majlis_profile.phone:
         return user.majlis_profile.phone
     return None
+
+
+def _parse_tenant_status(raw_value):
+    if not raw_value:
+        return None
+    normalized = str(raw_value).strip()
+    if not normalized:
+        return None
+    try:
+        return TenantStatus[normalized.upper()]
+    except KeyError:
+        pass
+    for item in TenantStatus:
+        if item.value.lower() == normalized.lower():
+            return item
+    return None
+
+
+def _upsert_tenant_config(tenant_id, key, value, description):
+    row = AppConfig.query.filter_by(tenant_id=tenant_id, key=key).first()
+    clean_value = (value or '').strip()
+    if row:
+        row.value = clean_value
+        row.description = description
+    else:
+        db.session.add(AppConfig(
+            tenant_id=tenant_id,
+            key=key,
+            value=clean_value,
+            description=description,
+        ))
+
+
+def _slugify_tenant(raw_value):
+    slug = re.sub(r"[^a-z0-9]+", "-", (raw_value or "").strip().lower()).strip("-")
+    return slug or "tenant"
+
+
+def _normalize_tenant_code(raw_value):
+    code = re.sub(r"[^A-Za-z0-9_-]+", "", (raw_value or "").strip().upper())
+    return code
 
 
 def _iter_upload_rows(file):
@@ -272,6 +321,211 @@ def manage_app_config():
 
     configs = configs_query.order_by(AppConfig.key.asc()).all()
     return render_template('admin/system/configs.html', configs=configs, query=query)
+
+
+@admin_bp.route('/platform/tenants', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.SUPER_ADMIN)
+def manage_tenants():
+    if request.method == 'POST':
+        action = (request.form.get('action') or 'update_tenant').strip()
+
+        if action == 'create_tenant':
+            name = (request.form.get('name') or '').strip()
+            code = _normalize_tenant_code(request.form.get('code'))
+            slug = _slugify_tenant(request.form.get('slug') or name)
+            timezone = (request.form.get('timezone') or 'Asia/Jakarta').strip()
+            package = normalize_tenant_package(request.form.get('module_package'))
+
+            if not name:
+                flash('Nama tenant wajib diisi.', 'danger')
+                return redirect(url_for('admin.manage_tenants'))
+            if not code:
+                flash('Kode tenant wajib diisi (huruf/angka).', 'danger')
+                return redirect(url_for('admin.manage_tenants'))
+            if Tenant.query.filter_by(code=code, is_deleted=False).first():
+                flash(f'Kode tenant "{code}" sudah dipakai.', 'danger')
+                return redirect(url_for('admin.manage_tenants'))
+            if Tenant.query.filter_by(slug=slug, is_deleted=False).first():
+                flash(f'Slug tenant "{slug}" sudah dipakai.', 'danger')
+                return redirect(url_for('admin.manage_tenants'))
+
+            tenant = Tenant(
+                name=name,
+                slug=slug,
+                code=code,
+                timezone=timezone or 'Asia/Jakarta',
+                status=TenantStatus.ACTIVE,
+                is_default=False,
+            )
+            db.session.add(tenant)
+            db.session.flush()
+            _upsert_tenant_config(tenant.id, TENANT_PACKAGE_KEY, package, 'Paket modul tenant.')
+            _upsert_tenant_config(tenant.id, 'institution_name', name, 'Nama lembaga penerbit dokumen tenant.')
+            _upsert_tenant_config(
+                tenant.id,
+                'institution_address',
+                request.form.get('institution_address') or '',
+                'Alamat lembaga untuk dokumen resmi tenant.',
+            )
+            _upsert_tenant_config(
+                tenant.id,
+                'institution_phone',
+                request.form.get('institution_phone') or '',
+                'Nomor telepon lembaga untuk dokumen resmi tenant.',
+            )
+            db.session.commit()
+            flash(f'Tenant baru "{code}" berhasil dibuat.', 'success')
+            return redirect(url_for('admin.manage_tenants'))
+
+        if action == 'create_tenant_admin':
+            tenant_id = request.form.get('tenant_id', type=int)
+            tenant = Tenant.query.filter_by(id=tenant_id, is_deleted=False).first_or_404()
+            username = (request.form.get('username') or '').strip()
+            email = (request.form.get('email') or '').strip()
+            password = request.form.get('password') or ''
+            full_name = (request.form.get('full_name') or '').strip()
+
+            if not username or not email or not password:
+                flash('Username, email, dan password admin tenant wajib diisi.', 'danger')
+                return redirect(url_for('admin.manage_tenants'))
+            if len(password) < 8:
+                flash('Password admin tenant minimal 8 karakter.', 'danger')
+                return redirect(url_for('admin.manage_tenants'))
+            if User.query.filter(User.username == username, User.is_deleted.is_(False)).first():
+                flash(f'Username "{username}" sudah dipakai.', 'danger')
+                return redirect(url_for('admin.manage_tenants'))
+            if User.query.filter(User.email == email, User.is_deleted.is_(False)).first():
+                flash(f'Email "{email}" sudah dipakai.', 'danger')
+                return redirect(url_for('admin.manage_tenants'))
+
+            new_user = User(
+                tenant_id=tenant.id,
+                username=username,
+                email=email,
+                role=UserRole.ADMIN,
+                must_change_password=True,
+            )
+            new_user.set_password(password)
+            db.session.add(new_user)
+            db.session.flush()
+
+            if full_name:
+                db.session.add(Staff(
+                    user_id=new_user.id,
+                    full_name=full_name,
+                    position='Admin Tenant',
+                ))
+
+            db.session.commit()
+            flash(f'Admin tenant baru untuk "{tenant.code}" berhasil dibuat.', 'success')
+            return redirect(url_for('admin.manage_tenants'))
+
+        tenant_id = request.form.get('tenant_id', type=int)
+        tenant = Tenant.query.filter_by(id=tenant_id, is_deleted=False).first_or_404()
+
+        name = (request.form.get('name') or '').strip()
+        timezone = (request.form.get('timezone') or '').strip()
+        status = _parse_tenant_status(request.form.get('status'))
+        address = request.form.get('institution_address') or ''
+        phone = request.form.get('institution_phone') or ''
+        package = normalize_tenant_package(request.form.get('module_package'))
+
+        if not name:
+            flash('Nama tenant wajib diisi.', 'danger')
+            return redirect(url_for('admin.manage_tenants'))
+        if not status:
+            flash('Status tenant tidak valid.', 'danger')
+            return redirect(url_for('admin.manage_tenants'))
+
+        tenant.name = name
+        tenant.status = status
+        if timezone:
+            tenant.timezone = timezone
+
+        _upsert_tenant_config(tenant.id, TENANT_PACKAGE_KEY, package, 'Paket modul tenant.')
+        _upsert_tenant_config(
+            tenant.id,
+            'institution_address',
+            address,
+            'Alamat lembaga untuk dokumen resmi tenant.',
+        )
+        _upsert_tenant_config(
+            tenant.id,
+            'institution_phone',
+            phone,
+            'Nomor telepon lembaga untuk dokumen resmi tenant.',
+        )
+        _upsert_tenant_config(
+            tenant.id,
+            'institution_name',
+            name,
+            'Nama lembaga penerbit dokumen tenant.',
+        )
+
+        db.session.commit()
+        flash(f'Konfigurasi tenant "{tenant.code}" berhasil diperbarui.', 'success')
+        return redirect(url_for('admin.manage_tenants'))
+
+    query = (request.args.get('q') or '').strip()
+    status_filter = _parse_tenant_status(request.args.get('status'))
+
+    tenants_query = Tenant.query.filter(Tenant.is_deleted.is_(False))
+    if status_filter:
+        tenants_query = tenants_query.filter(Tenant.status == status_filter)
+    if query:
+        tenants_query = tenants_query.filter(
+            or_(
+                Tenant.name.ilike(f'%{query}%'),
+                Tenant.code.ilike(f'%{query}%'),
+                Tenant.slug.ilike(f'%{query}%'),
+            )
+        )
+
+    tenants = tenants_query.order_by(Tenant.name.asc()).all()
+    tenant_ids = [tenant.id for tenant in tenants]
+    config_map = {}
+    if tenant_ids:
+        configs = (
+            AppConfig.query
+            .filter(
+                AppConfig.tenant_id.in_(tenant_ids),
+                AppConfig.key.in_(('institution_address', 'institution_phone', TENANT_PACKAGE_KEY)),
+                AppConfig.is_deleted.is_(False),
+            )
+            .all()
+        )
+        for row in configs:
+            config_map[(row.tenant_id, row.key)] = (row.value or '').strip()
+
+    tenant_admins = (
+        User.query
+        .filter(
+            User.tenant_id.in_(tenant_ids if tenant_ids else [-1]),
+            User.is_deleted.is_(False),
+            or_(
+                User.role == UserRole.ADMIN,
+                User.role_assignments.any(role=UserRole.ADMIN),
+            ),
+        )
+        .order_by(User.tenant_id.asc(), User.username.asc())
+        .all()
+    )
+    admin_map = {}
+    for row in tenant_admins:
+        admin_map.setdefault(row.tenant_id, []).append(row)
+
+    return render_template(
+        'admin/system/tenants.html',
+        tenants=tenants,
+        config_map=config_map,
+        admin_map=admin_map,
+        query=query,
+        status_filter=(status_filter.name if status_filter else ''),
+        status_options=list(TenantStatus),
+        package_options=PACKAGE_OPTIONS,
+        package_full=PACKAGE_FULL,
+    )
 
 
 # =========================================================
@@ -1727,7 +1981,6 @@ def generate_invoices(fee_id):
     )
 
     count_success = 0
-    bulan_tahun = local_now().strftime("%Y%m")
     due_date_default = local_now() + timedelta(days=10)
     is_monthly_fee = "SPP" in fee.name.upper() or "BULAN" in fee.name.upper()
 
@@ -1751,7 +2004,7 @@ def generate_invoices(fee_id):
                 nominal_final = fee.amount * 0.5
 
             new_inv = Invoice(
-                invoice_number=f"INV/{bulan_tahun}/{fee.id}/{student.id}",
+                invoice_number=generate_invoice_number(fee.id, student.id),
                 student_id=student.id,
                 fee_type_id=fee.id,
                 total_amount=to_rupiah_int(nominal_final),
@@ -1904,7 +2157,6 @@ def accept_candidate(candidate_id):
         tagihan_list = build_candidate_fee_drafts(calon, tenant_id=tenant_id)
 
         due_date = local_now() + timedelta(days=14)
-        inv_prefix = f"INV/{local_now().strftime('%Y%m')}/{siswa_baru.id}"
 
         ctr = 1
         for item in tagihan_list:
@@ -1919,7 +2171,7 @@ def accept_candidate(candidate_id):
                 db.session.flush()
 
             new_inv = Invoice(
-                invoice_number=f"{inv_prefix}/{ctr}",
+                invoice_number=generate_invoice_number(fee_type.id, siswa_baru.id, sequence=ctr),
                 student_id=siswa_baru.id,
                 fee_type_id=fee_type.id,
                 total_amount=to_rupiah_int(item['nominal']),
@@ -2311,7 +2563,9 @@ def manage_users():
     users_query = User.query.filter(
         User.tenant_id == tenant_id,
         User.role != UserRole.ADMIN,
-        ~User.role_assignments.any(role=UserRole.ADMIN)
+        User.role != UserRole.SUPER_ADMIN,
+        ~User.role_assignments.any(role=UserRole.ADMIN),
+        ~User.role_assignments.any(role=UserRole.SUPER_ADMIN),
     )
 
     role_mapping = {
@@ -2394,6 +2648,9 @@ def manage_user_roles():
         if not is_valid:
             flash(message, 'danger')
             return redirect(url_for('admin.manage_user_roles', q=query))
+        if UserRole.SUPER_ADMIN in selected_roles:
+            flash('Role Super Admin hanya bisa dikelola melalui level platform.', 'danger')
+            return redirect(url_for('admin.manage_user_roles', q=query))
 
         # Pilih role utama berdasarkan prioritas global agar deterministik
         new_primary = None
@@ -2465,7 +2722,9 @@ def manage_user_roles():
     users_query = User.query.filter(
         User.tenant_id == tenant_id,
         User.role != UserRole.ADMIN,
-        ~User.role_assignments.any(role=UserRole.ADMIN)
+        User.role != UserRole.SUPER_ADMIN,
+        ~User.role_assignments.any(role=UserRole.ADMIN),
+        ~User.role_assignments.any(role=UserRole.SUPER_ADMIN),
     )
     if query:
         users_query = users_query.filter(
@@ -2480,7 +2739,7 @@ def manage_user_roles():
         'admin/users/roles.html',
         users=users,
         query=query,
-        all_roles=list(UserRole),
+        all_roles=[role for role in UserRole if role not in {UserRole.ADMIN, UserRole.SUPER_ADMIN}],
         role_label=role_label
     )
 

@@ -71,4 +71,26 @@ class AuthRepository {
     }
     await _tokenStorage.clearTokens();
   }
+
+  Future<void> registerPushToken({
+    required String token,
+    required String platform,
+    String? deviceName,
+    String? appVersion,
+  }) {
+    return _authService.syncPushToken(
+      token: token,
+      isActive: true,
+      platform: platform,
+      deviceName: deviceName,
+      appVersion: appVersion,
+    );
+  }
+
+  Future<void> unregisterPushToken(String token) {
+    return _authService.syncPushToken(
+      token: token,
+      isActive: false,
+    );
+  }
 }

@@ -30,15 +30,17 @@ from app.services.formal_service import sync_student_formal_class_membership
 from app.services.ppdb_fee_service import build_candidate_fee_drafts
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
-    Invoice, Transaction, PaymentStatus, FeeType,
+    Invoice, Transaction, PaymentStatus, FeeType, Tenant, AppConfig,
     StudentCandidate, RegistrationStatus, ProgramType, EducationLevel,
     MajlisParticipant, ClassType, Announcement, ProgramGroup
 )
 from app.utils.nis import generate_nis
 from app.utils.roles import get_active_role
 from app.utils.money import to_rupiah_int
+from app.utils.invoice import generate_invoice_number
 from app.utils.timezone import local_day_bounds_utc_naive, local_now
 from app.utils.tenant import classroom_in_tenant, resolve_tenant_id, scoped_classrooms_query
+from app.utils.push_notifications import notify_announcement_created
 
 staff_bp = Blueprint('staff', __name__)
 
@@ -53,18 +55,18 @@ _RECEIPT_PAPER_OPTIONS = (
     },
     {
         'key': 'a6',
-        'label': 'A6 Landscape / 1-4 HVS',
-        'width_mm': 148,
-        'height_mm': 105,
-        'margin_mm': 3,
+        'label': 'A6 Portrait / 1-4 HVS',
+        'width_mm': 105,
+        'height_mm': 148,
+        'margin_mm': 6,
         'compact': True,
     },
     {
         'key': 'dl',
-        'label': 'DL Landscape / amplop',
-        'width_mm': 220,
-        'height_mm': 110,
-        'margin_mm': 4,
+        'label': 'DL Portrait / Amplop',
+        'width_mm': 110,
+        'height_mm': 220,
+        'margin_mm': 6,
         'compact': True,
     },
 )
@@ -116,11 +118,53 @@ def _parse_rupiah_input(raw_value, default_value):
 
 
 def _resolve_receipt_paper(paper_key):
-    selected_key = (paper_key or 'a4').strip().lower()
+    selected_key = (paper_key or 'a6').strip().lower()
     options_by_key = {item['key']: item for item in _RECEIPT_PAPER_OPTIONS}
-    selected = options_by_key.get(selected_key, options_by_key['a4']).copy()
+    selected = options_by_key.get(selected_key, options_by_key['a6']).copy()
     selected['page_size_css'] = f"{selected['width_mm']}mm {selected['height_mm']}mm"
     return selected
+
+
+def _receipt_issuer_identity(tenant_id):
+    tenant = Tenant.query.filter_by(id=tenant_id, is_deleted=False).first()
+    config_keys = (
+        'institution_name', 'school_name',
+        'institution_address', 'school_address',
+        'institution_phone', 'school_phone', 'phone',
+    )
+    config_rows = (
+        AppConfig.query
+        .filter(
+            AppConfig.tenant_id == tenant_id,
+            AppConfig.key.in_(config_keys),
+            AppConfig.is_deleted.is_(False),
+        )
+        .all()
+    )
+    config_map = {row.key: (row.value or '').strip() for row in config_rows}
+
+    name = (
+        config_map.get('institution_name')
+        or config_map.get('school_name')
+        or (tenant.name if tenant else '')
+        or '-'
+    )
+    address = (
+        config_map.get('institution_address')
+        or config_map.get('school_address')
+        or '-'
+    )
+    phone = (
+        config_map.get('institution_phone')
+        or config_map.get('school_phone')
+        or config_map.get('phone')
+        or '-'
+    )
+    return {
+        'name': name,
+        'address': address,
+        'phone': phone,
+    }
 
 
 def _candidate_fee_drafts(candidate, tenant_id=None):
@@ -386,6 +430,7 @@ def cashier_receipt(transaction_id):
     payment_pic = User.query.filter_by(id=transaction.pic_id, tenant_id=tenant_id).first()
     sisa_tagihan = max(0, to_rupiah_int(invoice.total_amount) - to_rupiah_int(invoice.paid_amount))
     paper = _resolve_receipt_paper(request.args.get('paper'))
+    issuer = _receipt_issuer_identity(tenant_id)
 
     return render_template(
         'staff/cashier_receipt.html',
@@ -394,6 +439,7 @@ def cashier_receipt(transaction_id):
         student=student,
         payment_pic=payment_pic,
         sisa_tagihan=sisa_tagihan,
+        issuer=issuer,
         paper=paper,
         paper_options=_RECEIPT_PAPER_OPTIONS,
     )
@@ -467,10 +513,6 @@ def _targeted_students(target, tenant_id):
     return students_query.order_by(Student.full_name.asc()).all()
 
 
-def _invoice_number(fee_id, student_id):
-    return f"INV/{local_now().strftime('%Y%m%d%H%M%S%f')}/{fee_id}/{student_id}"
-
-
 def _send_invoices_redirect_params(source, target):
     selected_fee_id = source.get('selected_fee_id', type=int) if hasattr(source, 'get') else None
     return {
@@ -524,7 +566,7 @@ def generate_invoices(fee_id):
                 nominal_final = fee.amount * 0.5
 
             new_inv = Invoice(
-                invoice_number=_invoice_number(fee.id, student.id),
+                invoice_number=generate_invoice_number(fee.id, student.id),
                 student_id=student.id,
                 fee_type_id=fee.id,
                 total_amount=to_rupiah_int(nominal_final),
@@ -676,7 +718,9 @@ def manage_announcements():
     users = User.query.filter(
         User.tenant_id == tenant_id,
         User.role != UserRole.ADMIN,
-        ~User.role_assignments.any(role=UserRole.ADMIN)
+        User.role != UserRole.SUPER_ADMIN,
+        ~User.role_assignments.any(role=UserRole.ADMIN),
+        ~User.role_assignments.any(role=UserRole.SUPER_ADMIN),
     ).order_by(User.username.asc()).limit(500).all()
     allowed_class_ids = {class_room.id for class_room in classes}
     allowed_user_ids = {user.id for user in users}
@@ -756,6 +800,10 @@ def manage_announcements():
         )
         db.session.add(announcement)
         db.session.commit()
+        try:
+            notify_announcement_created(announcement)
+        except Exception:
+            current_app.logger.exception("Gagal mengirim push notification pengumuman.")
         flash("Pengumuman berhasil dikirim.", "success")
         return redirect(url_for('staff.manage_announcements'))
 
@@ -1278,7 +1326,6 @@ def accept_candidate(candidate_id):
         )
 
         due_date = local_now() + timedelta(days=14)
-        inv_prefix = f"INV/{local_now().strftime('%Y%m')}/{siswa_baru.id}"
 
         ctr = 1
         for item in tagihan_list:
@@ -1293,7 +1340,7 @@ def accept_candidate(candidate_id):
                 db.session.flush()
 
             new_inv = Invoice(
-                invoice_number=f"{inv_prefix}/{ctr}",
+                invoice_number=generate_invoice_number(fee_type.id, siswa_baru.id, sequence=ctr),
                 student_id=siswa_baru.id,
                 fee_type_id=fee_type.id,
                 total_amount=to_rupiah_int(item['nominal']),

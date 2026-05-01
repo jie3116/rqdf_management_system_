@@ -24,6 +24,13 @@ def create_app(config_class=Config):
         from app.models import Teacher
         from app.routes.teacher import build_teacher_sidebar_groups
         from app.utils.roles import get_active_role, role_label
+        from app.utils.tenant import resolve_tenant_id
+        from app.utils.tenant_modules import (
+            PACKAGE_FULL,
+            PACKAGE_RUMAH_QURAN,
+            PACKAGE_SEKOLAH,
+            get_tenant_package,
+        )
         from app.utils.timezone import local_now, local_today
         try:
             # Opsional: Set bahasa tanggal ke Indonesia
@@ -32,6 +39,10 @@ def create_app(config_class=Config):
             pass
         active_role = get_active_role(current_user) if current_user.is_authenticated else None
         teacher_sidebar_groups = []
+        tenant_package = PACKAGE_FULL
+        if current_user.is_authenticated:
+            tenant_id = resolve_tenant_id(current_user, fallback_default=False)
+            tenant_package = get_tenant_package(tenant_id)
         if current_user.is_authenticated and active_role and active_role.value == 'teacher':
             teacher = Teacher.query.filter_by(user_id=current_user.id, is_deleted=False).first()
             teacher_sidebar_groups = build_teacher_sidebar_groups(teacher)
@@ -42,6 +53,9 @@ def create_app(config_class=Config):
             'active_role': active_role,
             'active_role_value': active_role.value if active_role else None,
             'active_role_label': role_label(active_role) if active_role else '-',
+            'tenant_package': tenant_package,
+            'module_school_enabled': tenant_package in (PACKAGE_FULL, PACKAGE_SEKOLAH),
+            'module_rumah_quran_enabled': tenant_package in (PACKAGE_FULL, PACKAGE_RUMAH_QURAN),
             'teacher_sidebar_groups': teacher_sidebar_groups,
         }
 
@@ -68,6 +82,39 @@ def create_app(config_class=Config):
                 include_aliases=True,
             )
         )
+
+    @app.before_request
+    def _enforce_tenant_module_access():
+        from flask import request, flash, redirect, url_for
+        from flask_login import current_user
+        from app.utils.roles import get_active_role
+        from app.utils.tenant import resolve_tenant_id
+        from app.utils.tenant_modules import (
+            endpoint_allowed_for_package,
+            get_tenant_package,
+            role_allowed_for_package,
+        )
+
+        if not current_user.is_authenticated:
+            return None
+
+        active_role = get_active_role(current_user)
+        if active_role and active_role.value == "super_admin":
+            return None
+
+        tenant_id = resolve_tenant_id(current_user, fallback_default=False)
+        package = get_tenant_package(tenant_id)
+
+        if active_role and not role_allowed_for_package(active_role, package):
+            flash('Role aktif tidak tersedia untuk paket modul tenant ini.', 'warning')
+            return redirect(url_for('auth.select_role', next=request.url))
+
+        endpoint = request.endpoint or ""
+        if not endpoint_allowed_for_package(endpoint, package):
+            flash('Modul ini tidak aktif untuk tenant Anda.', 'warning')
+            return redirect(url_for('main.dashboard'))
+
+        return None
 
     # 5. Registrasi Blueprint
     from app.routes.auth import auth_bp

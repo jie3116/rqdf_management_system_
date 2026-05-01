@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, current_user, login_required
 from app.extensions import db
-from app.models import User, Teacher, Parent, MajlisParticipant, BoardingGuardian, Student
+from app.models import User, Teacher, Parent, MajlisParticipant, BoardingGuardian, Student, TenantStatus, UserRole
 from app.forms import LoginForm, ChangePasswordForm
 from sqlalchemy import or_
 from werkzeug.security import generate_password_hash
@@ -91,6 +91,10 @@ def login():
             return render_template('auth/login.html', title='Login', form=form)
 
         if user and user.check_password(form.password.data):
+            if not user.has_role(UserRole.SUPER_ADMIN) and (not user.tenant or user.tenant.status != TenantStatus.ACTIVE):
+                flash('Tenant akun ini tidak aktif. Hubungi super admin.', 'danger')
+                return render_template('auth/login.html', title='Login', form=form)
+
             login_user(user, remember=form.remember.data)
 
             # Cek status password di sini juga untuk redirect awal

@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/network/api_exception.dart';
@@ -25,10 +29,14 @@ class AuthProvider extends ChangeNotifier {
 
   bool get isAuthenticated => currentUser != null;
   bool _initialized = false;
+  bool _pushInitialized = false;
+  StreamSubscription<String>? _tokenRefreshSubscription;
+  String? _lastSyncedPushToken;
 
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
+    await _ensurePushInitialized();
     state = ViewState.loading;
     notifyListeners();
     rememberMe = await _authRepository.loadRememberMe();
@@ -42,6 +50,7 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       currentUser = await _authRepository.me();
+      await _syncPushToken();
       errorMessage = null;
       state = ViewState.success;
     } catch (_) {
@@ -49,6 +58,7 @@ class AuthProvider extends ChangeNotifier {
       if (refreshed) {
         try {
           currentUser = await _authRepository.me();
+          await _syncPushToken();
           errorMessage = null;
           state = ViewState.success;
           notifyListeners();
@@ -77,6 +87,7 @@ class AuthProvider extends ChangeNotifier {
         password: password,
         rememberMe: rememberMeChoice,
       );
+      await _syncPushToken();
       rememberMe = rememberMeChoice;
       state = ViewState.success;
       notifyListeners();
@@ -97,6 +108,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await _deactivatePushToken();
     await _authRepository.logout();
     currentUser = null;
     state = ViewState.success;
@@ -113,6 +125,8 @@ class AuthProvider extends ChangeNotifier {
     final refreshed = await _authRepository.tryRefreshToken();
     if (!refreshed) {
       await logout();
+    } else {
+      await _syncPushToken();
     }
     return refreshed;
   }
@@ -122,5 +136,96 @@ class AuthProvider extends ChangeNotifier {
       return error.message;
     }
     return 'Username atau password salah';
+  }
+
+  @override
+  void dispose() {
+    _tokenRefreshSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _ensurePushInitialized() async {
+    if (_pushInitialized) return;
+
+    try {
+      await Firebase.initializeApp();
+    } catch (_) {
+      return;
+    }
+
+    _pushInitialized = true;
+    try {
+      await FirebaseMessaging.instance.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+    } catch (_) {
+      // Permission request can fail on unsupported environments.
+    }
+
+    _tokenRefreshSubscription ??=
+        FirebaseMessaging.instance.onTokenRefresh.listen((token) {
+      _lastSyncedPushToken = null;
+      unawaited(_syncPushToken(forcedToken: token));
+    });
+  }
+
+  Future<void> _syncPushToken({String? forcedToken}) async {
+    if (currentUser == null) return;
+    await _ensurePushInitialized();
+    if (!_pushInitialized) return;
+
+    final token = (forcedToken ?? await FirebaseMessaging.instance.getToken())
+        ?.trim();
+    if (token == null || token.isEmpty) return;
+    if (_lastSyncedPushToken == token) return;
+
+    try {
+      await _authRepository.registerPushToken(
+        token: token,
+        platform: _platformLabel(),
+      );
+      _lastSyncedPushToken = token;
+    } catch (_) {
+      // Keep auth flow unaffected when push token sync fails.
+    }
+  }
+
+  Future<void> _deactivatePushToken() async {
+    await _ensurePushInitialized();
+    if (!_pushInitialized) return;
+
+    final token = (await FirebaseMessaging.instance.getToken())?.trim();
+    if (token == null || token.isEmpty) return;
+
+    try {
+      await _authRepository.unregisterPushToken(token);
+    } catch (_) {
+      // Ignore push token deactivation failures.
+    } finally {
+      if (_lastSyncedPushToken == token) {
+        _lastSyncedPushToken = null;
+      }
+    }
+  }
+
+  String _platformLabel() {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return 'android';
+    }
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return 'ios';
+    }
+    if (defaultTargetPlatform == TargetPlatform.macOS) {
+      return 'macos';
+    }
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      return 'windows';
+    }
+    if (defaultTargetPlatform == TargetPlatform.linux) {
+      return 'linux';
+    }
+    return 'unknown';
   }
 }

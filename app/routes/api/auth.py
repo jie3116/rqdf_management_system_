@@ -11,6 +11,10 @@ from app.utils.mobile_api_auth import (
     issue_mobile_token_pair,
     revoke_mobile_token,
 )
+from app.utils.push_notifications import (
+    deactivate_mobile_device_token,
+    upsert_mobile_device_token,
+)
 from app.utils.timezone import utc_now_naive
 
 from .common import api_error, api_success, mobile_auth_required, user_payload
@@ -237,3 +241,28 @@ def register_auth_routes(api_bp):
 
         db.session.commit()
         return api_success({}, message="Logout berhasil.")
+
+    @api_bp.post("/auth/push-token")
+    @mobile_auth_required()
+    def auth_push_token():
+        payload = request.get_json(silent=True) or {}
+        token = (payload.get("token") or "").strip()
+        is_active = payload.get("is_active")
+        should_activate = not (is_active is False)
+
+        if not token:
+            return api_error("invalid_request", "Token device wajib diisi.", 400)
+
+        if should_activate:
+            upsert_mobile_device_token(
+                g.mobile_user,
+                token,
+                platform=(payload.get("platform") or "unknown"),
+                device_name=payload.get("device_name"),
+                app_version=payload.get("app_version"),
+            )
+        else:
+            deactivate_mobile_device_token(g.mobile_user, token=token)
+
+        db.session.commit()
+        return api_success({"token": token, "is_active": should_activate})

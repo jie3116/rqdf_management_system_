@@ -2,7 +2,7 @@ import json
 from collections import defaultdict
 from datetime import datetime
 
-from flask import g, request
+from flask import current_app, g, request
 
 from app.extensions import db
 from app.models import (
@@ -46,6 +46,7 @@ from app.routes.teacher import (
     _teacher_can_access_tahfidz_class,
 )
 from app.utils.announcements import get_announcements_for_dashboard
+from app.utils.push_notifications import notify_announcement_created
 from app.utils.timezone import local_day_bounds_utc_naive, local_today, utc_now_naive
 
 from .common import (
@@ -2121,4 +2122,8 @@ def register_teacher_routes(api_bp):
         )
         db.session.add(row)
         db.session.commit()
+        try:
+            notify_announcement_created(row)
+        except Exception:
+            current_app.logger.exception("Gagal mengirim push notification pengumuman kelas (mobile).")
         return api_success({"announcement_id": row.id}, message="Pengumuman kelas berhasil dibuat.")

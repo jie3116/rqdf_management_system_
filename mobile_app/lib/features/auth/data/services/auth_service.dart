@@ -49,4 +49,23 @@ class AuthService {
       retryOnUnauthorized: false,
     );
   }
+
+  Future<void> syncPushToken({
+    required String token,
+    required bool isActive,
+    String platform = 'unknown',
+    String? deviceName,
+    String? appVersion,
+  }) async {
+    await _apiClient.post(
+      '/auth/push-token',
+      body: {
+        'token': token,
+        'is_active': isActive,
+        'platform': platform,
+        if ((deviceName ?? '').trim().isNotEmpty) 'device_name': deviceName,
+        if ((appVersion ?? '').trim().isNotEmpty) 'app_version': appVersion,
+      },
+    );
+  }
 }

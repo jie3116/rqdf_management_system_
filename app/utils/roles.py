@@ -4,6 +4,7 @@ from app.models import UserRole
 
 
 ROLE_PRIORITY = [
+    UserRole.SUPER_ADMIN,
     UserRole.ADMIN,
     UserRole.GURU,
     UserRole.TU,
@@ -14,6 +15,7 @@ ROLE_PRIORITY = [
 ]
 
 ROLE_LABELS = {
+    UserRole.SUPER_ADMIN: 'Super Admin',
     UserRole.ADMIN: 'Admin',
     UserRole.GURU: 'Guru',
     UserRole.TU: 'Staf TU',
@@ -109,11 +111,15 @@ def validate_role_combination(roles):
     if not role_set:
         return False, 'User minimal harus memiliki satu role.'
 
+    if UserRole.SUPER_ADMIN in role_set and len(role_set) > 1:
+        return False, 'Role Super Admin tidak boleh digabung dengan role lain.'
+
     if UserRole.ADMIN in role_set and len(role_set) > 1:
         return False, 'Role Admin tidak boleh digabung dengan role lain.'
 
     if UserRole.SISWA in role_set:
         blocked_for_student = {
+            UserRole.SUPER_ADMIN,
             UserRole.ADMIN,
             UserRole.TU,
         }

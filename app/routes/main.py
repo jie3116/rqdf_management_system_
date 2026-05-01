@@ -43,7 +43,8 @@ from app.models import (
     Announcement,
 )
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
-from app.utils.roles import get_active_role
+from app.utils.roles import get_active_role, set_active_role
+from app.utils.tenant_modules import get_tenant_package, role_allowed_for_package
 
 main_bp = Blueprint('main', __name__)
 
@@ -102,32 +103,53 @@ def dashboard():
     """
 
     active_role = get_active_role(current_user)
+    tenant_id = resolve_tenant_id(current_user, fallback_default=False)
+    package = get_tenant_package(tenant_id)
 
-    # 1. Admin
+    if active_role and not role_allowed_for_package(active_role, package):
+        fallback_role = None
+        for role in sorted(list(current_user.all_roles()), key=lambda r: r.value):
+            if role_allowed_for_package(role, package):
+                fallback_role = role
+                break
+
+        if fallback_role:
+            set_active_role(current_user, fallback_role)
+            active_role = fallback_role
+            flash(f'Role aktif disesuaikan ke {fallback_role.value} sesuai paket tenant.', 'info')
+        else:
+            flash('Tidak ada role yang aktif untuk paket modul tenant saat ini.', 'danger')
+            return redirect(url_for('auth.login'))
+
+    # 1. Super Admin
+    if active_role == UserRole.SUPER_ADMIN:
+        return redirect(url_for('admin.manage_tenants'))
+
+    # 2. Admin
     if active_role == UserRole.ADMIN:
         return redirect(url_for('admin.dashboard'))
 
-    # 2. Guru
+    # 3. Guru
     elif active_role == UserRole.GURU:
         return redirect(url_for('teacher.dashboard'))
 
-    # 3. Staff TU
+    # 4. Staff TU
     elif active_role == UserRole.TU:
         return redirect(url_for('staff.dashboard'))
 
-    # 4. SISWA
+    # 5. SISWA
     elif active_role == UserRole.SISWA:
         return redirect(url_for('student.dashboard'))
 
-    # 5. Wali Murid
+    # 6. Wali Murid
     elif active_role == UserRole.WALI_MURID:
         return redirect(url_for('parent.dashboard'))
 
-    # 6. Wali Asrama
+    # 7. Wali Asrama
     elif active_role == UserRole.WALI_ASRAMA:
         return redirect(url_for('boarding.dashboard'))
 
-    # 7. Peserta Majelis Ta'lim (external)
+    # 8. Peserta Majelis Ta'lim (external)
     elif active_role == UserRole.MAJLIS_PARTICIPANT:
         return redirect(url_for('main.majlis_dashboard'))
 
