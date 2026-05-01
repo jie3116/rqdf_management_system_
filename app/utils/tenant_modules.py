@@ -12,19 +12,8 @@ PACKAGE_OPTIONS = (PACKAGE_FULL, PACKAGE_RUMAH_QURAN, PACKAGE_SEKOLAH)
 _RUMAH_QURAN_BLOCKED_ADMIN_ENDPOINTS = {
     "admin.manage_academic_years",
     "admin.activate_academic_year",
-    "admin.manage_classes",
-    "admin.edit_class",
-    "admin.delete_class",
     "admin.manage_subjects",
     "admin.edit_subject",
-    "admin.manage_schedules",
-    "admin.edit_schedule",
-    "admin.delete_schedule",
-    "admin.manage_teachers",
-    "admin.edit_teacher",
-    "admin.delete_teacher",
-    "admin.teacher_assignments",
-    "admin.upload_teachers",
     "admin.manage_extracurriculars",
 }
 

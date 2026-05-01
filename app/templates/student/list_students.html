@@ -23,6 +23,8 @@
     'reguler': 'Shell UI khusus untuk peserta Rumah Qur\'an jalur reguler sore.',
     'takhosus': 'Shell UI khusus untuk peserta Rumah Qur\'an jalur takhosus tahfidz.'
 } %}
+{% set show_school_categories = module_school_enabled %}
+{% set show_rumah_quran_categories = module_rumah_quran_enabled %}
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
     <h1 class="h3 mb-0 text-gray-800">Data Santri</h1>
     
@@ -66,12 +68,16 @@
             <div class="card-body">
                 <div class="text-uppercase small text-muted mb-2">Segmentasi UI</div>
                 <div class="d-flex flex-wrap gap-2">
+                    {% if show_school_categories %}
                     <a class="btn btn-sm {% if current_category == 'sbq_sd' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ base_route }}?category=sbq_sd{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">SBQ SD</a>
                     <a class="btn btn-sm {% if current_category == 'sbq_smp' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ base_route }}?category=sbq_smp{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">SBQ SMP</a>
                     <a class="btn btn-sm {% if current_category == 'sbq_sma' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ base_route }}?category=sbq_sma{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">SBQ SMA</a>
                     <a class="btn btn-sm {% if current_category == 'bahasa' %}btn-success{% else %}btn-outline-success{% endif %}" href="{{ base_route }}?category=bahasa{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Program Bahasa</a>
+                    {% endif %}
+                    {% if show_rumah_quran_categories %}
                     <a class="btn btn-sm {% if current_category == 'reguler' %}btn-warning text-dark{% else %}btn-outline-warning{% endif %}" href="{{ base_route }}?category=reguler{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Rumah Qur'an Reguler</a>
                     <a class="btn btn-sm {% if current_category == 'takhosus' %}btn-warning text-dark{% else %}btn-outline-warning{% endif %}" href="{{ base_route }}?category=takhosus{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Rumah Qur'an Takhosus</a>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -115,6 +121,7 @@
             <li class="nav-item">
                 <a class="nav-link {% if current_category == 'all' %}active{% endif %}" href="{{ base_route }}?category=all{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Semua</a>
             </li>
+            {% if show_school_categories %}
             <li class="nav-item">
                 <a class="nav-link {% if current_category == 'sbq_sd' %}active{% endif %}" href="{{ base_route }}?category=sbq_sd{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">SBQ SD</a>
             </li>
@@ -127,12 +134,15 @@
             <li class="nav-item">
                 <a class="nav-link {% if current_category == 'bahasa' %}active{% endif %}" href="{{ base_route }}?category=bahasa{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Program Bahasa</a>
             </li>
+            {% endif %}
+            {% if show_rumah_quran_categories %}
             <li class="nav-item">
                 <a class="nav-link {% if current_category == 'reguler' %}active{% endif %}" href="{{ base_route }}?category=reguler{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Rumah Qur'an Reguler</a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {% if current_category == 'takhosus' %}active{% endif %}" href="{{ base_route }}?category=takhosus{% if query %}&q={{ query }}{% endif %}{% if majlis_query %}&q_majlis={{ majlis_query }}{% endif %}">Rumah Qur'an Takhosus</a>
             </li>
+            {% endif %}
         </ul>
         
         <form method="GET" action="{{ base_route }}" class="mb-3">
@@ -233,7 +243,7 @@
     </div>
 </div>
 
-{% if majlis_participants is defined %}
+{% if module_rumah_quran_enabled and majlis_participants is defined %}
 <div class="card shadow mb-4">
     <div class="card-header py-3 bg-success text-white">
         <h6 class="m-0 fw-bold"><i class="fas fa-mosque me-2"></i>Peserta Majlis Ta'lim Aktif</h6>

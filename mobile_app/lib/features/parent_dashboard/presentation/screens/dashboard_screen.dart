@@ -31,13 +31,15 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with WidgetsBindingObserver {
   DashboardProvider? _dashboardProvider;
   int _lastAnnouncementSignal = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<DashboardProvider>().fetchDashboard();
     });
@@ -57,8 +59,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _dashboardProvider?.removeListener(_onDashboardProviderChanged);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      context.read<DashboardProvider>().fetchDashboard(forceRefresh: true);
+    }
   }
 
   void _onDashboardProviderChanged() {
@@ -71,9 +81,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final delta = provider.lastAnnouncementDelta;
     if (delta <= 0) return;
 
-    final label = delta == 1
-        ? 'Ada 1 pengumuman baru.'
-        : 'Ada $delta pengumuman baru.';
+    final label =
+        delta == 1 ? 'Ada 1 pengumuman baru.' : 'Ada $delta pengumuman baru.';
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(

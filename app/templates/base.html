@@ -103,24 +103,33 @@
                     {% if module_school_enabled %}
                     <div class="nav-header">Master Data</div>
                     <li><a href="{{ url_for('admin.manage_academic_years') }}"><i class="fas fa-calendar-alt me-2"></i> Tahun Ajaran</a></li>
-                    <li><a href="{{ url_for('admin.manage_classes') }}"><i class="fas fa-school me-2"></i> Data Kelas</a></li>
                     <li><a href="{{ url_for('admin.manage_subjects') }}"><i class="fas fa-book me-2"></i> Mata Pelajaran</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.manage_schedules') }}"><i class="fas fa-fw fa-clock me-2"></i>Jadwal Pelajaran</a></li>
+                    <li><a href="{{ url_for('admin.manage_classes') }}"><i class="fas fa-school me-2"></i> Data Kelas</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.manage_schedules') }}"><i class="fas fa-fw fa-clock me-2"></i> Jadwal Pelajaran</a></li>
+                    {% endif %}
 
+                    {% if module_school_enabled or module_rumah_quran_enabled %}
                     <div class="nav-header">Data Santri</div>
-                    <li><a href="{{ url_for('admin.list_students') }}" class="nav-link"><i class="fas fa-user-graduate me-2"></i>Data Santri</a></li>
-                    <li><a href="{{ url_for('admin.add_student') }}" class="nav-link"><i class="fas fa-user-plus me-2"></i>Input Santri</a></li>
+                    <li><a href="{{ url_for('admin.list_students') }}" class="nav-link"><i class="fas fa-user-graduate me-2"></i> Data Santri</a></li>
+                    <li><a href="{{ url_for('admin.add_student') }}" class="nav-link"><i class="fas fa-user-plus me-2"></i> Input Santri</a></li>
+                    {% endif %}
+
+                    {% if module_school_enabled %}
                     <li><a href="{{ url_for('boarding.manage_dormitories') }}" class="nav-link"><i class="fas fa-building me-2"></i>Data Asrama</a></li>
                     <li><a href="{{ url_for('boarding.manage_schedules') }}" class="nav-link"><i class="fas fa-clock me-2"></i>Jadwal Boarding</a></li>
+                    {% endif %}
+
+                    {% if module_rumah_quran_enabled %}
+                    <div class="nav-header">Rumah Qur'an</div>
+                    <li><a href="{{ url_for('admin.manage_classes') }}"><i class="fas fa-mosque me-2"></i> Halaqoh / Kelas</a></li>
+                    <li><a href="{{ url_for('admin.manage_schedules') }}"><i class="fas fa-clock me-2"></i> Jadwal Halaqoh</a></li>
+                    {% endif %}
 
                     <div class="nav-header">SDM</div>
-                    <li><a href="{{ url_for('admin.manage_teachers') }}"><i class="fas fa-chalkboard-teacher me-2"></i> Data Guru</a></li>
+                    <li><a href="{{ url_for('admin.manage_teachers') }}"><i class="fas fa-chalkboard-teacher me-2"></i> {% if module_school_enabled and module_rumah_quran_enabled %}Data Guru & Pembimbing Tahfidz{% elif module_rumah_quran_enabled %}Pembimbing Tahfidz{% else %}Data Guru{% endif %}</a></li>
                     <li><a href="{{ url_for('admin.manage_staff') }}"><i class="fas fa-user-tie me-2"></i> Data Staff</a></li>
+                    {% if module_school_enabled %}
                     <li><a href="{{ url_for('boarding.manage_guardians') }}"><i class="fas fa-user-shield me-2"></i> Wali Asrama</a></li>
-                    {% endif %}
-                    {% if module_rumah_quran_enabled and not module_school_enabled %}
-                    <div class="nav-header">SDM</div>
-                    <li><a href="{{ url_for('admin.manage_staff') }}"><i class="fas fa-user-tie me-2"></i> Data Staff</a></li>
                     {% endif %}
 
                     <div class="nav-header">Keuangan</div>

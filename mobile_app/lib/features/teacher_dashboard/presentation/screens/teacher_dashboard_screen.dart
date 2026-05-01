@@ -26,7 +26,8 @@ class TeacherDashboardScreen extends StatefulWidget {
   State<TeacherDashboardScreen> createState() => _TeacherDashboardScreenState();
 }
 
-class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
+class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
+    with WidgetsBindingObserver {
   int _selectedIndex = 0;
   TeacherDashboardProvider? _dashboardProvider;
   int _lastAnnouncementSignal = 0;
@@ -34,6 +35,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<TeacherDashboardProvider>().fetchDashboard();
     });
@@ -53,8 +55,18 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _dashboardProvider?.removeListener(_onDashboardProviderChanged);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      context
+          .read<TeacherDashboardProvider>()
+          .fetchDashboard(forceRefresh: true);
+    }
   }
 
   void _onDashboardProviderChanged() {
@@ -67,9 +79,8 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     final delta = provider.lastAnnouncementDelta;
     if (delta <= 0) return;
 
-    final label = delta == 1
-        ? 'Ada 1 pengumuman baru.'
-        : 'Ada $delta pengumuman baru.';
+    final label =
+        delta == 1 ? 'Ada 1 pengumuman baru.' : 'Ada $delta pengumuman baru.';
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
@@ -414,8 +425,9 @@ class _TeacherHomeroomTab extends StatelessWidget {
       title: 'Perwalian',
       builder: (dashboard) {
         final homeroom = dashboard.homeroom;
-        final fallbackClass =
-            dashboard.classOptions.isNotEmpty ? dashboard.classOptions.first : null;
+        final fallbackClass = dashboard.classOptions.isNotEmpty
+            ? dashboard.classOptions.first
+            : null;
         final hasFallbackClass = fallbackClass != null;
         if (!homeroom.available && !hasFallbackClass) {
           return ListView(
@@ -424,8 +436,7 @@ class _TeacherHomeroomTab extends StatelessWidget {
             children: const [
               AppEmptyState(
                 title: 'Belum Menjadi Wali Kelas',
-                subtitle:
-                    'Data perwalian belum tersedia pada akun ini.',
+                subtitle: 'Data perwalian belum tersedia pada akun ini.',
               ),
             ],
           );
@@ -454,7 +465,8 @@ class _TeacherHomeroomTab extends StatelessWidget {
                 TeacherMenuItem(
                   key: 'behavior_reports',
                   label: 'Laporan Perilaku',
-                  description: 'Input catatan perilaku siswa pada kelas yang diampu.',
+                  description:
+                      'Input catatan perilaku siswa pada kelas yang diampu.',
                 ),
               ];
 

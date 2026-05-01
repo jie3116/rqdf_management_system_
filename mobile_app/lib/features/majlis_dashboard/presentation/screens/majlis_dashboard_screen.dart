@@ -28,7 +28,8 @@ class MajlisDashboardScreen extends StatefulWidget {
   State<MajlisDashboardScreen> createState() => _MajlisDashboardScreenState();
 }
 
-class _MajlisDashboardScreenState extends State<MajlisDashboardScreen> {
+class _MajlisDashboardScreenState extends State<MajlisDashboardScreen>
+    with WidgetsBindingObserver {
   int _selectedIndex = 0;
   MajlisDashboardProvider? _dashboardProvider;
   int _lastAnnouncementSignal = 0;
@@ -36,6 +37,7 @@ class _MajlisDashboardScreenState extends State<MajlisDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<MajlisDashboardProvider>().fetchDashboard();
     });
@@ -55,8 +57,18 @@ class _MajlisDashboardScreenState extends State<MajlisDashboardScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _dashboardProvider?.removeListener(_onDashboardProviderChanged);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      context
+          .read<MajlisDashboardProvider>()
+          .fetchDashboard(forceRefresh: true);
+    }
   }
 
   void _onDashboardProviderChanged() {
@@ -69,9 +81,8 @@ class _MajlisDashboardScreenState extends State<MajlisDashboardScreen> {
     final delta = provider.lastAnnouncementDelta;
     if (delta <= 0) return;
 
-    final label = delta == 1
-        ? 'Ada 1 pengumuman baru.'
-        : 'Ada $delta pengumuman baru.';
+    final label =
+        delta == 1 ? 'Ada 1 pengumuman baru.' : 'Ada $delta pengumuman baru.';
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
@@ -89,7 +100,8 @@ class _MajlisDashboardScreenState extends State<MajlisDashboardScreen> {
       appBar: AppBar(
         automaticallyImplyLeading: false,
         backgroundColor: const Color(0xFFF3F7FC),
-        title: const Text('RQDF Mobile', style: TextStyle(fontWeight: FontWeight.w700)),
+        title: const Text('RQDF Mobile',
+            style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout_rounded),
@@ -97,7 +109,8 @@ class _MajlisDashboardScreenState extends State<MajlisDashboardScreen> {
               final navigator = Navigator.of(context);
               await context.read<AuthProvider>().logout();
               if (!mounted) return;
-              navigator.pushNamedAndRemoveUntil(LoginScreen.routeName, (_) => false);
+              navigator.pushNamedAndRemoveUntil(
+                  LoginScreen.routeName, (_) => false);
             },
           ),
         ],
@@ -120,13 +133,18 @@ class _MajlisDashboardScreenState extends State<MajlisDashboardScreen> {
         surfaceTintColor: Colors.white,
         indicatorColor: const Color(0xFFE8F1FF),
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) => setState(() => _selectedIndex = index),
+        onDestinationSelected: (index) =>
+            setState(() => _selectedIndex = index),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.menu_book_outlined), label: 'Tahfidz'),
-          NavigationDestination(icon: Icon(Icons.fact_check_outlined), label: 'Absensi'),
-          NavigationDestination(icon: Icon(Icons.calendar_today_outlined), label: 'Jadwal'),
-          NavigationDestination(icon: Icon(Icons.person_outline_rounded), label: 'Profil'),
+          NavigationDestination(
+              icon: Icon(Icons.menu_book_outlined), label: 'Tahfidz'),
+          NavigationDestination(
+              icon: Icon(Icons.fact_check_outlined), label: 'Absensi'),
+          NavigationDestination(
+              icon: Icon(Icons.calendar_today_outlined), label: 'Jadwal'),
+          NavigationDestination(
+              icon: Icon(Icons.person_outline_rounded), label: 'Profil'),
         ],
       ),
     );
@@ -191,7 +209,9 @@ class _HomeTab extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
         children: [
           if (provider.state == ViewState.loading && dashboard == null)
-            const SizedBox(height: 120, child: AppLoadingView(message: 'Memuat dashboard...'))
+            const SizedBox(
+                height: 120,
+                child: AppLoadingView(message: 'Memuat dashboard...'))
           else if (provider.state == ViewState.error && dashboard == null)
             AppErrorState(
               message: provider.errorMessage ?? 'Terjadi kesalahan.',
@@ -239,7 +259,6 @@ class _HomeTab extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class _TahfidzPage extends StatelessWidget {
@@ -261,7 +280,8 @@ class _TahfidzPage extends StatelessWidget {
             else
               ...dashboard.tahfidzRecords.map((r) => _InfoTile(
                     title: r.surah,
-                    subtitle: '${r.typeLabel} • Ayat ${r.ayatRange} • ${r.quality}',
+                    subtitle:
+                        '${r.typeLabel} • Ayat ${r.ayatRange} • ${r.quality}',
                     meta: r.date,
                     trailing: '${r.score}',
                   )),
@@ -291,7 +311,8 @@ class _TahfidzPage extends StatelessWidget {
             else
               ...dashboard.evaluationRecords.take(3).map((r) => _InfoTile(
                     title: r.periodText,
-                    subtitle: 'Makhraj ${r.makhrajErrors} • Tajwid ${r.tajwidErrors} • Harakat ${r.harakatErrors}',
+                    subtitle:
+                        'Makhraj ${r.makhrajErrors} • Tajwid ${r.tajwidErrors} • Harakat ${r.harakatErrors}',
                     meta: r.date,
                     trailing: '${r.score}',
                   )),
@@ -312,17 +333,25 @@ class _AbsensiPage extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Expanded(child: _MetricCard(label: 'Hadir', value: '${recap.hadir}')),
+                  Expanded(
+                      child:
+                          _MetricCard(label: 'Hadir', value: '${recap.hadir}')),
                   const SizedBox(width: 10),
-                  Expanded(child: _MetricCard(label: 'Izin', value: '${recap.izin}')),
+                  Expanded(
+                      child:
+                          _MetricCard(label: 'Izin', value: '${recap.izin}')),
                 ],
               ),
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(child: _MetricCard(label: 'Sakit', value: '${recap.sakit}')),
+                  Expanded(
+                      child:
+                          _MetricCard(label: 'Sakit', value: '${recap.sakit}')),
                   const SizedBox(width: 10),
-                  Expanded(child: _MetricCard(label: 'Alpa', value: '${recap.alpa}')),
+                  Expanded(
+                      child:
+                          _MetricCard(label: 'Alpa', value: '${recap.alpa}')),
                 ],
               ),
               const SizedBox(height: 16),
@@ -350,14 +379,18 @@ class _JadwalPage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(day.day, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        Text(day.day,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w800)),
                         const SizedBox(height: 10),
                         if (day.items.isEmpty)
-                          const Text('Belum ada jadwal.', style: TextStyle(color: Color(0xFF64748B)))
+                          const Text('Belum ada jadwal.',
+                              style: TextStyle(color: Color(0xFF64748B)))
                         else
                           ...day.items.map((item) => Padding(
                                 padding: const EdgeInsets.only(bottom: 8),
-                                child: Text('${item.startTime} • ${item.subjectName} • ${item.teacherName}'),
+                                child: Text(
+                                    '${item.startTime} • ${item.subjectName} • ${item.teacherName}'),
                               )),
                       ],
                     ),
@@ -379,10 +412,12 @@ class _ProfilPage extends StatelessWidget {
               child: Column(
                 children: [
                   _ProfileRow(label: 'Nama', value: dashboard.profile.fullName),
-                  _ProfileRow(label: 'Kelas', value: dashboard.profile.majlisClassName),
+                  _ProfileRow(
+                      label: 'Kelas', value: dashboard.profile.majlisClassName),
                   _ProfileRow(label: 'No. HP', value: dashboard.profile.phone),
                   _ProfileRow(label: 'Pekerjaan', value: dashboard.profile.job),
-                  _ProfileRow(label: 'Alamat', value: dashboard.profile.address),
+                  _ProfileRow(
+                      label: 'Alamat', value: dashboard.profile.address),
                 ],
               ),
             ),
@@ -437,7 +472,8 @@ class _EvaluationPage extends StatelessWidget {
           else
             ...dashboard.evaluationRecords.map((r) => _InfoTile(
                   title: r.periodText,
-                  subtitle: 'Makhraj ${r.makhrajErrors} • Tajwid ${r.tajwidErrors} • Harakat ${r.harakatErrors}',
+                  subtitle:
+                      'Makhraj ${r.makhrajErrors} • Tajwid ${r.tajwidErrors} • Harakat ${r.harakatErrors}',
                   meta: r.date,
                   trailing: '${r.score}',
                 )),
@@ -467,7 +503,8 @@ class _MajlisSectionPage extends StatelessWidget {
       );
     }
     if (dashboard == null) {
-      return AppEmptyState(title: '$title Belum Tersedia', subtitle: 'Belum ada data $title.');
+      return AppEmptyState(
+          title: '$title Belum Tersedia', subtitle: 'Belum ada data $title.');
     }
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -512,18 +549,29 @@ class _MajlisHeader extends StatelessWidget {
               children: [
                 Icon(Icons.groups_rounded, size: 16, color: Colors.white),
                 SizedBox(width: 8),
-                Text('Dashboard Peserta Majelis', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                Text('Dashboard Peserta Majelis',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w600)),
               ],
             ),
           ),
           const SizedBox(height: 18),
-          Text('Assalamu\'alaikum,', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white70, fontWeight: FontWeight.w600)),
+          Text('Assalamu\'alaikum,',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Colors.white70, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
-          Text(profile.fullName, style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
+          Text(profile.fullName,
+              style: Theme.of(context)
+                  .textTheme
+                  .headlineSmall
+                  ?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
           const SizedBox(height: 12),
           Text(
             'Pantau hafalan, kegiatan, dan pengumuman majelis dari satu layar.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70, height: 1.45),
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(color: Colors.white70, height: 1.45),
           ),
         ],
       ),
@@ -546,17 +594,29 @@ class _RingkasanCard extends StatelessWidget {
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(child: _MetricCard(label: 'Hafalan', value: dashboard.summary.lastTargetText)),
+              Expanded(
+                  child: _MetricCard(
+                      label: 'Hafalan',
+                      value: dashboard.summary.lastTargetText)),
               const SizedBox(width: 10),
-              Expanded(child: _MetricCard(label: 'Total juz', value: '${dashboard.summary.totalJuz}')),
+              Expanded(
+                  child: _MetricCard(
+                      label: 'Total juz',
+                      value: '${dashboard.summary.totalJuz}')),
             ],
           ),
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: _MetricCard(label: 'Kehadiran', value: '${dashboard.attendance.recap.hadir} hadir')),
+              Expanded(
+                  child: _MetricCard(
+                      label: 'Kehadiran',
+                      value: '${dashboard.attendance.recap.hadir} hadir')),
               const SizedBox(width: 10),
-              Expanded(child: _MetricCard(label: 'Kelas', value: dashboard.profile.majlisClassName)),
+              Expanded(
+                  child: _MetricCard(
+                      label: 'Kelas',
+                      value: dashboard.profile.majlisClassName)),
             ],
           ),
         ],
@@ -583,9 +643,16 @@ class _MetricCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(label,
+              style: const TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
-          Text(value, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+          Text(value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w800)),
         ],
       ),
     );
@@ -593,7 +660,11 @@ class _MetricCard extends StatelessWidget {
 }
 
 class _InfoTile extends StatelessWidget {
-  const _InfoTile({required this.title, required this.subtitle, required this.meta, this.trailing});
+  const _InfoTile(
+      {required this.title,
+      required this.subtitle,
+      required this.meta,
+      this.trailing});
 
   final String title;
   final String subtitle;
@@ -611,11 +682,19 @@ class _InfoTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+                Text(title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 14.5)),
                 const SizedBox(height: 4),
-                Text(subtitle, style: const TextStyle(color: Color(0xFF64748B), height: 1.4)),
+                Text(subtitle,
+                    style:
+                        const TextStyle(color: Color(0xFF64748B), height: 1.4)),
                 const SizedBox(height: 8),
-                Text(AppDateFormatter.shortDate(meta), style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.w600)),
+                Text(AppDateFormatter.shortDate(meta),
+                    style: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600)),
               ],
             ),
           ),
@@ -623,8 +702,12 @@ class _InfoTile extends StatelessWidget {
             const SizedBox(width: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(color: const Color(0xFFE8F1FF), borderRadius: BorderRadius.circular(999)),
-              child: Text(trailing!, style: const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w800)),
+              decoration: BoxDecoration(
+                  color: const Color(0xFFE8F1FF),
+                  borderRadius: BorderRadius.circular(999)),
+              child: Text(trailing!,
+                  style: const TextStyle(
+                      color: Color(0xFF2563EB), fontWeight: FontWeight.w800)),
             ),
           ],
         ],
@@ -645,25 +728,31 @@ class _ProfileRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          Expanded(child: Text(label, style: const TextStyle(color: Color(0xFF6B7280)))),
+          Expanded(
+              child: Text(label,
+                  style: const TextStyle(color: Color(0xFF6B7280)))),
           const SizedBox(width: 8),
-          Flexible(child: Text(value, textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w600))),
+          Flexible(
+              child: Text(value,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontWeight: FontWeight.w600))),
         ],
       ),
     );
   }
 }
 
-List<AnnouncementModel> _announcements(MajlisDashboardModel dashboard) => dashboard.announcements
-    .map((item) => AnnouncementModel(
-          id: item.id,
-          title: item.title,
-          content: item.content,
-          authorLabel: item.authorLabel,
-          createdAt: item.createdAt,
-          isUnread: item.isUnread,
-        ))
-    .toList();
+List<AnnouncementModel> _announcements(MajlisDashboardModel dashboard) =>
+    dashboard.announcements
+        .map((item) => AnnouncementModel(
+              id: item.id,
+              title: item.title,
+              content: item.content,
+              authorLabel: item.authorLabel,
+              createdAt: item.createdAt,
+              isUnread: item.isUnread,
+            ))
+        .toList();
 
 List<RecentActivityModel> _recentActivities(MajlisDashboardModel dashboard) {
   final items = <RecentActivityModel>[];
@@ -671,7 +760,8 @@ List<RecentActivityModel> _recentActivities(MajlisDashboardModel dashboard) {
     final record = dashboard.attendance.records.first;
     items.add(RecentActivityModel(
       type: 'info',
-      message: 'Absensi terakhir: ${record.statusLabel} pada ${AppDateFormatter.shortDate(record.date)}',
+      message:
+          'Absensi terakhir: ${record.statusLabel} pada ${AppDateFormatter.shortDate(record.date)}',
       createdAt: record.date,
     ));
   }

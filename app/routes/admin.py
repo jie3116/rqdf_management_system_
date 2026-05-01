@@ -75,8 +75,11 @@ from app.utils.money import to_rupiah_int
 from app.utils.invoice import generate_invoice_number
 from app.utils.tenant_modules import (
     PACKAGE_FULL,
+    PACKAGE_RUMAH_QURAN,
+    PACKAGE_SEKOLAH,
     PACKAGE_OPTIONS,
     TENANT_PACKAGE_KEY,
+    get_tenant_package,
     normalize_tenant_package,
 )
 from app.utils.tenant import (
@@ -1569,6 +1572,17 @@ def list_students():
     query = (request.args.get('q') or '').strip()
     query_majlis = (request.args.get('q_majlis') or '').strip()
     active_category = (request.args.get('category') or 'all').strip().lower()
+    package = get_tenant_package(tenant_id)
+    if package == PACKAGE_SEKOLAH:
+        allowed_categories = {'all', 'sbq_sd', 'sbq_smp', 'sbq_sma', 'bahasa'}
+    elif package == PACKAGE_RUMAH_QURAN:
+        allowed_categories = {'all', 'reguler', 'takhosus', 'bahasa'}
+    else:
+        allowed_categories = {'all', 'sbq_sd', 'sbq_smp', 'sbq_sma', 'bahasa', 'reguler', 'takhosus'}
+    if active_category not in allowed_categories:
+        active_category = 'all'
+    if package == PACKAGE_SEKOLAH:
+        query_majlis = ''
 
     students_query = (
         Student.query.join(User, Student.user_id == User.id)
@@ -1652,7 +1666,11 @@ def list_students():
             student.id: get_student_bahasa_classroom(student)
             for student in students
         }
-    majlis_participants = list_active_majlis_participants(search=query_majlis, tenant_id=tenant_id)
+    majlis_participants = (
+        []
+        if package == PACKAGE_SEKOLAH
+        else list_active_majlis_participants(search=query_majlis, tenant_id=tenant_id)
+    )
 
     return render_template(
         'student/list_students.html',
