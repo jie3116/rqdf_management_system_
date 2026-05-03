@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -10,6 +13,7 @@ import 'features/auth/data/services/auth_service.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/auth/presentation/screens/splash_screen.dart';
+import 'features/auth/presentation/utils/auth_navigation.dart';
 import 'features/majlis_dashboard/data/repositories/majlis_dashboard_repository.dart';
 import 'features/majlis_dashboard/data/services/majlis_dashboard_service.dart';
 import 'features/majlis_dashboard/presentation/providers/majlis_dashboard_provider.dart';
@@ -33,8 +37,95 @@ import 'features/teacher_dashboard/presentation/screens/teacher_dashboard_screen
 import 'features/teacher_dashboard/presentation/screens/teacher_grade_input_screen.dart';
 import 'features/teacher_dashboard/presentation/screens/teacher_module_screen.dart';
 
-class RqdfApp extends StatelessWidget {
+class RqdfApp extends StatefulWidget {
   const RqdfApp({super.key});
+
+  @override
+  State<RqdfApp> createState() => _RqdfAppState();
+}
+
+class _RqdfAppState extends State<RqdfApp> {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  StreamSubscription<RemoteMessage>? _onMessageOpenedSubscription;
+  final Set<String> _handledNotificationKeys = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _registerNotificationOpenHandlers();
+    });
+  }
+
+  @override
+  void dispose() {
+    _onMessageOpenedSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _registerNotificationOpenHandlers() async {
+    _onMessageOpenedSubscription ??=
+        FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationOpened);
+    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      await _handleNotificationOpened(initialMessage);
+    }
+  }
+
+  Future<void> _handleNotificationOpened(RemoteMessage message) async {
+    final key = _notificationKey(message);
+    if (_handledNotificationKeys.contains(key)) {
+      return;
+    }
+    _handledNotificationKeys.add(key);
+    if (!mounted) {
+      return;
+    }
+
+    final ctx = _navigatorKey.currentContext;
+    final nav = _navigatorKey.currentState;
+    if (ctx == null || nav == null) {
+      return;
+    }
+
+    final authProvider = ctx.read<AuthProvider>();
+    if (!authProvider.isAuthenticated) {
+      return;
+    }
+
+    await _refreshDashboardByRole(ctx, authProvider);
+    if (!mounted) {
+      return;
+    }
+    final targetRoute = AuthNavigation.routeForUser(authProvider.currentUser);
+    nav.pushNamedAndRemoveUntil(targetRoute, (_) => false);
+  }
+
+  Future<void> _refreshDashboardByRole(
+    BuildContext context,
+    AuthProvider authProvider,
+  ) async {
+    final user = authProvider.currentUser;
+    if (user?.isTeacher == true) {
+      await context
+          .read<TeacherDashboardProvider>()
+          .fetchDashboard(forceRefresh: true);
+      return;
+    }
+    if (user?.isMajlisParticipant == true) {
+      await context
+          .read<MajlisDashboardProvider>()
+          .fetchDashboard(forceRefresh: true);
+      return;
+    }
+    await context.read<DashboardProvider>().fetchDashboard(forceRefresh: true);
+  }
+
+  String _notificationKey(RemoteMessage message) {
+    final announcementId = (message.data['announcement_id'] ?? '').toString();
+    final sentTs = message.sentTime?.millisecondsSinceEpoch ?? 0;
+    return message.messageId ?? '$sentTs:$announcementId';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -105,6 +196,7 @@ class RqdfApp extends StatelessWidget {
         Provider<ParentFeatureRepository>.value(value: featureRepository),
       ],
       child: MaterialApp(
+        navigatorKey: _navigatorKey,
         title: 'RQDF Management System',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,

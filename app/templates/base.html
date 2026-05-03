@@ -114,7 +114,7 @@
                     <li><a href="{{ url_for('admin.add_student') }}" class="nav-link"><i class="fas fa-user-plus me-2"></i> Input Santri</a></li>
                     {% endif %}
 
-                    {% if module_school_enabled %}
+                    {% if module_boarding_enabled %}
                     <li><a href="{{ url_for('boarding.manage_dormitories') }}" class="nav-link"><i class="fas fa-building me-2"></i>Data Asrama</a></li>
                     <li><a href="{{ url_for('boarding.manage_schedules') }}" class="nav-link"><i class="fas fa-clock me-2"></i>Jadwal Boarding</a></li>
                     {% endif %}
@@ -128,7 +128,7 @@
                     <div class="nav-header">SDM</div>
                     <li><a href="{{ url_for('admin.manage_teachers') }}"><i class="fas fa-chalkboard-teacher me-2"></i> {% if module_school_enabled and module_rumah_quran_enabled %}Data Guru & Pembimbing Tahfidz{% elif module_rumah_quran_enabled %}Pembimbing Tahfidz{% else %}Data Guru{% endif %}</a></li>
                     <li><a href="{{ url_for('admin.manage_staff') }}"><i class="fas fa-user-tie me-2"></i> Data Staff</a></li>
-                    {% if module_school_enabled %}
+                    {% if module_boarding_enabled %}
                     <li><a href="{{ url_for('boarding.manage_guardians') }}"><i class="fas fa-user-shield me-2"></i> Wali Asrama</a></li>
                     {% endif %}
 
@@ -178,7 +178,7 @@
                     <li><a href="{{ url_for('staff.manage_announcements') }}"><i class="fas fa-bullhorn me-2"></i> Pengumuman</a></li>
                 {% endif %}
 
-                {% if active_role_value == 'wali_asrama' and module_school_enabled %}
+                {% if active_role_value == 'wali_asrama' and module_boarding_enabled %}
                     <div class="nav-header">Boarding</div>
                     <li><a href="{{ url_for('boarding.dashboard') }}"><i class="fas fa-house-user me-2"></i> Dashboard Boarding</a></li>
                     <li><a href="{{ url_for('boarding.input_attendance') }}"><i class="fas fa-clipboard-check me-2"></i> Absensi Harian</a></li>

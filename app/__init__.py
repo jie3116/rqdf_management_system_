@@ -56,6 +56,7 @@ def create_app(config_class=Config):
             'tenant_package': tenant_package,
             'module_school_enabled': tenant_package in (PACKAGE_FULL, PACKAGE_SEKOLAH),
             'module_rumah_quran_enabled': tenant_package in (PACKAGE_FULL, PACKAGE_RUMAH_QURAN),
+            'module_boarding_enabled': tenant_package == PACKAGE_FULL,
             'teacher_sidebar_groups': teacher_sidebar_groups,
         }
 

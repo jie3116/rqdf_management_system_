@@ -57,7 +57,6 @@ def role_allowed_for_package(role, package):
             UserRole.GURU,
             UserRole.SISWA,
             UserRole.WALI_MURID,
-            UserRole.WALI_ASRAMA,
         }
     if package == PACKAGE_RUMAH_QURAN:
         return role in {
@@ -82,6 +81,8 @@ def endpoint_allowed_for_package(endpoint, package):
 
     if package == PACKAGE_SEKOLAH:
         if endpoint.startswith("staff."):
+            return False
+        if endpoint.startswith("boarding."):
             return False
         if endpoint in _SEKOLAH_ONLY_BLOCKED_ENDPOINTS:
             return False
