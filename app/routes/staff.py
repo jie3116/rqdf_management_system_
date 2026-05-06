@@ -567,7 +567,7 @@ def generate_invoices(fee_id):
                 nominal_final = fee.amount * 0.5
 
             new_inv = Invoice(
-                invoice_number=generate_invoice_number(fee.id, student.id),
+                invoice_number=generate_invoice_number(fee.id, student.id, tenant_id=tenant_id),
                 student_id=student.id,
                 fee_type_id=fee.id,
                 total_amount=to_rupiah_int(nominal_final),
@@ -1356,7 +1356,12 @@ def accept_candidate(candidate_id):
                 db.session.flush()
 
             new_inv = Invoice(
-                invoice_number=generate_invoice_number(fee_type.id, siswa_baru.id, sequence=ctr),
+                invoice_number=generate_invoice_number(
+                    fee_type.id,
+                    siswa_baru.id,
+                    sequence=ctr,
+                    tenant_id=tenant_id,
+                ),
                 student_id=siswa_baru.id,
                 fee_type_id=fee_type.id,
                 total_amount=to_rupiah_int(item['nominal']),

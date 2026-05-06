@@ -6,11 +6,10 @@
     <title>Kwitansi Pembayaran</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     {% set printable_width_mm = paper.width_mm - (paper.margin_mm * 2) %}
-    {% set printable_height_mm = paper.height_mm - (paper.margin_mm * 2) %}
     <style>
         @page {
             size: {{ paper.page_size_css }};
-            margin: {{ paper.margin_mm }}mm;
+            margin: 0;
         }
 
         body {
@@ -24,16 +23,20 @@
             border: 1px solid #dee2e6;
             border-radius: 10px;
             padding: {% if paper.compact %}14px{% else %}24px{% endif %};
+            line-height: 1.42;
+        }
+        .receipt-wrapper .table > :not(caption) > * > * {
+            padding: 0.5rem 0.58rem;
         }
         .receipt-wrapper.compact {
-            font-size: 0.72rem;
-            line-height: 1.18;
+            font-size: 0.74rem;
+            line-height: 1.34;
         }
         .receipt-wrapper.compact .table {
-            font-size: 0.68rem;
+            font-size: 0.7rem;
         }
         .receipt-wrapper.compact .table > :not(caption) > * > * {
-            padding: 0.18rem 0.26rem;
+            padding: 0.3rem 0.34rem;
         }
         .receipt-wrapper.compact h4 {
             font-size: 0.82rem;
@@ -43,27 +46,27 @@
             font-size: 0.62rem !important;
         }
         .receipt-wrapper.compact .fw-bold {
-            line-height: 1.04;
+            line-height: 1.2;
         }
         .receipt-wrapper.compact .header-block {
-            margin-bottom: 0.22rem !important;
+            margin-bottom: 0.45rem !important;
         }
         .receipt-wrapper.compact hr {
-            margin: 0.18rem 0;
+            margin: 0.32rem 0;
         }
         .receipt-wrapper.compact .info-grid {
-            --bs-gutter-x: 0.35rem;
-            --bs-gutter-y: 0.1rem;
-            row-gap: 0.1rem !important;
+            --bs-gutter-x: 0.45rem;
+            --bs-gutter-y: 0.22rem;
+            row-gap: 0.22rem !important;
         }
         .receipt-wrapper.compact .info-grid > .col-md-6 {
             width: 100%;
         }
         .receipt-wrapper.compact .amount-table {
-            margin-top: 0.3rem !important;
+            margin-top: 0.5rem !important;
         }
         .receipt-wrapper.compact .footer-block {
-            margin-top: 0.34rem !important;
+            margin-top: 0.52rem !important;
         }
         .receipt-wrapper.compact .footer-note {
             font-size: 0.58rem;
@@ -73,10 +76,10 @@
             margin-bottom: 0.75rem !important;
         }
         .receipt-wrapper.compact .mb-1 {
-            margin-bottom: 0.16rem !important;
+            margin-bottom: 0.26rem !important;
         }
         .receipt-wrapper.compact .pt-1 {
-            padding-top: 0.08rem !important;
+            padding-top: 0.16rem !important;
         }
         .receipt-wrapper.compact .table th,
         .receipt-wrapper.compact .table td {
@@ -94,10 +97,10 @@
         }
         .receipt-wrapper .issuer-name {
             font-weight: 700;
-            line-height: 1.24;
+            line-height: 1.34;
         }
         .receipt-wrapper .issuer-meta {
-            line-height: 1.24;
+            line-height: 1.34;
         }
         @media print {
             html, body {
@@ -107,14 +110,26 @@
                 padding: 0;
                 background: #fff;
             }
+            body * {
+                visibility: hidden !important;
+            }
+            .receipt-wrapper,
+            .receipt-wrapper * {
+                visibility: visible !important;
+            }
             .no-print { display: none !important; }
             .receipt-wrapper {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: {{ paper.width_mm }}mm;
+                min-height: {{ paper.height_mm }}mm;
+                box-sizing: border-box;
                 margin: 0;
                 border: none;
                 border-radius: 0;
-                max-width: {{ printable_width_mm }}mm;
-                min-height: {{ printable_height_mm }}mm;
-                padding: 0;
+                max-width: none;
+                padding: {{ paper.margin_mm }}mm;
             }
             .receipt-wrapper.compact {
                 break-inside: avoid;
@@ -198,6 +213,8 @@
             </div>
             <div class="text-center signature-box" style="min-width: 220px;">
                 <div class="small text-muted mb-5 signature-label">Petugas</div>
+                <div></div>
+                <div></div>
                 <div class="border-top pt-1">{{ payment_pic.username if payment_pic else '-' }}</div>
             </div>
         </div>
@@ -217,6 +234,9 @@
             <i class="fas fa-print me-1"></i> Cetak
             </button>
             <a href="{{ url_for('staff.cashier_pay', student_id=student.id) }}" class="btn btn-outline-secondary">Kembali ke Kasir</a>
+        </div>
+        <div class="small text-muted text-center mt-2">
+            Jika URL/tanggal ikut tercetak, nonaktifkan opsi browser <strong>Headers and footers</strong> saat print.
         </div>
     </div>
 </body>
