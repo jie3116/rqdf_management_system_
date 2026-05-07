@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Tabungan Santri{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h4>Tabungan Santri - {{ student.full_name }}</h4>
+  <p>Saldo saat ini: <strong>Rp {{ '{:,.0f}'.format(account.balance).replace(',', '.') }}</strong></p>
+  <form method="post" class="card card-body mb-3">
+    <input type="hidden" name="action" value="set_pin">
+    <h6>Atur/Ubah PIN Santri (untuk penarikan)</h6>
+    <div class="row g-2">
+      <div class="col-md-4"><input name="pin" class="form-control" placeholder="PIN angka (min 4 digit)"></div>
+      <div class="col-md-4"><input name="pin_confirm" class="form-control" placeholder="Ulangi PIN"></div>
+      <div class="col-md-4"><button class="btn btn-outline-primary w-100">Simpan PIN</button></div>
+    </div>
+  </form>
+  <form method="post" enctype="multipart/form-data" class="card card-body mb-3">
+    <input type="hidden" name="action" value="topup">
+    <div class="row g-2">
+      <div class="col-md-4"><input name="amount" class="form-control" placeholder="Nominal transfer"></div>
+      <div class="col-md-4"><input type="file" name="proof_image" class="form-control" required></div>
+      <div class="col-md-4"><input name="notes" class="form-control" placeholder="Catatan"></div>
+    </div>
+    <button class="btn btn-primary mt-3">Kirim Pengajuan Top Up</button>
+  </form>
+  <div class="card"><div class="card-body">
+    <h6>Riwayat</h6>
+    <table class="table table-sm"><tr><th>Tanggal</th><th>Tipe</th><th>Nominal</th><th>Status</th></tr>
+      {% for t in transactions %}
+      <tr><td>{{ t.created_at.strftime('%d/%m/%Y %H:%M') if t.created_at else '-' }}</td><td>{{ t.transaction_type.value }}</td><td>Rp {{ '{:,.0f}'.format(t.amount).replace(',', '.') }}</td><td>{{ t.status.value }}</td></tr>
+      {% endfor %}
+    </table>
+  </div></div>
+</div>
+{% endblock %}
