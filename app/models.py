@@ -213,6 +213,17 @@ class ClassType(enum.Enum):
     MAJLIS_TALIM = "Majelis Ta'lim"
 
 
+class SavingsTransactionType(enum.Enum):
+    DEPOSIT = "Setoran"
+    WITHDRAWAL = "Penarikan"
+
+
+class SavingsTransactionStatus(enum.Enum):
+    PENDING = "Menunggu Verifikasi"
+    APPROVED = "Disetujui"
+    REJECTED = "Ditolak"
+
+
 # ==========================================
 # 2. ASSOCIATION TABLES
 # ==========================================
@@ -1156,6 +1167,46 @@ class Transaction(BaseModel):
     method = db.Column(db.String(30))
     date = db.Column(db.DateTime, default=utc_now_naive)
     pic_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+
+
+class StudentSavingsAccount(BaseModel):
+    __tablename__ = 'student_savings_accounts'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, unique=True)
+    balance = db.Column(db.Integer, default=0, nullable=False)
+    pin_hash = db.Column(db.String(255), nullable=True)
+
+    student = db.relationship('Student', backref=db.backref('savings_account', uselist=False))
+
+    def set_pin(self, pin):
+        self.pin_hash = generate_password_hash(pin)
+
+    def check_pin(self, pin):
+        if not self.pin_hash:
+            return False
+        return check_password_hash(self.pin_hash, pin)
+
+
+class StudentSavingsTransaction(BaseModel):
+    __tablename__ = 'student_savings_transactions'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    account_id = db.Column(db.Integer, db.ForeignKey('student_savings_accounts.id'), nullable=False, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    amount = db.Column(db.Integer, nullable=False)
+    transaction_type = db.Column(db.Enum(SavingsTransactionType, name='savingstransactiontype'), nullable=False)
+    status = db.Column(db.Enum(SavingsTransactionStatus, name='savingstransactionstatus'), default=SavingsTransactionStatus.PENDING, nullable=False)
+    proof_image = db.Column(db.String(255), nullable=True)
+    requested_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    approved_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    account = db.relationship('StudentSavingsAccount', backref='transactions')
+    student = db.relationship('Student', backref='savings_transactions')
+    requested_by = db.relationship('User', foreign_keys=[requested_by_user_id], backref='requested_savings_transactions')
+    approved_by = db.relationship('User', foreign_keys=[approved_by_user_id], backref='approved_savings_transactions')
 
 
 # ==========================================

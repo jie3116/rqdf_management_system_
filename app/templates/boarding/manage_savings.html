@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Manajemen Tabungan Santri{% endblock %}
+{% block content %}
+<div class="container py-4">
+<h4>Manajemen Uang Saku Santri</h4>
+<div class="row">
+<div class="col-md-7">
+<div class="card mb-3"><div class="card-body"><h6>Pengajuan Top Up Menunggu Verifikasi</h6>
+<table class="table table-sm"><tr><th>Santri</th><th>Nominal</th><th>Bukti</th><th>Aksi</th></tr>
+{% for t in pending %}<tr><td>{{ t.student.full_name }}</td><td>Rp {{ '{:,.0f}'.format(t.amount).replace(',', '.') }}</td><td>{% if t.proof_image %}<a href="{{ url_for('static', filename=t.proof_image) }}" target="_blank">Lihat</a>{% endif %}</td><td>
+<form method="post" class="d-inline"><input type="hidden" name="transaction_id" value="{{ t.id }}"><input type="hidden" name="action" value="approve"><button class="btn btn-success btn-sm">Approve</button></form>
+<form method="post" class="d-inline"><input type="hidden" name="transaction_id" value="{{ t.id }}"><input type="hidden" name="action" value="reject"><button class="btn btn-danger btn-sm">Tolak</button></form>
+</td></tr>{% endfor %}
+</table></div></div></div>
+<div class="col-md-5"><div class="card"><div class="card-body"><h6>Penarikan Uang Tunai Santri</h6>
+<form method="post"><input type="hidden" name="action" value="withdraw">
+<select name="student_id" class="form-select mb-2" required>{% for s in students %}<option value="{{ s.id }}">{{ s.full_name }} (Saldo: Rp {{ '{:,.0f}'.format((account_map.get(s.id).balance if account_map.get(s.id) else 0)).replace(',', '.') }})</option>{% endfor %}</select>
+<input name="amount" class="form-control mb-2" placeholder="Nominal tarik" required>
+<input type="password" name="student_pin" class="form-control mb-2" placeholder="PIN santri" required>
+<input type="password" name="password" class="form-control mb-2" placeholder="Password petugas/admin" required>
+<button class="btn btn-primary">Catat Penarikan</button></form></div></div></div>
+</div></div>
+{% endblock %}

@@ -1,4 +1,5 @@
 from datetime import datetime
+from app.utils.timezone import utc_now_naive
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
@@ -23,6 +24,10 @@ from app.models import (
     GroupType,
     Program,
     ProgramGroup,
+    StudentSavingsAccount,
+    StudentSavingsTransaction,
+    SavingsTransactionType,
+    SavingsTransactionStatus,
 )
 
 
@@ -804,3 +809,61 @@ def input_attendance():
         AttendanceStatus=AttendanceStatus,
     )
 
+
+
+@boarding_bp.route('/tabungan', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.WALI_ASRAMA, UserRole.ADMIN)
+def manage_savings():
+    tenant_id = _current_tenant_id()
+    if request.method == 'POST':
+        action = (request.form.get('action') or '').strip()
+        trx_id = request.form.get('transaction_id', type=int)
+        trx = StudentSavingsTransaction.query.filter_by(id=trx_id, tenant_id=tenant_id).first() if trx_id else None
+
+        if action in {'approve', 'reject'} and trx and trx.status == SavingsTransactionStatus.PENDING:
+            trx.status = SavingsTransactionStatus.APPROVED if action == 'approve' else SavingsTransactionStatus.REJECTED
+            trx.approved_by_user_id = current_user.id
+            trx.approved_at = utc_now_naive()
+            if action == 'approve':
+                account = trx.account
+                if trx.transaction_type == SavingsTransactionType.DEPOSIT:
+                    account.balance += trx.amount
+                else:
+                    account.balance -= trx.amount
+            db.session.commit()
+            flash('Transaksi tabungan berhasil diproses.', 'success')
+            return redirect(url_for('boarding.manage_savings'))
+
+        if action == 'withdraw':
+            student_id = request.form.get('student_id', type=int)
+            amount = int((request.form.get('amount') or '0').replace('.', '').replace(',', ''))
+            password = request.form.get('password') or ''
+            student_pin = (request.form.get('student_pin') or '').strip()
+            if not current_user.check_password(password):
+                flash('Password petugas tidak valid.', 'danger')
+                return redirect(url_for('boarding.manage_savings'))
+            account = StudentSavingsAccount.query.filter_by(student_id=student_id).first()
+            if not account or amount <= 0 or account.balance < amount:
+                flash('Saldo tidak mencukupi atau nominal tidak valid.', 'warning')
+                return redirect(url_for('boarding.manage_savings'))
+            if not account.pin_hash:
+                flash('PIN santri belum diset. Minta orang tua/santri set PIN terlebih dahulu.', 'warning')
+                return redirect(url_for('boarding.manage_savings'))
+            if not account.check_pin(student_pin):
+                flash('PIN santri tidak valid. Penarikan dibatalkan.', 'danger')
+                return redirect(url_for('boarding.manage_savings'))
+            trx = StudentSavingsTransaction(tenant_id=tenant_id, account_id=account.id, student_id=student_id, amount=amount,
+                transaction_type=SavingsTransactionType.WITHDRAWAL, status=SavingsTransactionStatus.APPROVED,
+                requested_by_user_id=current_user.id, approved_by_user_id=current_user.id, approved_at=utc_now_naive())
+            account.balance -= amount
+            db.session.add(trx)
+            db.session.commit()
+            flash('Penarikan tunai berhasil dicatat. Serahkan uang ke santri.', 'success')
+            return redirect(url_for('boarding.manage_savings'))
+
+    students = _tenant_students_query(tenant_id).order_by(Student.full_name.asc()).all()
+    pending = StudentSavingsTransaction.query.filter_by(tenant_id=tenant_id, status=SavingsTransactionStatus.PENDING).order_by(StudentSavingsTransaction.id.desc()).all()
+    accounts = StudentSavingsAccount.query.filter_by(tenant_id=tenant_id).all()
+    account_map = {a.student_id: a for a in accounts}
+    return render_template('boarding/manage_savings.html', students=students, pending=pending, account_map=account_map)

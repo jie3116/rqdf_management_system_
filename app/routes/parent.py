@@ -1,4 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
+from werkzeug.utils import secure_filename
+import os
+import uuid
 from flask_login import login_required, current_user
 from datetime import datetime
 from sqlalchemy import or_
@@ -7,7 +10,8 @@ from app.models import (
     RecitationRecord, Schedule, Grade, Violation, AcademicYear, Invoice, PaymentStatus,
     ParticipantType, StudentCandidate, EducationLevel, ScholarshipCategory, RegistrationStatus,
     MajlisParticipant, BehaviorReport, Attendance, AttendanceStatus, ClassRoom,
-    BoardingAttendance, BoardingActivitySchedule
+    BoardingAttendance, BoardingActivitySchedule, Student, StudentSavingsAccount,
+    StudentSavingsTransaction, SavingsTransactionType, SavingsTransactionStatus
 )
 from app.decorators import role_required
 from app.services.formal_service import get_student_formal_classroom
@@ -483,3 +487,82 @@ def majlis_dashboard():
 def majlis_activities():
     return redirect(url_for('main.majlis_dashboard'))
 
+
+
+@parent_bp.route('/tabungan-santri', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.WALI_MURID)
+def student_savings():
+    parent = current_user.parent_profile
+    if not parent:
+        flash('Profil wali murid tidak ditemukan.', 'danger')
+        return redirect(url_for('parent.dashboard'))
+
+    student = Student.query.filter_by(parent_id=parent.id, is_deleted=False).order_by(Student.id.asc()).first()
+    if not student:
+        flash('Belum ada data santri terkait akun ini.', 'warning')
+        return redirect(url_for('parent.dashboard'))
+
+    tenant_id = resolve_tenant_id(current_user)
+    account = StudentSavingsAccount.query.filter_by(student_id=student.id).first()
+    if not account:
+        account = StudentSavingsAccount(tenant_id=tenant_id, student_id=student.id, balance=0)
+        db.session.add(account)
+        db.session.commit()
+
+    if request.method == 'POST':
+        action = (request.form.get('action') or 'topup').strip()
+
+        if action == 'set_pin':
+            pin = (request.form.get('pin') or '').strip()
+            pin_confirm = (request.form.get('pin_confirm') or '').strip()
+            if len(pin) < 4 or not pin.isdigit():
+                flash('PIN tabungan harus angka minimal 4 digit.', 'warning')
+                return redirect(url_for('parent.student_savings'))
+            if pin != pin_confirm:
+                flash('Konfirmasi PIN tidak sama.', 'warning')
+                return redirect(url_for('parent.student_savings'))
+            account.set_pin(pin)
+            db.session.commit()
+            flash('PIN tabungan santri berhasil disimpan.', 'success')
+            return redirect(url_for('parent.student_savings'))
+
+        amount_raw = (request.form.get('amount') or '0').replace('.', '').replace(',', '')
+        proof = request.files.get('proof_image')
+        notes = (request.form.get('notes') or '').strip()
+        try:
+            amount = int(amount_raw)
+        except ValueError:
+            amount = 0
+
+        if amount <= 0:
+            flash('Nominal top up harus lebih besar dari 0.', 'warning')
+            return redirect(url_for('parent.student_savings'))
+        if not proof or not proof.filename:
+            flash('Bukti transfer wajib diunggah.', 'warning')
+            return redirect(url_for('parent.student_savings'))
+
+        uploads_dir = os.path.join('app', 'static', 'uploads', 'savings_proofs')
+        os.makedirs(uploads_dir, exist_ok=True)
+        ext = os.path.splitext(secure_filename(proof.filename))[1] or '.jpg'
+        filename = f"{uuid.uuid4().hex}{ext}"
+        proof.save(os.path.join(uploads_dir, filename))
+
+        trx = StudentSavingsTransaction(
+            tenant_id=tenant_id,
+            account_id=account.id,
+            student_id=student.id,
+            amount=amount,
+            transaction_type=SavingsTransactionType.DEPOSIT,
+            status=SavingsTransactionStatus.PENDING,
+            proof_image=f'uploads/savings_proofs/{filename}',
+            requested_by_user_id=current_user.id,
+            notes=notes or None,
+        )
+        db.session.add(trx)
+        db.session.commit()
+        flash('Pengajuan top up tabungan berhasil dikirim. Menunggu verifikasi admin.', 'success')
+        return redirect(url_for('parent.student_savings'))
+
+    transactions = StudentSavingsTransaction.query.filter_by(student_id=student.id).order_by(StudentSavingsTransaction.id.desc()).limit(20).all()
+    return render_template('parent/student_savings.html', student=student, account=account, transactions=transactions)
