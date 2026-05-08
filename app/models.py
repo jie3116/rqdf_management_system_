@@ -352,6 +352,8 @@ class User(UserMixin, BaseModel):
     email = db.Column(db.String(120), nullable=False)
     password_hash = db.Column(db.String(256))
     withdrawal_pin_hash = db.Column(db.String(255), nullable=True)
+    withdrawal_pin_failed_attempts = db.Column(db.Integer, default=0, nullable=False)
+    withdrawal_pin_locked_until = db.Column(db.DateTime, nullable=True)
     role = db.Column(db.Enum(UserRole, name='userrole'), default=UserRole.SISWA, nullable=False)
     last_login = db.Column(db.DateTime)
     must_change_password = db.Column(db.Boolean, default=True)
@@ -1185,6 +1187,8 @@ class StudentSavingsAccount(BaseModel):
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, unique=True)
     balance = db.Column(db.Integer, default=0, nullable=False)
     pin_hash = db.Column(db.String(255), nullable=True)
+    pin_failed_attempts = db.Column(db.Integer, default=0, nullable=False)
+    pin_locked_until = db.Column(db.DateTime, nullable=True)
 
     student = db.relationship('Student', backref=db.backref('savings_account', uselist=False))
 

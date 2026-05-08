@@ -2,28 +2,185 @@
 {% block title %}Manajemen Tabungan Santri{% endblock %}
 {% block content %}
 <div class="container py-4">
-<h4>Manajemen Uang Saku Santri</h4>
-<div class="row">
-<div class="col-md-7">
-<div class="card mb-3"><div class="card-body"><h6>Pengajuan Top Up Menunggu Verifikasi</h6>
-<table class="table table-sm"><tr><th>Santri</th><th>Nominal</th><th>Bukti</th><th>Aksi</th></tr>
-{% for t in pending %}<tr><td>{{ t.student.full_name }}</td><td>Rp {{ '{:,.0f}'.format(t.amount).replace(',', '.') }}</td><td>{% if t.proof_image %}<a href="{{ url_for('static', filename=t.proof_image) }}" target="_blank">Lihat</a>{% endif %}</td><td>
-<form method="post" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/><input type="hidden" name="transaction_id" value="{{ t.id }}"><input type="hidden" name="action" value="approve"><button class="btn btn-success btn-sm">Approve</button></form>
-<form method="post" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/><input type="hidden" name="transaction_id" value="{{ t.id }}"><input type="hidden" name="action" value="reject"><button class="btn btn-danger btn-sm">Tolak</button></form>
-</td></tr>{% endfor %}
-</table></div></div></div>
-<div class="col-md-5">
-<div class="card mb-3"><div class="card-body"><h6>Atur PIN Petugas</h6>
-<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/><input type="hidden" name="action" value="set_officer_pin">
-<input type="password" name="officer_pin" class="form-control mb-2" placeholder="PIN petugas (min 4 digit)" required>
-<input type="password" name="officer_pin_confirm" class="form-control mb-2" placeholder="Ulangi PIN petugas" required>
-<button class="btn btn-outline-primary btn-sm">Simpan PIN Petugas</button></form></div></div>
-<div class="card"><div class="card-body"><h6>Penarikan Uang Tunai Santri</h6>
-<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/><input type="hidden" name="action" value="withdraw">
-<select name="student_id" class="form-select mb-2" required>{% for s in students %}<option value="{{ s.id }}">{{ s.full_name }} (Saldo: Rp {{ '{:,.0f}'.format((account_map.get(s.id).balance if account_map.get(s.id) else 0)).replace(',', '.') }})</option>{% endfor %}</select>
-<input name="amount" class="form-control mb-2" placeholder="Nominal tarik" required>
-<input type="password" name="student_pin" class="form-control mb-2" placeholder="PIN santri" required>
-<input type="password" name="officer_pin" class="form-control mb-2" placeholder="PIN petugas/admin" required>
-<button class="btn btn-primary">Catat Penarikan</button></form></div></div></div>
-</div></div>
+  <h4>Manajemen Uang Saku Santri</h4>
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-body">
+          <h6 class="mb-3">Pengajuan Top Up Menunggu Verifikasi</h6>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Santri</th>
+                  <th>Nominal</th>
+                  <th>Bukti</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for t in pending %}
+                <tr>
+                  <td>{{ t.student.full_name }}</td>
+                  <td>Rp {{ '{:,.0f}'.format(t.amount).replace(',', '.') }}</td>
+                  <td>
+                    {% if t.proof_image %}
+                    <a href="{{ url_for('static', filename=t.proof_image) }}" target="_blank">Lihat</a>
+                    {% else %}
+                    -
+                    {% endif %}
+                  </td>
+                  <td class="text-nowrap">
+                    <form method="post" class="d-inline">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                      <input type="hidden" name="transaction_id" value="{{ t.id }}">
+                      <input type="hidden" name="action" value="approve">
+                      <button class="btn btn-success btn-sm">Approve</button>
+                    </form>
+                    <form method="post" class="d-inline">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                      <input type="hidden" name="transaction_id" value="{{ t.id }}">
+                      <input type="hidden" name="action" value="reject">
+                      <button class="btn btn-danger btn-sm">Tolak</button>
+                    </form>
+                  </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-center text-muted">Tidak ada pengajuan pending.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-end mb-3">
+            <div>
+              <h6 class="mb-1">Rekonsiliasi Harian</h6>
+              <small class="text-muted">Mismatch berarti saldo akun tidak sama dengan akumulasi mutasi approved.</small>
+            </div>
+            <span class="badge {% if recon_mismatch_count > 0 %}bg-danger{% else %}bg-success{% endif %}">
+              Mismatch: {{ recon_mismatch_count }}
+            </span>
+          </div>
+          <form method="get" class="row g-2 align-items-end mb-3">
+            <div class="col-md-5">
+              <label class="form-label mb-1">Tanggal</label>
+              <input type="date" name="recon_date" class="form-control" value="{{ selected_recon_date.strftime('%Y-%m-%d') }}">
+            </div>
+            <div class="col-md-3">
+              <button class="btn btn-outline-primary w-100">Tampilkan</button>
+            </div>
+          </form>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Santri</th>
+                  <th>Saldo Awal</th>
+                  <th>Top Up</th>
+                  <th>Withdraw</th>
+                  <th>Saldo Akhir</th>
+                  <th>Mismatch</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in recon_rows %}
+                <tr>
+                  <td>{{ row.student_name }}</td>
+                  <td>Rp {{ '{:,.0f}'.format(row.opening_balance).replace(',', '.') }}</td>
+                  <td>Rp {{ '{:,.0f}'.format(row.daily_deposit).replace(',', '.') }}</td>
+                  <td>Rp {{ '{:,.0f}'.format(row.daily_withdraw).replace(',', '.') }}</td>
+                  <td>Rp {{ '{:,.0f}'.format(row.closing_balance).replace(',', '.') }}</td>
+                  <td class="{% if row.mismatch != 0 %}text-danger fw-semibold{% endif %}">
+                    Rp {{ '{:,.0f}'.format(row.mismatch).replace(',', '.') }}
+                  </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center text-muted">Belum ada data akun tabungan.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card mb-3">
+        <div class="card-body">
+          <h6>Atur PIN Petugas</h6>
+          <form method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="set_officer_pin">
+            <input type="password" name="officer_pin" class="form-control mb-2" placeholder="PIN petugas (min 4 digit)" required>
+            <input type="password" name="officer_pin_confirm" class="form-control mb-2" placeholder="Ulangi PIN petugas" required>
+            <button class="btn btn-outline-primary btn-sm">Simpan PIN Petugas</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-body">
+          <h6>Sesi Otorisasi PIN Petugas</h6>
+          {% if officer_pin_unlocked %}
+          <p class="mb-2 text-success small">Sesi aktif. Transaksi pada sesi ini: {{ officer_tx_count }}</p>
+          <form method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="lock_officer_pin">
+            <button class="btn btn-outline-secondary btn-sm">Kunci Sesi</button>
+          </form>
+          {% else %}
+          <p class="mb-2 text-muted small">Masukkan PIN petugas sekali untuk membuka sesi kasir singkat.</p>
+          <form method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="unlock_officer_pin">
+            <input type="password" name="officer_pin" class="form-control mb-2" placeholder="PIN petugas" required>
+            <button class="btn btn-primary btn-sm">Buka Sesi</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <h6>Penarikan Uang Tunai Santri</h6>
+          <form method="post" id="withdrawForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="withdraw">
+            <select name="student_id" class="form-select mb-2" required>
+              {% for s in students %}
+              <option value="{{ s.id }}">{{ s.full_name }} (Saldo: Rp {{ '{:,.0f}'.format((account_map.get(s.id).balance if account_map.get(s.id) else 0)).replace(',', '.') }})</option>
+              {% endfor %}
+            </select>
+            <input id="withdrawAmountInput" name="amount" class="form-control mb-2" placeholder="Nominal tarik" required>
+            <div class="d-flex flex-wrap gap-2 mb-2">
+              <button type="button" class="btn btn-outline-secondary btn-sm quick-amount" data-amount="10000">10rb</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm quick-amount" data-amount="20000">20rb</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm quick-amount" data-amount="50000">50rb</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm quick-amount" data-amount="100000">100rb</button>
+            </div>
+            <input type="password" name="student_pin" class="form-control mb-2" placeholder="PIN santri" required>
+            <input type="password" name="officer_pin" class="form-control mb-2" placeholder="PIN petugas (jika diminta sistem)">
+            <button class="btn btn-primary">Catat Penarikan</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const amountInput = document.getElementById('withdrawAmountInput');
+  const quickButtons = document.querySelectorAll('.quick-amount');
+  quickButtons.forEach((button) => {
+    button.addEventListener('click', function () {
+      amountInput.value = this.dataset.amount || '';
+      amountInput.focus();
+    });
+  });
+});
+</script>
 {% endblock %}

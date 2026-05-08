@@ -1,11 +1,12 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.utils.timezone import utc_now_naive
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from flask_login import login_required, current_user
+from sqlalchemy import func, case
 
 from app.decorators import role_required
-from app.utils.timezone import local_today
+from app.utils.timezone import local_today, local_day_bounds_utc_naive
 from app.utils.tenant import resolve_tenant_id, scoped_dormitories_query
 from app.extensions import db
 from app.services.pesantren_service import list_students_for_dormitory, sync_student_dormitory_membership
@@ -33,6 +34,64 @@ from app.models import (
 
 boarding_bp = Blueprint('boarding', __name__, url_prefix='/boarding')
 DAYS = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
+MAX_PIN_ATTEMPTS = 5
+PIN_LOCK_MINUTES = 5
+OFFICER_AUTH_WINDOW_SECONDS = 300
+OFFICER_AUTH_IDLE_SECONDS = 90
+OFFICER_REAUTH_AMOUNT_THRESHOLD = 200000
+OFFICER_REAUTH_AFTER_TRANSACTIONS = 5
+
+
+def _officer_auth_key(name):
+    return f'savings_officer_{name}'
+
+
+def _clear_officer_auth_session():
+    for key in ('user_id', 'expires_at', 'last_seen', 'tx_count'):
+        session.pop(_officer_auth_key(key), None)
+
+
+def _set_officer_auth_session(user_id):
+    now_ts = int(utc_now_naive().timestamp())
+    session[_officer_auth_key('user_id')] = user_id
+    session[_officer_auth_key('expires_at')] = now_ts + OFFICER_AUTH_WINDOW_SECONDS
+    session[_officer_auth_key('last_seen')] = now_ts
+    session[_officer_auth_key('tx_count')] = 0
+
+
+def _officer_auth_state():
+    now_ts = int(utc_now_naive().timestamp())
+    user_id = session.get(_officer_auth_key('user_id'))
+    expires_at = int(session.get(_officer_auth_key('expires_at')) or 0)
+    last_seen = int(session.get(_officer_auth_key('last_seen')) or 0)
+    tx_count = int(session.get(_officer_auth_key('tx_count')) or 0)
+
+    unlocked = (
+        user_id == current_user.id
+        and expires_at > now_ts
+        and (now_ts - last_seen) <= OFFICER_AUTH_IDLE_SECONDS
+    )
+    if not unlocked:
+        _clear_officer_auth_session()
+        return {'unlocked': False, 'tx_count': 0}
+
+    session[_officer_auth_key('last_seen')] = now_ts
+    return {'unlocked': True, 'tx_count': tx_count}
+
+
+def _register_officer_tx_auth_use():
+    tx_count = int(session.get(_officer_auth_key('tx_count')) or 0)
+    session[_officer_auth_key('tx_count')] = tx_count + 1
+
+
+def _pin_lock_remaining(locked_until):
+    if not locked_until:
+        return 0
+    now = utc_now_naive()
+    if locked_until <= now:
+        return 0
+    delta = locked_until - now
+    return max(1, int(delta.total_seconds() // 60) + (1 if delta.total_seconds() % 60 else 0))
 
 
 def _current_tenant_id():
@@ -816,10 +875,10 @@ def input_attendance():
 @role_required(UserRole.WALI_ASRAMA, UserRole.ADMIN, UserRole.TU)
 def manage_savings():
     tenant_id = _current_tenant_id()
+    auth_state = _officer_auth_state()
     if request.method == 'POST':
         action = (request.form.get('action') or '').strip()
         trx_id = request.form.get('transaction_id', type=int)
-        trx = StudentSavingsTransaction.query.filter_by(id=trx_id, tenant_id=tenant_id).first() if trx_id else None
 
         if action == 'set_officer_pin':
             officer_pin = (request.form.get('officer_pin') or '').strip()
@@ -831,22 +890,81 @@ def manage_savings():
                 flash('Konfirmasi PIN petugas tidak sama.', 'warning')
                 return redirect(url_for('boarding.manage_savings'))
             current_user.set_withdrawal_pin(officer_pin)
+            current_user.withdrawal_pin_failed_attempts = 0
+            current_user.withdrawal_pin_locked_until = None
             db.session.commit()
             flash('PIN petugas untuk verifikasi penarikan berhasil disimpan.', 'success')
             return redirect(url_for('boarding.manage_savings'))
 
-        if action in {'approve', 'reject'} and trx and trx.status == SavingsTransactionStatus.PENDING:
-            trx.status = SavingsTransactionStatus.APPROVED if action == 'approve' else SavingsTransactionStatus.REJECTED
-            trx.approved_by_user_id = current_user.id
-            trx.approved_at = utc_now_naive()
-            if action == 'approve':
-                account = trx.account
-                if trx.transaction_type == SavingsTransactionType.DEPOSIT:
-                    account.balance += trx.amount
-                else:
-                    account.balance -= trx.amount
+        if action == 'unlock_officer_pin':
+            if not current_user.withdrawal_pin_hash:
+                flash('PIN petugas belum diset. Silakan atur PIN petugas terlebih dahulu.', 'warning')
+                return redirect(url_for('boarding.manage_savings'))
+            officer_pin = (request.form.get('officer_pin') or '').strip()
+            lock_remaining = _pin_lock_remaining(current_user.withdrawal_pin_locked_until)
+            if lock_remaining > 0:
+                flash(f'PIN petugas terkunci sementara. Coba lagi {lock_remaining} menit lagi.', 'danger')
+                return redirect(url_for('boarding.manage_savings'))
+
+            if not current_user.check_withdrawal_pin(officer_pin):
+                current_user.withdrawal_pin_failed_attempts = (current_user.withdrawal_pin_failed_attempts or 0) + 1
+                if current_user.withdrawal_pin_failed_attempts >= MAX_PIN_ATTEMPTS:
+                    current_user.withdrawal_pin_locked_until = utc_now_naive() + timedelta(minutes=PIN_LOCK_MINUTES)
+                    current_user.withdrawal_pin_failed_attempts = 0
+                db.session.commit()
+                flash('PIN petugas tidak valid.', 'danger')
+                return redirect(url_for('boarding.manage_savings'))
+
+            current_user.withdrawal_pin_failed_attempts = 0
+            current_user.withdrawal_pin_locked_until = None
+            _set_officer_auth_session(current_user.id)
             db.session.commit()
-            flash('Transaksi tabungan berhasil diproses.', 'success')
+            flash('Sesi otorisasi PIN petugas aktif.', 'success')
+            return redirect(url_for('boarding.manage_savings'))
+
+        if action == 'lock_officer_pin':
+            _clear_officer_auth_session()
+            flash('Sesi otorisasi PIN petugas dikunci.', 'info')
+            return redirect(url_for('boarding.manage_savings'))
+
+        if action in {'approve', 'reject'} and trx_id:
+            try:
+                with db.session.begin_nested():
+                    locked_trx = (
+                        StudentSavingsTransaction.query
+                        .filter_by(id=trx_id, tenant_id=tenant_id)
+                        .with_for_update()
+                        .first()
+                    )
+                    if not locked_trx or locked_trx.status != SavingsTransactionStatus.PENDING:
+                        flash('Transaksi tidak ditemukan atau sudah diproses.', 'warning')
+                        return redirect(url_for('boarding.manage_savings'))
+
+                    locked_trx.status = SavingsTransactionStatus.APPROVED if action == 'approve' else SavingsTransactionStatus.REJECTED
+                    locked_trx.approved_by_user_id = current_user.id
+                    locked_trx.approved_at = utc_now_naive()
+                    if action == 'approve':
+                        locked_account = (
+                            StudentSavingsAccount.query
+                            .filter_by(id=locked_trx.account_id, tenant_id=tenant_id)
+                            .with_for_update()
+                            .first()
+                        )
+                        if not locked_account:
+                            flash('Akun tabungan tidak ditemukan.', 'warning')
+                            return redirect(url_for('boarding.manage_savings'))
+                        if locked_trx.transaction_type == SavingsTransactionType.DEPOSIT:
+                            locked_account.balance += locked_trx.amount
+                        elif locked_account.balance >= locked_trx.amount:
+                            locked_account.balance -= locked_trx.amount
+                        else:
+                            flash('Saldo akun tidak cukup untuk memproses transaksi.', 'warning')
+                            return redirect(url_for('boarding.manage_savings'))
+                db.session.commit()
+                flash('Transaksi tabungan berhasil diproses.', 'success')
+            except Exception:
+                db.session.rollback()
+                flash('Gagal memproses transaksi. Silakan coba lagi.', 'danger')
             return redirect(url_for('boarding.manage_savings'))
 
         if action == 'withdraw':
@@ -858,33 +976,189 @@ def manage_savings():
                 amount = 0
             officer_pin = (request.form.get('officer_pin') or '').strip()
             student_pin = (request.form.get('student_pin') or '').strip()
+            auth_state = _officer_auth_state()
+            force_reauth = amount >= OFFICER_REAUTH_AMOUNT_THRESHOLD or auth_state.get('tx_count', 0) >= OFFICER_REAUTH_AFTER_TRANSACTIONS
+
             if not current_user.withdrawal_pin_hash:
                 flash('PIN petugas belum diset. Silakan atur PIN petugas terlebih dahulu.', 'warning')
                 return redirect(url_for('boarding.manage_savings'))
-            if not current_user.check_withdrawal_pin(officer_pin):
-                flash('PIN petugas tidak valid.', 'danger')
+
+            lock_remaining = _pin_lock_remaining(current_user.withdrawal_pin_locked_until)
+            if lock_remaining > 0:
+                flash(f'PIN petugas terkunci sementara. Coba lagi {lock_remaining} menit lagi.', 'danger')
                 return redirect(url_for('boarding.manage_savings'))
-            account = StudentSavingsAccount.query.filter_by(tenant_id=tenant_id, student_id=student_id).first()
-            if not account or amount <= 0 or account.balance < amount:
-                flash('Saldo tidak mencukupi atau nominal tidak valid.', 'warning')
+
+            if not auth_state.get('unlocked') or force_reauth:
+                if not current_user.check_withdrawal_pin(officer_pin):
+                    current_user.withdrawal_pin_failed_attempts = (current_user.withdrawal_pin_failed_attempts or 0) + 1
+                    if current_user.withdrawal_pin_failed_attempts >= MAX_PIN_ATTEMPTS:
+                        current_user.withdrawal_pin_locked_until = utc_now_naive() + timedelta(minutes=PIN_LOCK_MINUTES)
+                        current_user.withdrawal_pin_failed_attempts = 0
+                    db.session.commit()
+                    flash('PIN petugas tidak valid.', 'danger')
+                    return redirect(url_for('boarding.manage_savings'))
+                current_user.withdrawal_pin_failed_attempts = 0
+                current_user.withdrawal_pin_locked_until = None
+                _set_officer_auth_session(current_user.id)
+                db.session.commit()
+
+            if amount <= 0:
+                flash('Nominal tidak valid.', 'warning')
                 return redirect(url_for('boarding.manage_savings'))
-            if not account.pin_hash:
-                flash('PIN santri belum diset. Minta orang tua/santri set PIN terlebih dahulu.', 'warning')
-                return redirect(url_for('boarding.manage_savings'))
-            if not account.check_pin(student_pin):
-                flash('PIN santri tidak valid. Penarikan dibatalkan.', 'danger')
-                return redirect(url_for('boarding.manage_savings'))
-            trx = StudentSavingsTransaction(tenant_id=tenant_id, account_id=account.id, student_id=student_id, amount=amount,
-                transaction_type=SavingsTransactionType.WITHDRAWAL, status=SavingsTransactionStatus.APPROVED,
-                requested_by_user_id=current_user.id, approved_by_user_id=current_user.id, approved_at=utc_now_naive())
-            account.balance -= amount
-            db.session.add(trx)
-            db.session.commit()
-            flash('Penarikan tunai berhasil dicatat. Serahkan uang ke santri.', 'success')
+
+            try:
+                with db.session.begin_nested():
+                    account = (
+                        StudentSavingsAccount.query
+                        .filter_by(tenant_id=tenant_id, student_id=student_id)
+                        .with_for_update()
+                        .first()
+                    )
+                    if not account or account.balance < amount:
+                        flash('Saldo tidak mencukupi atau akun tidak valid.', 'warning')
+                        return redirect(url_for('boarding.manage_savings'))
+                    if not account.pin_hash:
+                        flash('PIN santri belum diset. Minta orang tua/santri set PIN terlebih dahulu.', 'warning')
+                        return redirect(url_for('boarding.manage_savings'))
+
+                    student_lock_remaining = _pin_lock_remaining(account.pin_locked_until)
+                    if student_lock_remaining > 0:
+                        flash(f'PIN santri terkunci sementara. Coba lagi {student_lock_remaining} menit lagi.', 'danger')
+                        return redirect(url_for('boarding.manage_savings'))
+
+                    if not account.check_pin(student_pin):
+                        account.pin_failed_attempts = (account.pin_failed_attempts or 0) + 1
+                        if account.pin_failed_attempts >= MAX_PIN_ATTEMPTS:
+                            account.pin_locked_until = utc_now_naive() + timedelta(minutes=PIN_LOCK_MINUTES)
+                            account.pin_failed_attempts = 0
+                        db.session.flush()
+                        flash('PIN santri tidak valid. Penarikan dibatalkan.', 'danger')
+                        return redirect(url_for('boarding.manage_savings'))
+
+                    account.pin_failed_attempts = 0
+                    account.pin_locked_until = None
+                    trx = StudentSavingsTransaction(
+                        tenant_id=tenant_id,
+                        account_id=account.id,
+                        student_id=student_id,
+                        amount=amount,
+                        transaction_type=SavingsTransactionType.WITHDRAWAL,
+                        status=SavingsTransactionStatus.APPROVED,
+                        requested_by_user_id=current_user.id,
+                        approved_by_user_id=current_user.id,
+                        approved_at=utc_now_naive(),
+                    )
+                    account.balance -= amount
+                    db.session.add(trx)
+                db.session.commit()
+                _register_officer_tx_auth_use()
+                flash('Penarikan tunai berhasil dicatat. Serahkan uang ke santri.', 'success')
+            except Exception:
+                db.session.rollback()
+                flash('Gagal memproses penarikan. Silakan coba lagi.', 'danger')
             return redirect(url_for('boarding.manage_savings'))
 
+    selected_recon_date_raw = (request.args.get('recon_date') or local_today().strftime('%Y-%m-%d')).strip()
+    try:
+        selected_recon_date = datetime.strptime(selected_recon_date_raw, '%Y-%m-%d').date()
+    except ValueError:
+        selected_recon_date = local_today()
+    recon_start_utc, recon_end_utc = local_day_bounds_utc_naive(selected_recon_date)
+
     students = _tenant_students_query(tenant_id).order_by(Student.full_name.asc()).all()
-    pending = StudentSavingsTransaction.query.filter_by(tenant_id=tenant_id, status=SavingsTransactionStatus.PENDING).order_by(StudentSavingsTransaction.id.desc()).all()
-    accounts = StudentSavingsAccount.query.filter_by(tenant_id=tenant_id).all()
+    pending = (
+        StudentSavingsTransaction.query
+        .filter_by(tenant_id=tenant_id, status=SavingsTransactionStatus.PENDING)
+        .order_by(StudentSavingsTransaction.id.desc())
+        .all()
+    )
+    accounts = (
+        StudentSavingsAccount.query
+        .filter_by(tenant_id=tenant_id)
+        .order_by(StudentSavingsAccount.id.asc())
+        .all()
+    )
     account_map = {a.student_id: a for a in accounts}
-    return render_template('boarding/manage_savings.html', students=students, pending=pending, account_map=account_map)
+
+    daily_rows = (
+        db.session.query(
+            StudentSavingsTransaction.account_id.label('account_id'),
+            func.coalesce(
+                func.sum(
+                    case((StudentSavingsTransaction.transaction_type == SavingsTransactionType.DEPOSIT, StudentSavingsTransaction.amount), else_=0)
+                ), 0
+            ).label('daily_deposit'),
+            func.coalesce(
+                func.sum(
+                    case((StudentSavingsTransaction.transaction_type == SavingsTransactionType.WITHDRAWAL, StudentSavingsTransaction.amount), else_=0)
+                ), 0
+            ).label('daily_withdraw'),
+        )
+        .filter(
+            StudentSavingsTransaction.tenant_id == tenant_id,
+            StudentSavingsTransaction.status == SavingsTransactionStatus.APPROVED,
+            StudentSavingsTransaction.created_at >= recon_start_utc,
+            StudentSavingsTransaction.created_at < recon_end_utc,
+        )
+        .group_by(StudentSavingsTransaction.account_id)
+        .all()
+    )
+    cumulative_rows = (
+        db.session.query(
+            StudentSavingsTransaction.account_id.label('account_id'),
+            func.coalesce(
+                func.sum(
+                    case((StudentSavingsTransaction.transaction_type == SavingsTransactionType.DEPOSIT, StudentSavingsTransaction.amount), else_=0)
+                ), 0
+            ).label('total_deposit'),
+            func.coalesce(
+                func.sum(
+                    case((StudentSavingsTransaction.transaction_type == SavingsTransactionType.WITHDRAWAL, StudentSavingsTransaction.amount), else_=0)
+                ), 0
+            ).label('total_withdraw'),
+        )
+        .filter(
+            StudentSavingsTransaction.tenant_id == tenant_id,
+            StudentSavingsTransaction.status == SavingsTransactionStatus.APPROVED,
+        )
+        .group_by(StudentSavingsTransaction.account_id)
+        .all()
+    )
+    daily_map = {row.account_id: row for row in daily_rows}
+    cumulative_map = {row.account_id: row for row in cumulative_rows}
+    student_map = {student.id: student for student in students}
+    recon_rows = []
+    mismatch_count = 0
+    for account in accounts:
+        daily = daily_map.get(account.id)
+        cumulative = cumulative_map.get(account.id)
+        daily_deposit = int(getattr(daily, 'daily_deposit', 0) or 0)
+        daily_withdraw = int(getattr(daily, 'daily_withdraw', 0) or 0)
+        cumulative_net = int(getattr(cumulative, 'total_deposit', 0) or 0) - int(getattr(cumulative, 'total_withdraw', 0) or 0)
+        daily_net = daily_deposit - daily_withdraw
+        opening_balance = account.balance - daily_net
+        mismatch = account.balance - cumulative_net
+        if mismatch != 0:
+            mismatch_count += 1
+        recon_rows.append({
+            'student_name': student_map.get(account.student_id).full_name if student_map.get(account.student_id) else f'ID {account.student_id}',
+            'opening_balance': opening_balance,
+            'daily_deposit': daily_deposit,
+            'daily_withdraw': daily_withdraw,
+            'closing_balance': account.balance,
+            'mismatch': mismatch,
+        })
+
+    recon_rows.sort(key=lambda item: item['student_name'].lower())
+    auth_state = _officer_auth_state()
+    return render_template(
+        'boarding/manage_savings.html',
+        students=students,
+        pending=pending,
+        account_map=account_map,
+        officer_pin_unlocked=auth_state.get('unlocked', False),
+        officer_tx_count=auth_state.get('tx_count', 0),
+        selected_recon_date=selected_recon_date,
+        recon_rows=recon_rows,
+        recon_mismatch_count=mismatch_count,
+    )
