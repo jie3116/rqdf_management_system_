@@ -351,6 +351,7 @@ class User(UserMixin, BaseModel):
     username = db.Column(db.String(64), nullable=False)
     email = db.Column(db.String(120), nullable=False)
     password_hash = db.Column(db.String(256))
+    withdrawal_pin_hash = db.Column(db.String(255), nullable=True)
     role = db.Column(db.Enum(UserRole, name='userrole'), default=UserRole.SISWA, nullable=False)
     last_login = db.Column(db.DateTime)
     must_change_password = db.Column(db.Boolean, default=True)
@@ -379,6 +380,14 @@ class User(UserMixin, BaseModel):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    def set_withdrawal_pin(self, pin):
+        self.withdrawal_pin_hash = generate_password_hash(pin)
+
+    def check_withdrawal_pin(self, pin):
+        if not self.withdrawal_pin_hash:
+            return False
+        return check_password_hash(self.withdrawal_pin_hash, pin)
 
     def all_roles(self):
         roles = set()

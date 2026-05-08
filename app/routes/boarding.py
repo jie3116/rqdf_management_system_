@@ -813,13 +813,27 @@ def input_attendance():
 
 @boarding_bp.route('/tabungan', methods=['GET', 'POST'])
 @login_required
-@role_required(UserRole.WALI_ASRAMA, UserRole.ADMIN)
+@role_required(UserRole.WALI_ASRAMA, UserRole.ADMIN, UserRole.TU)
 def manage_savings():
     tenant_id = _current_tenant_id()
     if request.method == 'POST':
         action = (request.form.get('action') or '').strip()
         trx_id = request.form.get('transaction_id', type=int)
         trx = StudentSavingsTransaction.query.filter_by(id=trx_id, tenant_id=tenant_id).first() if trx_id else None
+
+        if action == 'set_officer_pin':
+            officer_pin = (request.form.get('officer_pin') or '').strip()
+            officer_pin_confirm = (request.form.get('officer_pin_confirm') or '').strip()
+            if len(officer_pin) < 4 or not officer_pin.isdigit():
+                flash('PIN petugas harus angka minimal 4 digit.', 'warning')
+                return redirect(url_for('boarding.manage_savings'))
+            if officer_pin != officer_pin_confirm:
+                flash('Konfirmasi PIN petugas tidak sama.', 'warning')
+                return redirect(url_for('boarding.manage_savings'))
+            current_user.set_withdrawal_pin(officer_pin)
+            db.session.commit()
+            flash('PIN petugas untuk verifikasi penarikan berhasil disimpan.', 'success')
+            return redirect(url_for('boarding.manage_savings'))
 
         if action in {'approve', 'reject'} and trx and trx.status == SavingsTransactionStatus.PENDING:
             trx.status = SavingsTransactionStatus.APPROVED if action == 'approve' else SavingsTransactionStatus.REJECTED
@@ -837,13 +851,20 @@ def manage_savings():
 
         if action == 'withdraw':
             student_id = request.form.get('student_id', type=int)
-            amount = int((request.form.get('amount') or '0').replace('.', '').replace(',', ''))
-            password = request.form.get('password') or ''
+            amount_raw = (request.form.get('amount') or '0').replace('.', '').replace(',', '')
+            try:
+                amount = int(amount_raw)
+            except ValueError:
+                amount = 0
+            officer_pin = (request.form.get('officer_pin') or '').strip()
             student_pin = (request.form.get('student_pin') or '').strip()
-            if not current_user.check_password(password):
-                flash('Password petugas tidak valid.', 'danger')
+            if not current_user.withdrawal_pin_hash:
+                flash('PIN petugas belum diset. Silakan atur PIN petugas terlebih dahulu.', 'warning')
                 return redirect(url_for('boarding.manage_savings'))
-            account = StudentSavingsAccount.query.filter_by(student_id=student_id).first()
+            if not current_user.check_withdrawal_pin(officer_pin):
+                flash('PIN petugas tidak valid.', 'danger')
+                return redirect(url_for('boarding.manage_savings'))
+            account = StudentSavingsAccount.query.filter_by(tenant_id=tenant_id, student_id=student_id).first()
             if not account or amount <= 0 or account.balance < amount:
                 flash('Saldo tidak mencukupi atau nominal tidak valid.', 'warning')
                 return redirect(url_for('boarding.manage_savings'))

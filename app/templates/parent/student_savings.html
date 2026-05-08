@@ -2,18 +2,38 @@
 {% block title %}Tabungan Santri{% endblock %}
 {% block content %}
 <div class="container py-4">
-  <h4>Tabungan Santri - {{ student.full_name }}</h4>
+  <h4>Tabungan Santri</h4>
+  <form method="get" class="card card-body mb-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-8">
+        <label class="form-label mb-1">Pilih Santri</label>
+        <select name="student_id" class="form-select">
+          {% for child in children %}
+          <option value="{{ child.id }}" {% if child.id == selected_student_id %}selected{% endif %}>{{ child.full_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <button class="btn btn-outline-primary w-100">Tampilkan</button>
+      </div>
+    </div>
+  </form>
+  <h5 class="mb-2">{{ student.full_name }}</h5>
   <p>Saldo saat ini: <strong>Rp {{ '{:,.0f}'.format(account.balance).replace(',', '.') }}</strong></p>
   <form method="post" class="card card-body mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <input type="hidden" name="student_id" value="{{ student.id }}">
     <input type="hidden" name="action" value="set_pin">
     <h6>Atur/Ubah PIN Santri (untuk penarikan)</h6>
     <div class="row g-2">
-      <div class="col-md-4"><input name="pin" class="form-control" placeholder="PIN angka (min 4 digit)"></div>
-      <div class="col-md-4"><input name="pin_confirm" class="form-control" placeholder="Ulangi PIN"></div>
+      <div class="col-md-4"><input type="password" name="pin" class="form-control" placeholder="PIN angka (min 4 digit)"></div>
+      <div class="col-md-4"><input type="password" name="pin_confirm" class="form-control" placeholder="Ulangi PIN"></div>
       <div class="col-md-4"><button class="btn btn-outline-primary w-100">Simpan PIN</button></div>
     </div>
   </form>
   <form method="post" enctype="multipart/form-data" class="card card-body mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <input type="hidden" name="student_id" value="{{ student.id }}">
     <input type="hidden" name="action" value="topup">
     <div class="row g-2">
       <div class="col-md-4"><input name="amount" class="form-control" placeholder="Nominal transfer"></div>

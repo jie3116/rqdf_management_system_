@@ -498,13 +498,23 @@ def student_savings():
         flash('Profil wali murid tidak ditemukan.', 'danger')
         return redirect(url_for('parent.dashboard'))
 
-    student = Student.query.filter_by(parent_id=parent.id, is_deleted=False).order_by(Student.id.asc()).first()
-    if not student:
+    children = (
+        Student.query.filter_by(parent_id=parent.id, is_deleted=False)
+        .order_by(Student.full_name.asc(), Student.id.asc())
+        .all()
+    )
+    if not children:
         flash('Belum ada data santri terkait akun ini.', 'warning')
         return redirect(url_for('parent.dashboard'))
 
+    selected_student_id = request.values.get('student_id', type=int)
+    student = next((child for child in children if child.id == selected_student_id), None) if selected_student_id else children[0]
+    if selected_student_id and student is None:
+        flash('Santri yang dipilih tidak valid.', 'warning')
+        return redirect(url_for('parent.student_savings'))
+
     tenant_id = resolve_tenant_id(current_user)
-    account = StudentSavingsAccount.query.filter_by(student_id=student.id).first()
+    account = StudentSavingsAccount.query.filter_by(tenant_id=tenant_id, student_id=student.id).first()
     if not account:
         account = StudentSavingsAccount(tenant_id=tenant_id, student_id=student.id, balance=0)
         db.session.add(account)
@@ -518,14 +528,14 @@ def student_savings():
             pin_confirm = (request.form.get('pin_confirm') or '').strip()
             if len(pin) < 4 or not pin.isdigit():
                 flash('PIN tabungan harus angka minimal 4 digit.', 'warning')
-                return redirect(url_for('parent.student_savings'))
+                return redirect(url_for('parent.student_savings', student_id=student.id))
             if pin != pin_confirm:
                 flash('Konfirmasi PIN tidak sama.', 'warning')
-                return redirect(url_for('parent.student_savings'))
+                return redirect(url_for('parent.student_savings', student_id=student.id))
             account.set_pin(pin)
             db.session.commit()
             flash('PIN tabungan santri berhasil disimpan.', 'success')
-            return redirect(url_for('parent.student_savings'))
+            return redirect(url_for('parent.student_savings', student_id=student.id))
 
         amount_raw = (request.form.get('amount') or '0').replace('.', '').replace(',', '')
         proof = request.files.get('proof_image')
@@ -537,10 +547,10 @@ def student_savings():
 
         if amount <= 0:
             flash('Nominal top up harus lebih besar dari 0.', 'warning')
-            return redirect(url_for('parent.student_savings'))
+            return redirect(url_for('parent.student_savings', student_id=student.id))
         if not proof or not proof.filename:
             flash('Bukti transfer wajib diunggah.', 'warning')
-            return redirect(url_for('parent.student_savings'))
+            return redirect(url_for('parent.student_savings', student_id=student.id))
 
         uploads_dir = os.path.join('app', 'static', 'uploads', 'savings_proofs')
         os.makedirs(uploads_dir, exist_ok=True)
@@ -562,7 +572,19 @@ def student_savings():
         db.session.add(trx)
         db.session.commit()
         flash('Pengajuan top up tabungan berhasil dikirim. Menunggu verifikasi admin.', 'success')
-        return redirect(url_for('parent.student_savings'))
+        return redirect(url_for('parent.student_savings', student_id=student.id))
 
-    transactions = StudentSavingsTransaction.query.filter_by(student_id=student.id).order_by(StudentSavingsTransaction.id.desc()).limit(20).all()
-    return render_template('parent/student_savings.html', student=student, account=account, transactions=transactions)
+    transactions = (
+        StudentSavingsTransaction.query.filter_by(tenant_id=tenant_id, student_id=student.id)
+        .order_by(StudentSavingsTransaction.id.desc())
+        .limit(20)
+        .all()
+    )
+    return render_template(
+        'parent/student_savings.html',
+        student=student,
+        children=children,
+        selected_student_id=student.id,
+        account=account,
+        transactions=transactions,
+    )
