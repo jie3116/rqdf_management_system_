@@ -1,12 +1,13 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.utils.timezone import utc_now_naive
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from flask_login import login_required, current_user
 from sqlalchemy import func, case
+from sqlalchemy.orm import joinedload
 
 from app.decorators import role_required
-from app.utils.timezone import local_today, local_day_bounds_utc_naive
+from app.utils.timezone import APP_TIMEZONE, local_today, local_day_bounds_utc_naive
 from app.utils.tenant import resolve_tenant_id, scoped_dormitories_query
 from app.extensions import db
 from app.services.pesantren_service import list_students_for_dormitory, sync_student_dormitory_membership
@@ -92,6 +93,20 @@ def _pin_lock_remaining(locked_until):
         return 0
     delta = locked_until - now
     return max(1, int(delta.total_seconds() // 60) + (1 if delta.total_seconds() % 60 else 0))
+
+
+def _local_naive_to_utc_naive(local_dt):
+    if local_dt is None:
+        return None
+    aware_local = local_dt.replace(tzinfo=APP_TIMEZONE)
+    return aware_local.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _utc_naive_to_local_naive(utc_dt):
+    if utc_dt is None:
+        return None
+    aware_utc = utc_dt.replace(tzinfo=timezone.utc)
+    return aware_utc.astimezone(APP_TIMEZONE).replace(tzinfo=None)
 
 
 def _current_tenant_id():
@@ -881,8 +896,15 @@ def manage_savings():
         trx_id = request.form.get('transaction_id', type=int)
 
         if action == 'set_officer_pin':
+            old_officer_pin = (request.form.get('old_officer_pin') or '').strip()
             officer_pin = (request.form.get('officer_pin') or '').strip()
             officer_pin_confirm = (request.form.get('officer_pin_confirm') or '').strip()
+            if current_user.withdrawal_pin_hash and not old_officer_pin:
+                flash('PIN lama wajib diisi untuk mengganti PIN petugas.', 'warning')
+                return redirect(url_for('boarding.manage_savings'))
+            if current_user.withdrawal_pin_hash and not current_user.check_withdrawal_pin(old_officer_pin):
+                flash('PIN lama tidak valid.', 'danger')
+                return redirect(url_for('boarding.manage_savings'))
             if len(officer_pin) < 4 or not officer_pin.isdigit():
                 flash('PIN petugas harus angka minimal 4 digit.', 'warning')
                 return redirect(url_for('boarding.manage_savings'))
@@ -969,7 +991,11 @@ def manage_savings():
 
         if action == 'withdraw':
             student_id = request.form.get('student_id', type=int)
-            amount_raw = (request.form.get('amount') or '0').replace('.', '').replace(',', '')
+            amount_raw = (
+                request.form.get('withdraw_amount')
+                or request.form.get('amount')
+                or '0'
+            ).replace('.', '').replace(',', '')
             try:
                 amount = int(amount_raw)
             except ValueError:
@@ -1058,11 +1084,11 @@ def manage_savings():
                 flash('Gagal memproses penarikan. Silakan coba lagi.', 'danger')
             return redirect(url_for('boarding.manage_savings'))
 
-    selected_recon_date_raw = (request.args.get('recon_date') or local_today().strftime('%Y-%m-%d')).strip()
-    try:
-        selected_recon_date = datetime.strptime(selected_recon_date_raw, '%Y-%m-%d').date()
-    except ValueError:
-        selected_recon_date = local_today()
+    selected_mode = (request.args.get('mode') or 'kasir').strip().lower()
+    if selected_mode not in {'kasir', 'rekonsiliasi'}:
+        selected_mode = 'kasir'
+
+    selected_recon_date = local_today()
     recon_start_utc, recon_end_utc = local_day_bounds_utc_naive(selected_recon_date)
 
     students = _tenant_students_query(tenant_id).order_by(Student.full_name.asc()).all()
@@ -1141,6 +1167,7 @@ def manage_savings():
         if mismatch != 0:
             mismatch_count += 1
         recon_rows.append({
+            'student_id': account.student_id,
             'student_name': student_map.get(account.student_id).full_name if student_map.get(account.student_id) else f'ID {account.student_id}',
             'opening_balance': opening_balance,
             'daily_deposit': daily_deposit,
@@ -1150,6 +1177,113 @@ def manage_savings():
         })
 
     recon_rows.sort(key=lambda item: item['student_name'].lower())
+    selected_history_student_id = request.args.get('history_student_id', type=int)
+    recon_student_ids = {row['student_id'] for row in recon_rows}
+    if selected_history_student_id not in recon_student_ids:
+        selected_history_student_id = None
+
+    now_local = _utc_naive_to_local_naive(utc_now_naive()) or datetime.combine(local_today(), datetime.min.time())
+    history_month_value = (request.args.get('history_month') or now_local.strftime('%Y-%m')).strip()
+    try:
+        history_year_raw, history_month_raw = history_month_value.split('-', 1)
+        history_year = int(history_year_raw)
+        history_month = int(history_month_raw)
+        history_month_start_local = datetime(history_year, history_month, 1)
+    except (ValueError, TypeError):
+        history_month_start_local = datetime(now_local.year, now_local.month, 1)
+        history_month_value = history_month_start_local.strftime('%Y-%m')
+    if history_month_start_local.month == 12:
+        history_month_end_local = datetime(history_month_start_local.year + 1, 1, 1)
+    else:
+        history_month_end_local = datetime(history_month_start_local.year, history_month_start_local.month + 1, 1)
+
+    history_month_start_utc = _local_naive_to_utc_naive(history_month_start_local)
+    history_month_end_utc = _local_naive_to_utc_naive(history_month_end_local)
+
+    history_rows = []
+    history_month_options = []
+    selected_history_student = student_map.get(selected_history_student_id) if selected_history_student_id else None
+    if selected_history_student_id:
+        history_bounds = (
+            db.session.query(
+                func.min(StudentSavingsTransaction.created_at).label('first_created_at'),
+                func.max(StudentSavingsTransaction.created_at).label('last_created_at'),
+            )
+            .filter(
+                StudentSavingsTransaction.tenant_id == tenant_id,
+                StudentSavingsTransaction.student_id == selected_history_student_id,
+                StudentSavingsTransaction.status == SavingsTransactionStatus.APPROVED,
+            )
+            .first()
+        )
+        first_created_at = getattr(history_bounds, 'first_created_at', None)
+        last_created_at = getattr(history_bounds, 'last_created_at', None)
+        if first_created_at:
+            first_local = _utc_naive_to_local_naive(first_created_at) or history_month_start_local
+            last_local = _utc_naive_to_local_naive(last_created_at) or now_local
+            first_month_local = datetime(first_local.year, first_local.month, 1)
+            latest_local = last_local if last_local > now_local else now_local
+            last_month_local = datetime(latest_local.year, latest_local.month, 1)
+            cursor = last_month_local
+            while cursor >= first_month_local:
+                history_month_options.append({
+                    'value': cursor.strftime('%Y-%m'),
+                    'label': cursor.strftime('%m/%Y'),
+                })
+                if cursor.month == 1:
+                    cursor = datetime(cursor.year - 1, 12, 1)
+                else:
+                    cursor = datetime(cursor.year, cursor.month - 1, 1)
+        else:
+            history_month_options.append({
+                'value': history_month_start_local.strftime('%Y-%m'),
+                'label': history_month_start_local.strftime('%m/%Y'),
+            })
+
+        approved_transactions = (
+            StudentSavingsTransaction.query.options(
+                joinedload(StudentSavingsTransaction.approved_by),
+                joinedload(StudentSavingsTransaction.requested_by),
+            )
+            .filter(
+                StudentSavingsTransaction.tenant_id == tenant_id,
+                StudentSavingsTransaction.student_id == selected_history_student_id,
+                StudentSavingsTransaction.status == SavingsTransactionStatus.APPROVED,
+                StudentSavingsTransaction.created_at < history_month_end_utc,
+            )
+            .order_by(StudentSavingsTransaction.created_at.asc(), StudentSavingsTransaction.id.asc())
+            .all()
+        )
+        running_balance = 0
+        for trx in approved_transactions:
+            if trx.transaction_type == SavingsTransactionType.DEPOSIT:
+                running_balance += trx.amount
+            else:
+                running_balance -= trx.amount
+
+            if trx.created_at < history_month_start_utc:
+                continue
+
+            officer_name = (
+                trx.approved_by.username
+                if trx.approved_by and trx.approved_by.username
+                else (
+                    trx.requested_by.username
+                    if trx.requested_by and trx.requested_by.username
+                    else '-'
+                )
+            )
+            history_rows.append({
+                'id': trx.id,
+                'created_at_local': _utc_naive_to_local_naive(trx.created_at),
+                'transaction_type': trx.transaction_type,
+                'transaction_type_label': 'Top Up' if trx.transaction_type == SavingsTransactionType.DEPOSIT else 'Penarikan',
+                'amount': trx.amount,
+                'officer_name': officer_name,
+                'ending_balance': running_balance,
+            })
+        history_rows.reverse()
+
     auth_state = _officer_auth_state()
     return render_template(
         'boarding/manage_savings.html',
@@ -1158,7 +1292,14 @@ def manage_savings():
         account_map=account_map,
         officer_pin_unlocked=auth_state.get('unlocked', False),
         officer_tx_count=auth_state.get('tx_count', 0),
+        officer_pin_exists=bool(current_user.withdrawal_pin_hash),
         selected_recon_date=selected_recon_date,
         recon_rows=recon_rows,
         recon_mismatch_count=mismatch_count,
+        selected_mode=selected_mode,
+        selected_history_student=selected_history_student,
+        selected_history_student_id=selected_history_student_id,
+        history_month_value=history_month_value,
+        history_month_options=history_month_options,
+        history_rows=history_rows,
     )

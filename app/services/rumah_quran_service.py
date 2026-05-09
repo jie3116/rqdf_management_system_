@@ -7,6 +7,7 @@ from app.models import (
     GroupType,
     MembershipStatus,
     Person,
+    PersonKind,
     Program,
     ProgramEnrollment,
     ProgramGroup,
@@ -73,6 +74,96 @@ def _resolve_student_tenant_id(student):
         return student.parent.user.tenant_id
     tenant = _default_tenant()
     return tenant.id if tenant else None
+
+
+def _ensure_student_person(student, tenant_id):
+    if student is None or tenant_id is None:
+        return None
+
+    if student.person_id:
+        person = Person.query.filter_by(id=student.person_id, tenant_id=tenant_id).first()
+        if person:
+            person.full_name = student.full_name or person.full_name or "-"
+            person.gender = student.gender or person.gender
+            person.date_of_birth = student.date_of_birth or person.date_of_birth
+            person.address = student.address or person.address
+            person.person_kind = PersonKind.STUDENT
+            person.is_active = True
+            return person
+
+    person = None
+    if student.user_id:
+        person = Person.query.filter_by(tenant_id=tenant_id, user_id=student.user_id, is_deleted=False).first()
+
+    if person is None:
+        if student.id is None:
+            db.session.flush()
+        person = Person(
+            tenant_id=tenant_id,
+            user_id=student.user_id,
+            person_code=f"STUDENT-{student.id}",
+            full_name=student.full_name or "-",
+            gender=student.gender,
+            date_of_birth=student.date_of_birth,
+            address=student.address,
+            person_kind=PersonKind.STUDENT,
+            is_active=True,
+        )
+        db.session.add(person)
+        db.session.flush()
+
+    person.full_name = student.full_name or person.full_name or "-"
+    person.gender = student.gender or person.gender
+    person.date_of_birth = student.date_of_birth or person.date_of_birth
+    person.address = student.address or person.address
+    person.phone = None
+    person.person_kind = PersonKind.STUDENT
+    person.is_active = True
+    student.person_id = person.id
+    return person
+
+
+def _migrate_rumah_quran_memberships(tenant_id, from_group_id, to_group_id):
+    if not tenant_id or not from_group_id or not to_group_id or from_group_id == to_group_id:
+        return
+
+    memberships = (
+        GroupMembership.query.join(ProgramEnrollment, ProgramEnrollment.id == GroupMembership.enrollment_id)
+        .join(Program, Program.id == ProgramEnrollment.program_id)
+        .filter(
+            GroupMembership.tenant_id == tenant_id,
+            GroupMembership.group_id == from_group_id,
+            GroupMembership.status == MembershipStatus.ACTIVE,
+            GroupMembership.is_deleted.is_(False),
+            ProgramEnrollment.status == EnrollmentStatus.ACTIVE,
+            ProgramEnrollment.is_deleted.is_(False),
+            Program.code == "RUMAH_QURAN",
+            Program.is_deleted.is_(False),
+        )
+        .all()
+    )
+
+    for membership in memberships:
+        duplicate = (
+            GroupMembership.query.filter(
+                GroupMembership.id != membership.id,
+                GroupMembership.tenant_id == tenant_id,
+                GroupMembership.enrollment_id == membership.enrollment_id,
+                GroupMembership.group_id == to_group_id,
+                GroupMembership.is_deleted.is_(False),
+            )
+            .order_by(GroupMembership.id.desc())
+            .first()
+        )
+        if duplicate:
+            duplicate.status = MembershipStatus.ACTIVE
+            duplicate.end_date = None
+            duplicate.is_primary = duplicate.is_primary or membership.is_primary
+            membership.status = MembershipStatus.LEFT
+            membership.end_date = membership.end_date or local_today()
+            continue
+
+        membership.group_id = to_group_id
 
 
 def _active_rumah_quran_enrollment(tenant_id, person_id):
@@ -147,6 +238,7 @@ def ensure_rumah_quran_program_group(class_room, tenant_id=None):
     if program is None:
         return None
 
+    previous_group_id = class_room.program_group_id
     group = None
     if class_room.program_group_id:
         group = ProgramGroup.query.filter_by(
@@ -182,6 +274,11 @@ def ensure_rumah_quran_program_group(class_room, tenant_id=None):
     group.is_active = True
     db.session.flush()
 
+    _migrate_rumah_quran_memberships(
+        tenant_id=resolved_tenant_id,
+        from_group_id=previous_group_id,
+        to_group_id=group.id,
+    )
     class_room.program_group_id = group.id
     return group
 
@@ -250,10 +347,14 @@ def get_student_rumah_quran_classroom(student):
 
 def assign_student_rumah_quran_class(student, class_id):
     tenant_id = _resolve_student_tenant_id(student)
-    if not tenant_id or not student.person_id:
+    if not tenant_id:
         return False
 
-    enrollment = _active_rumah_quran_enrollment(tenant_id, student.person_id)
+    person = _ensure_student_person(student, tenant_id)
+    if person is None or not person.id:
+        return False
+
+    enrollment = _active_rumah_quran_enrollment(tenant_id, person.id)
     target_class = None
     if class_id:
         target_class = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
@@ -276,7 +377,7 @@ def assign_student_rumah_quran_class(student, class_id):
 
         enrollment = ProgramEnrollment(
             tenant_id=tenant_id,
-            person_id=student.person_id,
+            person_id=person.id,
             program_id=program.id,
         )
         db.session.add(enrollment)

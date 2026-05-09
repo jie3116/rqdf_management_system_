@@ -1165,7 +1165,9 @@ def edit_student(student_id):
 
         try:
             sync_student_formal_class_membership(student, selected_class_id)
-            assign_student_rumah_quran_class(student, rumah_quran_class_id)
+            rumah_quran_ok = assign_student_rumah_quran_class(student, rumah_quran_class_id)
+            if not rumah_quran_ok:
+                raise ValueError("Gagal memperbarui penempatan halaqoh Rumah Qur'an untuk siswa ini.")
             assign_student_bahasa_class(student, bahasa_class_id)
             db.session.commit()
             flash('Data siswa berhasil diupdate.', 'success')

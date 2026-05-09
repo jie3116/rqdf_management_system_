@@ -78,33 +78,48 @@
                 </div>
             </a>
             <hr class="mt-0 mb-3" style="border-top: 1px solid rgba(255,255,255,0.2);">
+            {% set has_super_admin = current_user.has_role('super_admin') %}
+            {% set has_admin = current_user.has_role('admin') %}
+            {% set has_teacher = current_user.has_role('teacher') %}
+            {% set has_student = current_user.has_role('student') %}
+            {% set has_tu = current_user.has_role('tata_usaha') %}
+            {% set has_wali_murid = current_user.has_role('wali_murid') %}
+            {% set has_wali_asrama = current_user.has_role('wali_asrama') %}
+            {% set has_majlis_participant = current_user.has_role('majlis_participant') %}
 
             <ul class="nav nav-pills flex-column mb-auto">
+                <div class="nav-header">Dashboard</div>
+                {% if has_super_admin %}
+                    <li><a href="{{ url_for('admin.manage_tenants') }}" class="nav-link"><i class="fas fa-building me-2"></i> Dashboard Platform</a></li>
+                {% endif %}
+                {% if has_admin %}
+                    <li><a href="{{ url_for('admin.dashboard') }}" class="nav-link"><i class="fas fa-tachometer-alt me-2"></i> Dashboard Admin</a></li>
+                {% endif %}
+                {% if has_teacher %}
+                    <li><a href="{{ url_for('teacher.dashboard') }}" class="nav-link"><i class="fas fa-chalkboard-teacher me-2"></i> Dashboard Guru</a></li>
+                {% endif %}
+                {% if has_tu %}
+                    <li><a href="{{ url_for('staff.dashboard') }}" class="nav-link"><i class="fas fa-briefcase me-2"></i> Dashboard TU</a></li>
+                {% endif %}
+                {% if has_student %}
+                    <li><a href="{{ url_for('student.dashboard') }}" class="nav-link"><i class="fas fa-user-graduate me-2"></i> Dashboard Siswa</a></li>
+                {% endif %}
+                {% if has_wali_murid %}
+                    <li><a href="{{ url_for('parent.dashboard') }}" class="nav-link"><i class="fas fa-home me-2"></i> Dashboard Wali</a></li>
+                {% endif %}
+                {% if has_wali_asrama and module_boarding_enabled %}
+                    <li><a href="{{ url_for('boarding.dashboard') }}" class="nav-link"><i class="fas fa-bed me-2"></i> Dashboard Asrama</a></li>
+                {% endif %}
+                {% if has_majlis_participant %}
+                    <li><a href="{{ url_for('main.majlis_dashboard') }}" class="nav-link"><i class="fas fa-mosque me-2"></i> Dashboard Majlis</a></li>
+                {% endif %}
 
-                <li class="nav-item">
-                    {% if active_role_value == 'super_admin' %}
-                        <a href="{{ url_for('admin.manage_tenants') }}" class="nav-link"><i class="fas fa-building me-2"></i> Dashboard Platform</a>
-                    {% elif active_role_value == 'admin' %}
-                        <a href="{{ url_for('admin.dashboard') }}" class="nav-link"><i class="fas fa-tachometer-alt me-2"></i> Dashboard</a>
-                    {% elif active_role_value == 'teacher' %}
-                        <a href="{{ url_for('teacher.dashboard') }}" class="nav-link"><i class="fas fa-chalkboard-teacher me-2"></i> Dashboard Guru</a>
-                    {% elif active_role_value == 'student' %}
-                        <a href="{{ url_for('main.dashboard') }}" class="nav-link"><i class="fas fa-user-graduate me-2"></i> Dashboard Siswa</a>
-                    {% elif active_role_value == 'tata_usaha' %}
-                        <a href="{{ url_for('staff.dashboard') }}" class="nav-link"><i class="fas fa-tachometer-alt me-2"></i> Dashboard TU</a>
-                    {% elif active_role_value == 'wali_murid' %}
-                        <a href="{{ url_for('parent.dashboard') }}" class="nav-link"><i class="fas fa-home me-2"></i> Dashboard Wali</a>
-                    {% elif active_role_value == 'wali_asrama' %}
-                        <a href="{{ url_for('boarding.dashboard') }}" class="nav-link"><i class="fas fa-bed me-2"></i> Dashboard Asrama</a>
-                    {% endif %}
-                </li>
-
-                {% if active_role_value == 'student' and module_school_enabled %}
+                {% if has_student and module_school_enabled %}
                     <div class="nav-header">Pembelajaran</div>
                     <li><a href="{{ url_for('student.online_classroom') }}"><i class="fas fa-video me-2"></i> Kelas Online</a></li>
                 {% endif %}
 
-                {% if active_role_value == 'admin' %}
+                {% if has_admin %}
                     {% if module_school_enabled %}
                     <div class="nav-header">Master Data</div>
                     <li><a href="{{ url_for('admin.manage_academic_years') }}"><i class="fas fa-calendar-alt me-2"></i> Tahun Ajaran</a></li>
@@ -149,12 +164,12 @@
 
                 {% endif %}
 
-                {% if active_role_value == 'super_admin' %}
+                {% if has_super_admin %}
                     <div class="nav-header">Platform</div>
                     <li><a href="{{ url_for('admin.manage_tenants') }}"><i class="fas fa-building me-2"></i> Manajemen Tenant</a></li>
                 {% endif %}
 
-                {% if active_role_value == 'teacher' and module_school_enabled %}
+                {% if has_teacher and module_school_enabled %}
                     {% for group in teacher_sidebar_groups %}
                     <div class="nav-header d-flex justify-content-between align-items-center">
                         <span><i class="{{ group.icon }} me-2"></i>{{ group.title }}</span>
@@ -173,7 +188,7 @@
                     {% endfor %}
                 {% endif %}
 
-                {% if active_role_value == 'tata_usaha' and module_rumah_quran_enabled %}
+                {% if has_tu and module_rumah_quran_enabled %}
                     <div class="nav-header">Operasional</div>
                     <li><a href="{{ url_for('staff.cashier_search') }}" class="text-warning fw-bold"><i class="fas fa-cash-register me-2"></i> Kasir</a></li>
                     <li><a href="{{ url_for('staff.ppdb_list') }}"><i class="fas fa-user-plus me-2"></i> Verifikasi PPDB</a></li>
@@ -186,7 +201,7 @@
                     {% endif %}
                 {% endif %}
 
-                {% if active_role_value == 'wali_murid' %}
+                {% if has_wali_murid %}
                     <div class="nav-header">Wali Murid</div>
                     {% if module_rumah_quran_enabled %}
                     <li><a href="{{ url_for('parent.join_majlis') }}"><i class="fas fa-user-plus me-2"></i> Daftar Majelis</a></li>
@@ -197,7 +212,7 @@
                     {% endif %}
                 {% endif %}
 
-                {% if active_role_value == 'wali_asrama' and module_boarding_enabled %}
+                {% if has_wali_asrama and module_boarding_enabled %}
                     <div class="nav-header">Asrama</div>
                     <li><a href="{{ url_for('boarding.dashboard') }}"><i class="fas fa-house-user me-2"></i> Dashboard Asrama</a></li>
                     <li><a href="{{ url_for('boarding.input_attendance') }}"><i class="fas fa-clipboard-check me-2"></i> Absensi Harian</a></li>
@@ -216,12 +231,6 @@
                     <strong>{{ current_user.username }}</strong>
                 </a>
                 <ul class="dropdown-menu dropdown-menu-dark text-small shadow" aria-labelledby="dropdownUser1">
-                    {% if current_user.all_roles()|length > 1 %}
-                    <li><a class="dropdown-item" href="{{ url_for('auth.select_role') }}">
-                        <i class="fas fa-user-tag me-2"></i>Ganti Role Aktif
-                    </a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    {% endif %}
                     <li><a class="dropdown-item" href="{{ url_for('auth.change_password') }}">
                         <i class="fas fa-key me-2"></i>Ganti Password
                     </a></li>
@@ -252,7 +261,7 @@
 
                 <div class="navbar-nav ms-auto">
                     <span class="navbar-text small text-primary fw-bold me-3 d-none d-md-block">
-                        <i class="fas fa-user-tag me-1"></i> {{ active_role_label }}
+                        <i class="fas fa-user-tag me-1"></i> {{ (user_role_labels or ['-'])|join(', ') }}
                     </span>
                     <span class="navbar-text text-muted small d-none d-md-block me-3">
                         <i class="fas fa-clock me-1"></i> {{ local_now().strftime('%A, %d %b %Y') }}
@@ -264,12 +273,6 @@
                             <i class="fas fa-user me-1"></i>{{ current_user.username }}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            {% if current_user.all_roles()|length > 1 %}
-                            <li><a class="dropdown-item" href="{{ url_for('auth.select_role') }}">
-                                <i class="fas fa-user-tag me-2"></i>Ganti Role Aktif
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            {% endif %}
                             <li><a class="dropdown-item" href="{{ url_for('auth.change_password') }}">
                                 <i class="fas fa-key me-2"></i>Ganti Password
                             </a></li>

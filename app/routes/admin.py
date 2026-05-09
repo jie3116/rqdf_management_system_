@@ -59,7 +59,7 @@ from app.models import (
     # Student Related
     StudentClassHistory, Attendance, BoardingAttendance, Grade, ReportCard, StudentAttitude,
     Violation, BehaviorReport, TahfidzRecord, TahfidzSummary, RecitationRecord, TahfidzEvaluation,
-    student_extracurriculars,
+    student_extracurriculars, StudentSavingsAccount,
     # User/System Related
     Announcement, AnnouncementRead, NotificationQueue, AuditLog, BoardingDormitory,
     # Activities
@@ -1541,7 +1541,9 @@ def edit_student(student_id):
 
         try:
             sync_student_formal_class_membership(student, selected_class_id)
-            assign_student_rumah_quran_class(student, rumah_quran_class_id)
+            rumah_quran_ok = assign_student_rumah_quran_class(student, rumah_quran_class_id)
+            if not rumah_quran_ok:
+                raise ValueError("Gagal memperbarui penempatan halaqoh Rumah Qur'an untuk siswa ini.")
             assign_student_bahasa_class(student, bahasa_class_id)
             student.save()  # Menggunakan method save() dari BaseModel
             flash('Data siswa diupdate.', 'success')
@@ -2579,7 +2581,8 @@ def manage_users():
             'admin/users/manage.html',
             users=[],
             query=query,
-            role_filter=role_filter
+            role_filter=role_filter,
+            UserRole=UserRole,
         )
 
     # Ambil semua user tenant aktif KECUALI Admin (untuk keamanan)
@@ -2641,7 +2644,8 @@ def manage_users():
         'admin/users/manage.html',
         users=users,
         query=query,
-        role_filter=role_filter
+        role_filter=role_filter,
+        UserRole=UserRole,
     )
 
 
@@ -2797,5 +2801,69 @@ def generic_reset_password():
     except Exception as e:
         db.session.rollback()
         flash(f'Gagal mereset password: {str(e)}', 'danger')
+
+    return redirect(url_for('admin.manage_users'))
+
+
+@admin_bp.route('/users/reset-officer-pin', methods=['POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def reset_officer_pin():
+    user_id = request.form.get('user_id', type=int)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_users'))
+
+    user = User.query.filter_by(id=user_id, tenant_id=tenant_id).first_or_404()
+    if not user.has_role(UserRole.TU, UserRole.WALI_ASRAMA):
+        flash('User ini bukan petugas tabungan (TU/Wali Asrama).', 'warning')
+        return redirect(url_for('admin.manage_users'))
+
+    try:
+        user.withdrawal_pin_hash = None
+        user.withdrawal_pin_failed_attempts = 0
+        user.withdrawal_pin_locked_until = None
+        db.session.commit()
+        flash(f'PIN petugas untuk {user.username} berhasil direset.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Gagal reset PIN petugas: {str(e)}', 'danger')
+
+    return redirect(url_for('admin.manage_users'))
+
+
+@admin_bp.route('/users/reset-student-pin', methods=['POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def reset_student_pin():
+    user_id = request.form.get('user_id', type=int)
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_users'))
+
+    user = User.query.filter_by(id=user_id, tenant_id=tenant_id).first_or_404()
+    if not user.student_profile:
+        flash('User ini bukan akun santri.', 'warning')
+        return redirect(url_for('admin.manage_users'))
+
+    account = StudentSavingsAccount.query.filter_by(
+        tenant_id=tenant_id,
+        student_id=user.student_profile.id
+    ).first()
+    if not account:
+        flash('Akun tabungan santri belum ada.', 'warning')
+        return redirect(url_for('admin.manage_users'))
+
+    try:
+        account.pin_hash = None
+        account.pin_failed_attempts = 0
+        account.pin_locked_until = None
+        db.session.commit()
+        flash(f'PIN tabungan santri untuk {user.username} berhasil direset.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Gagal reset PIN santri: {str(e)}', 'danger')
 
     return redirect(url_for('admin.manage_users'))

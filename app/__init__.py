@@ -39,11 +39,14 @@ def create_app(config_class=Config):
             pass
         active_role = get_active_role(current_user) if current_user.is_authenticated else None
         teacher_sidebar_groups = []
+        user_role_labels = []
         tenant_package = PACKAGE_FULL
         if current_user.is_authenticated:
             tenant_id = resolve_tenant_id(current_user, fallback_default=False)
             tenant_package = get_tenant_package(tenant_id)
-        if current_user.is_authenticated and active_role and active_role.value == 'teacher':
+            user_roles = sorted(list(current_user.all_roles()), key=lambda role: role.value)
+            user_role_labels = [role_label(role) for role in user_roles]
+        if current_user.is_authenticated and current_user.has_role('teacher'):
             teacher = Teacher.query.filter_by(user_id=current_user.id, is_deleted=False).first()
             teacher_sidebar_groups = build_teacher_sidebar_groups(teacher)
         return {
@@ -53,6 +56,7 @@ def create_app(config_class=Config):
             'active_role': active_role,
             'active_role_value': active_role.value if active_role else None,
             'active_role_label': role_label(active_role) if active_role else '-',
+            'user_role_labels': user_role_labels,
             'tenant_package': tenant_package,
             'module_school_enabled': tenant_package in (PACKAGE_FULL, PACKAGE_SEKOLAH),
             'module_rumah_quran_enabled': tenant_package in (PACKAGE_FULL, PACKAGE_RUMAH_QURAN),
@@ -86,9 +90,8 @@ def create_app(config_class=Config):
 
     @app.before_request
     def _enforce_tenant_module_access():
-        from flask import request, flash, redirect, url_for
-        from flask_login import current_user
-        from app.utils.roles import get_active_role
+        from flask import request, flash, redirect, url_for, session
+        from flask_login import current_user, logout_user
         from app.utils.tenant import resolve_tenant_id
         from app.utils.tenant_modules import (
             endpoint_allowed_for_package,
@@ -99,16 +102,21 @@ def create_app(config_class=Config):
         if not current_user.is_authenticated:
             return None
 
-        active_role = get_active_role(current_user)
-        if active_role and active_role.value == "super_admin":
+        if current_user.has_role("super_admin"):
             return None
 
         tenant_id = resolve_tenant_id(current_user, fallback_default=False)
         package = get_tenant_package(tenant_id)
 
-        if active_role and not role_allowed_for_package(active_role, package):
-            flash('Role aktif tidak tersedia untuk paket modul tenant ini.', 'warning')
-            return redirect(url_for('auth.select_role', next=request.url))
+        user_roles = list(current_user.all_roles())
+        has_allowed_role = not user_roles or any(
+            role_allowed_for_package(role, package) for role in user_roles
+        )
+        if not has_allowed_role:
+            flash('Role akun ini tidak tersedia untuk paket modul tenant ini.', 'warning')
+            session.pop('active_role', None)
+            logout_user()
+            return redirect(url_for('auth.login'))
 
         endpoint = request.endpoint or ""
         if not endpoint_allowed_for_package(endpoint, package):

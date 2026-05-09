@@ -248,7 +248,7 @@ class AppConfig(BaseModel):
     id = db.Column(db.Integer, primary_key=True)
     tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
     key = db.Column(db.String(50), nullable=False)
-    value = db.Column(db.String(255))
+    value = db.Column(db.Text)
     description = db.Column(db.String(200))
     __table_args__ = (
         db.UniqueConstraint('tenant_id', 'key', name='uq_app_configs_tenant_key'),

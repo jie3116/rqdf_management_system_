@@ -92,12 +92,34 @@
                                 {% endif %}
                             </td>
                             <td class="text-center">
-                                <button class="btn btn-sm btn-danger shadow-sm" 
-                                        data-bs-toggle="modal" 
-                                        data-bs-target="#resetModal"
-                                        onclick="setResetData('{{ u.id }}', '{{ u.username }}')">
-                                    <i class="fas fa-key me-1"></i> Reset Password
-                                </button>
+                                <div class="d-flex flex-column gap-1 align-items-center">
+                                    <button class="btn btn-sm btn-danger shadow-sm"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#resetModal"
+                                            onclick="setResetData('{{ u.id }}', '{{ u.username }}')">
+                                        <i class="fas fa-key me-1"></i> Reset Password
+                                    </button>
+
+                                    {% if u.has_role(UserRole.TU, UserRole.WALI_ASRAMA) %}
+                                    <form method="POST" action="{{ url_for('admin.reset_officer_pin') }}" onsubmit="return confirm('Reset PIN petugas untuk {{ u.username }}?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                        <input type="hidden" name="user_id" value="{{ u.id }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-warning">
+                                            Reset PIN Petugas
+                                        </button>
+                                    </form>
+                                    {% endif %}
+
+                                    {% if u.student_profile %}
+                                    <form method="POST" action="{{ url_for('admin.reset_student_pin') }}" onsubmit="return confirm('Reset PIN tabungan santri untuk {{ u.username }}?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                        <input type="hidden" name="user_id" value="{{ u.id }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-warning">
+                                            Reset PIN Santri
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}

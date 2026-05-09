@@ -6,7 +6,7 @@ from app.forms import LoginForm, ChangePasswordForm
 from sqlalchemy import or_
 from werkzeug.security import generate_password_hash
 from app.utils.security import is_safe_url
-from app.utils.roles import get_active_role, set_active_role, role_label
+from app.utils.roles import get_active_role, set_active_role, role_label, get_default_role
 
 
 auth_bp = Blueprint('auth', __name__)
@@ -102,10 +102,10 @@ def login():
                 return redirect(url_for('auth.change_password'))
 
             roles = list(user.all_roles()) if hasattr(user, 'all_roles') else ([user.role] if user.role else [])
-            if len(roles) > 1:
-                return redirect(url_for('auth.select_role'))
-
-            if roles:
+            default_role = get_default_role(user)
+            if default_role:
+                set_active_role(user, default_role)
+            elif roles:
                 set_active_role(user, roles[0])
 
             next_page = request.args.get('next')
@@ -141,9 +141,10 @@ def change_password():
 
         flash('Password berhasil diperbarui! Silakan masuk ke dashboard.', 'success')
         roles = list(current_user.all_roles()) if hasattr(current_user, 'all_roles') else ([current_user.role] if current_user.role else [])
-        if len(roles) > 1:
-            return redirect(url_for('auth.select_role'))
-        if roles:
+        default_role = get_default_role(current_user)
+        if default_role:
+            set_active_role(current_user, default_role)
+        elif roles:
             set_active_role(current_user, roles[0])
         return redirect(url_for('main.dashboard'))
 

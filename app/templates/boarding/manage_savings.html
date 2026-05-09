@@ -2,14 +2,34 @@
 {% block title %}Manajemen Tabungan Santri{% endblock %}
 {% block content %}
 <div class="container py-4">
-  <h4>Manajemen Uang Saku Santri</h4>
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h4 class="mb-0">Manajemen Uang Saku Santri</h4>
+    <div class="btn-group" role="group" aria-label="Mode tabungan">
+      <a href="{{ url_for('boarding.manage_savings', mode='kasir') }}"
+         class="btn btn-sm {% if selected_mode == 'kasir' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+        Kasir
+      </a>
+      <a href="{{ url_for('boarding.manage_savings', mode='rekonsiliasi') }}"
+         class="btn btn-sm {% if selected_mode == 'rekonsiliasi' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+        Rekonsiliasi
+      </a>
+    </div>
+  </div>
+
+  {% if selected_mode == 'kasir' %}
   <div class="row g-3">
     <div class="col-lg-7">
-      <div class="card">
+      <div class="card h-100">
         <div class="card-body">
-          <h6 class="mb-3">Pengajuan Top Up Menunggu Verifikasi</h6>
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0">Pengajuan Top Up Menunggu Verifikasi</h6>
+            {% if pending %}
+            <span class="badge bg-warning text-dark">{{ pending|length }} pending</span>
+            {% endif %}
+          </div>
+          {% if pending %}
           <div class="table-responsive">
-            <table class="table table-sm align-middle">
+            <table class="table table-sm align-middle mb-0">
               <thead>
                 <tr>
                   <th>Santri</th>
@@ -45,65 +65,16 @@
                     </form>
                   </td>
                 </tr>
-                {% else %}
-                <tr><td colspan="4" class="text-center text-muted">Tidak ada pengajuan pending.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
-        </div>
-      </div>
-
-      <div class="card mt-3">
-        <div class="card-body">
-          <div class="d-flex justify-content-between align-items-end mb-3">
-            <div>
-              <h6 class="mb-1">Rekonsiliasi Harian</h6>
-              <small class="text-muted">Mismatch berarti saldo akun tidak sama dengan akumulasi mutasi approved.</small>
-            </div>
-            <span class="badge {% if recon_mismatch_count > 0 %}bg-danger{% else %}bg-success{% endif %}">
-              Mismatch: {{ recon_mismatch_count }}
-            </span>
+          {% else %}
+          <div class="border rounded p-4 text-center">
+            <div class="fw-semibold mb-1">Tidak ada pengajuan top up</div>
+            <small class="text-muted">Semua pengajuan sudah diproses.</small>
           </div>
-          <form method="get" class="row g-2 align-items-end mb-3">
-            <div class="col-md-5">
-              <label class="form-label mb-1">Tanggal</label>
-              <input type="date" name="recon_date" class="form-control" value="{{ selected_recon_date.strftime('%Y-%m-%d') }}">
-            </div>
-            <div class="col-md-3">
-              <button class="btn btn-outline-primary w-100">Tampilkan</button>
-            </div>
-          </form>
-          <div class="table-responsive">
-            <table class="table table-sm align-middle">
-              <thead>
-                <tr>
-                  <th>Santri</th>
-                  <th>Saldo Awal</th>
-                  <th>Top Up</th>
-                  <th>Withdraw</th>
-                  <th>Saldo Akhir</th>
-                  <th>Mismatch</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in recon_rows %}
-                <tr>
-                  <td>{{ row.student_name }}</td>
-                  <td>Rp {{ '{:,.0f}'.format(row.opening_balance).replace(',', '.') }}</td>
-                  <td>Rp {{ '{:,.0f}'.format(row.daily_deposit).replace(',', '.') }}</td>
-                  <td>Rp {{ '{:,.0f}'.format(row.daily_withdraw).replace(',', '.') }}</td>
-                  <td>Rp {{ '{:,.0f}'.format(row.closing_balance).replace(',', '.') }}</td>
-                  <td class="{% if row.mismatch != 0 %}text-danger fw-semibold{% endif %}">
-                    Rp {{ '{:,.0f}'.format(row.mismatch).replace(',', '.') }}
-                  </td>
-                </tr>
-                {% else %}
-                <tr><td colspan="6" class="text-center text-muted">Belum ada data akun tabungan.</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -111,69 +82,188 @@
     <div class="col-lg-5">
       <div class="card mb-3">
         <div class="card-body">
-          <h6>Atur PIN Petugas</h6>
-          <form method="post">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <input type="hidden" name="action" value="set_officer_pin">
-            <input type="password" name="officer_pin" class="form-control mb-2" placeholder="PIN petugas (min 4 digit)" required>
-            <input type="password" name="officer_pin_confirm" class="form-control mb-2" placeholder="Ulangi PIN petugas" required>
-            <button class="btn btn-outline-primary btn-sm">Simpan PIN Petugas</button>
-          </form>
-        </div>
-      </div>
-
-      <div class="card mb-3">
-        <div class="card-body">
-          <h6>Sesi Otorisasi PIN Petugas</h6>
+          <h6 class="mb-3">Otorisasi PIN Petugas</h6>
           {% if officer_pin_unlocked %}
-          <p class="mb-2 text-success small">Sesi aktif. Transaksi pada sesi ini: {{ officer_tx_count }}</p>
-          <form method="post">
+          <div class="alert alert-success py-2 mb-3">
+            Sesi aktif. Transaksi pada sesi ini: <strong>{{ officer_tx_count }}</strong>
+          </div>
+          <form method="post" class="mb-3">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="lock_officer_pin">
             <button class="btn btn-outline-secondary btn-sm">Kunci Sesi</button>
           </form>
           {% else %}
-          <p class="mb-2 text-muted small">Masukkan PIN petugas sekali untuk membuka sesi kasir singkat.</p>
-          <form method="post">
+          <p class="text-muted small mb-2">Buka sesi kasir dengan PIN petugas.</p>
+          <form method="post" class="mb-3">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="unlock_officer_pin">
             <input type="password" name="officer_pin" class="form-control mb-2" placeholder="PIN petugas" required>
             <button class="btn btn-primary btn-sm">Buka Sesi</button>
           </form>
           {% endif %}
+
+          <hr class="my-3">
+          <h6 class="mb-2">Atur / Ganti PIN</h6>
+          <form method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="action" value="set_officer_pin">
+            {% if officer_pin_exists %}
+            <input type="password" name="old_officer_pin" class="form-control mb-2" placeholder="PIN lama" required>
+            {% endif %}
+            <input type="password" name="officer_pin" class="form-control mb-2" placeholder="PIN petugas (min 4 digit)" required>
+            <input type="password" name="officer_pin_confirm" class="form-control mb-2" placeholder="Ulangi PIN petugas" required>
+            <button class="btn btn-outline-primary btn-sm">Simpan PIN</button>
+          </form>
         </div>
       </div>
 
       <div class="card">
         <div class="card-body">
-          <h6>Penarikan Uang Tunai Santri</h6>
-          <form method="post" id="withdrawForm">
+          <h6 class="mb-3">Penarikan Uang Tunai Santri</h6>
+          <form method="post" id="withdrawForm" autocomplete="off">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="action" value="withdraw">
-            <select name="student_id" class="form-select mb-2" required>
+            <label class="form-label mb-1">Pilih Santri</label>
+            <select id="withdrawStudentSelect" name="student_id" class="form-select mb-2" required>
               {% for s in students %}
               <option value="{{ s.id }}">{{ s.full_name }} (Saldo: Rp {{ '{:,.0f}'.format((account_map.get(s.id).balance if account_map.get(s.id) else 0)).replace(',', '.') }})</option>
               {% endfor %}
             </select>
-            <input id="withdrawAmountInput" name="amount" class="form-control mb-2" placeholder="Nominal tarik" required>
+            <label class="form-label mb-1">Nominal</label>
+            <input id="withdrawAmountInput" name="withdraw_amount" class="form-control mb-2" placeholder="Nominal tarik" inputmode="numeric" autocomplete="off" required>
             <div class="d-flex flex-wrap gap-2 mb-2">
               <button type="button" class="btn btn-outline-secondary btn-sm quick-amount" data-amount="10000">10rb</button>
               <button type="button" class="btn btn-outline-secondary btn-sm quick-amount" data-amount="20000">20rb</button>
               <button type="button" class="btn btn-outline-secondary btn-sm quick-amount" data-amount="50000">50rb</button>
               <button type="button" class="btn btn-outline-secondary btn-sm quick-amount" data-amount="100000">100rb</button>
             </div>
+            <label class="form-label mb-1">PIN Santri</label>
             <input type="password" name="student_pin" class="form-control mb-2" placeholder="PIN santri" required>
-            <input type="password" name="officer_pin" class="form-control mb-2" placeholder="PIN petugas (jika diminta sistem)">
-            <button class="btn btn-primary">Catat Penarikan</button>
+            <label class="form-label mb-1">PIN Petugas (Jika Diminta)</label>
+            <input type="password" name="officer_pin" class="form-control mb-3" placeholder="PIN petugas">
+            <button class="btn btn-primary w-100">Catat Penarikan</button>
           </form>
         </div>
       </div>
     </div>
   </div>
+  {% else %}
+  <div class="card">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-end mb-3">
+        <div>
+          <h6 class="mb-1">Rekonsiliasi Harian</h6>
+          <small class="text-muted">Mismatch berarti saldo akun tidak sama dengan akumulasi mutasi approved.</small>
+        </div>
+        <span class="badge {% if recon_mismatch_count > 0 %}bg-danger{% else %}bg-success{% endif %}">
+          Mismatch: {{ recon_mismatch_count }}
+        </span>
+      </div>
+
+      <div class="mb-3">
+        <small class="text-muted">Rekonsiliasi menampilkan mutasi harian tanggal {{ selected_recon_date.strftime('%d-%m-%Y') }}. Klik nama santri untuk lihat riwayat transaksi bulanan.</small>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th>Santri</th>
+              <th>Saldo Awal</th>
+              <th>Top Up</th>
+              <th>Withdraw</th>
+              <th>Saldo Akhir</th>
+              <th>Mismatch</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in recon_rows %}
+            <tr>
+              <td>
+                {% if row.student_id %}
+                <a href="{{ url_for('boarding.manage_savings', mode='rekonsiliasi', history_student_id=row.student_id, history_month=history_month_value) }}">
+                  {{ row.student_name }}
+                </a>
+                {% else %}
+                {{ row.student_name }}
+                {% endif %}
+              </td>
+              <td>Rp {{ '{:,.0f}'.format(row.opening_balance).replace(',', '.') }}</td>
+              <td>Rp {{ '{:,.0f}'.format(row.daily_deposit).replace(',', '.') }}</td>
+              <td>Rp {{ '{:,.0f}'.format(row.daily_withdraw).replace(',', '.') }}</td>
+              <td>Rp {{ '{:,.0f}'.format(row.closing_balance).replace(',', '.') }}</td>
+              <td class="{% if row.mismatch != 0 %}text-danger fw-semibold{% endif %}">
+                Rp {{ '{:,.0f}'.format(row.mismatch).replace(',', '.') }}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-muted">Belum ada data akun tabungan.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-3 border-top pt-3">
+        {% if selected_history_student %}
+        <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-2">
+          <h6 class="mb-0">Riwayat Transaksi: {{ selected_history_student.full_name }}</h6>
+          <form method="get" class="d-flex align-items-center gap-2">
+            <input type="hidden" name="mode" value="rekonsiliasi">
+            <input type="hidden" name="history_student_id" value="{{ selected_history_student_id }}">
+            <label class="form-label mb-0 small">Bulan</label>
+            <select name="history_month" class="form-select form-select-sm" onchange="this.form.submit()">
+              {% for opt in history_month_options %}
+              <option value="{{ opt.value }}" {% if history_month_value == opt.value %}selected{% endif %}>{{ opt.label }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>Tanggal</th>
+                <th>Jenis</th>
+                <th>Nominal</th>
+                <th>Petugas</th>
+                <th>Saldo Akhir</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in history_rows %}
+              <tr>
+                <td>{{ row.created_at_local.strftime('%d-%m-%Y %H:%M') if row.created_at_local else '-' }}</td>
+                <td>{{ row.transaction_type_label }}</td>
+                <td>Rp {{ '{:,.0f}'.format(row.amount).replace(',', '.') }}</td>
+                <td>{{ row.officer_name }}</td>
+                <td>Rp {{ '{:,.0f}'.format(row.ending_balance).replace(',', '.') }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-muted">Belum ada transaksi pada bulan ini.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-muted small">Pilih nama santri pada tabel rekonsiliasi harian untuk melihat riwayat transaksi.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 </div>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   const amountInput = document.getElementById('withdrawAmountInput');
+  const withdrawStudentSelect = $('#withdrawStudentSelect');
+  if (withdrawStudentSelect.length) {
+    withdrawStudentSelect.select2({
+      width: '100%',
+      theme: 'bootstrap-5',
+      placeholder: 'Cari santri...',
+      allowClear: false
+    });
+  }
   const quickButtons = document.querySelectorAll('.quick-amount');
   quickButtons.forEach((button) => {
     button.addEventListener('click', function () {

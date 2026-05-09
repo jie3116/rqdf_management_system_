@@ -307,6 +307,14 @@ def ppdb_register():
                 if not contact_phone:
                     flash('Nomor Telepon Orang Tua wajib diisi', 'danger')
                     return _render_ppdb_form(form)
+                nik_value = (form.nik.data or '').strip()
+                kk_number_value = (form.kk_number.data or '').strip()
+                if not nik_value or not kk_number_value:
+                    flash('Nomor NIK dan Nomor KK wajib diisi.', 'danger')
+                    return _render_ppdb_form(form)
+            if is_majlis:
+                nik_value = (form.nik.data or '').strip() or None
+                kk_number_value = (form.kk_number.data or '').strip() or None
 
             # Untuk Majelis, pakai default yang aman agar tidak tergantung field tersembunyi
             education_level = EducationLevel.NON_FORMAL if is_majlis else EducationLevel[form.education_level.data]
@@ -322,8 +330,8 @@ def ppdb_register():
                 scholarship_category=scholarship_category,
                 full_name=form.full_name.data,
                 nickname=form.nickname.data,
-                nik=form.nik.data,
-                kk_number=form.kk_number.data,
+                nik=nik_value,
+                kk_number=kk_number_value,
                 gender=Gender[form.gender.data],
                 place_of_birth=form.place_of_birth.data,
                 date_of_birth=form.date_of_birth.data,

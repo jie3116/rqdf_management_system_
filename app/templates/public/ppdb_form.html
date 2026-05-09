@@ -111,11 +111,11 @@
                     <div id="optional_data">
                         <div class="row">
                             <div class="col-md-6 mb-3">
-                                <label class="form-label">NIK (16 Digit)</label>
+                                <label class="form-label fw-bold">NIK (16 Digit) <span class="text-danger">*</span></label>
                                 {{ form.nik(class="form-control", maxlength="16") }}
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label class="form-label">No. Kartu Keluarga</label>
+                                <label class="form-label fw-bold">No. Kartu Keluarga <span class="text-danger">*</span></label>
                                 {{ form.kk_number(class="form-control", maxlength="16") }}
                             </div>
                         </div>
@@ -370,6 +370,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const fatherNameField = document.querySelector('[name="father_name"]');
         const motherNameField = document.querySelector('[name="mother_name"]');
         const previousSchoolField = document.querySelector('[name="previous_school"]');
+        const nikField = document.querySelector('[name="nik"]');
+        const kkNumberField = document.querySelector('[name="kk_number"]');
         const agreementLabel = agreementSection ? agreementSection.querySelector('label') : null;
 
         if (isMajlis) {
@@ -377,6 +379,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (fatherNameField) fatherNameField.required = false;
             if (motherNameField) motherNameField.required = false;
             if (previousSchoolField) previousSchoolField.required = false;
+            if (nikField) nikField.required = false;
+            if (kkNumberField) kkNumberField.required = false;
             if (agreementLabel) {
                 agreementLabel.textContent = 'Saya bersedia mengikuti kegiatan Majelis Ta\'lim sesuai jadwal yang ditentukan';
             }
@@ -385,6 +389,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (fatherNameField) fatherNameField.required = true;
             if (motherNameField) motherNameField.required = true;
             if (previousSchoolField) previousSchoolField.required = true;
+            if (nikField) nikField.required = true;
+            if (kkNumberField) kkNumberField.required = true;
             if (agreementLabel) {
                 agreementLabel.textContent = 'Saya telah membaca dan menyetujui rincian biaya pendidikan di atas';
             }
