@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h4 mb-1 text-gray-800">Kelas Online</h1>
+            <p class="text-muted mb-0">Kelola sesi live, materi, dan tugas per kelas.</p>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('teacher.online_classroom') }}" class="row g-2 align-items-end">
+                <div class="col-md-6">
+                    <label class="form-label">Pilih Kelas</label>
+                    <select name="class_id" class="form-select">
+                        {% for class_room in my_classes %}
+                        <option value="{{ class_room.id }}" {% if selected_class_id == class_room.id %}selected{% endif %}>{{ class_room.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100"><i class="fas fa-filter me-1"></i>Tampilkan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if selected_class %}
+    <div class="row mb-3">
+        <div class="col-md-4 mb-2">
+            <div class="card border-left-primary shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-xs text-uppercase text-primary fw-bold">Sesi Online</div>
+                    <div class="h5 mb-0">{{ sessions|length }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-2">
+            <div class="card border-left-success shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-xs text-uppercase text-success fw-bold">Materi</div>
+                    <div class="h5 mb-0">{{ materials|length }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-2">
+            <div class="card border-left-warning shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-xs text-uppercase text-warning fw-bold">Tugas</div>
+                    <div class="h5 mb-0">{{ assignments|length }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header"><strong>Buat Sesi Live</strong></div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="create_session">
+                        <input type="hidden" name="class_id" value="{{ selected_class_id }}">
+                        <div class="mb-2">
+                            <label class="form-label">Judul Sesi</label>
+                            <input type="text" name="title" class="form-control" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Mapel (Opsional)</label>
+                            <select name="subject_id" class="form-select">
+                                <option value="">-</option>
+                                {% for subject in subject_options %}
+                                <option value="{{ subject.id }}">{{ subject.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Provider Meeting</label>
+                            <select name="meeting_provider" class="form-select">
+                                <option value="{{ meeting_provider_jitsi }}">Jitsi (Hybrid In-App)</option>
+                                <option value="{{ meeting_provider_external }}">External Link (Zoom/Meet/Teams)</option>
+                                <option value="{{ meeting_provider_livekit }}">LiveKit (Upgrade Path)</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Link Meeting (Opsional untuk Jitsi/LiveKit)</label>
+                            <input type="url" name="meeting_url" class="form-control" placeholder="https://...">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Mulai</label>
+                            <input type="datetime-local" name="starts_at" class="form-control" value="{{ now_input }}" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Selesai</label>
+                            <input type="datetime-local" name="ends_at" class="form-control" value="{{ now_input }}" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Catatan</label>
+                            <textarea name="description" class="form-control" rows="2"></textarea>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input type="checkbox" name="is_active" class="form-check-input" id="sessionActive" checked>
+                            <label class="form-check-label" for="sessionActive">Aktif</label>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Simpan Sesi</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header"><strong>Tambah Materi</strong></div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="create_material">
+                        <input type="hidden" name="class_id" value="{{ selected_class_id }}">
+                        <div class="mb-2">
+                            <label class="form-label">Judul Materi</label>
+                            <input type="text" name="title" class="form-control" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Tipe</label>
+                            <select name="material_type" class="form-select">
+                                <option value="LINK">Link</option>
+                                <option value="VIDEO">Video</option>
+                                <option value="DOKUMEN">Dokumen</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Link Materi</label>
+                            <input type="url" name="file_url" class="form-control" placeholder="https://...">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Mapel (Opsional)</label>
+                            <select name="subject_id" class="form-select">
+                                <option value="">-</option>
+                                {% for subject in subject_options %}
+                                <option value="{{ subject.id }}">{{ subject.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Deskripsi</label>
+                            <textarea name="description" class="form-control" rows="2"></textarea>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input type="checkbox" name="is_published" class="form-check-input" id="materialPublished" checked>
+                            <label class="form-check-label" for="materialPublished">Publikasikan</label>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">Simpan Materi</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-header"><strong>Buat Tugas</strong></div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="create_assignment">
+                        <input type="hidden" name="class_id" value="{{ selected_class_id }}">
+                        <div class="mb-2">
+                            <label class="form-label">Judul Tugas</label>
+                            <input type="text" name="title" class="form-control" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Mapel (Opsional)</label>
+                            <select name="subject_id" class="form-select">
+                                <option value="">-</option>
+                                {% for subject in subject_options %}
+                                <option value="{{ subject.id }}">{{ subject.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Deskripsi</label>
+                            <textarea name="description" class="form-control" rows="3" required></textarea>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Link Referensi (Opsional)</label>
+                            <input type="url" name="resource_url" class="form-control" placeholder="https://...">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Deadline</label>
+                            <input type="datetime-local" name="due_at" class="form-control" value="{{ now_input }}" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Nilai Maksimal</label>
+                            <input type="number" name="max_score" class="form-control" value="100" step="0.01" min="1" required>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input type="checkbox" name="is_published" class="form-check-input" id="assignmentPublished" checked>
+                            <label class="form-check-label" for="assignmentPublished">Publikasikan</label>
+                        </div>
+                        <button type="submit" class="btn btn-warning w-100">Simpan Tugas</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8 mb-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header"><strong>Daftar Sesi Online</strong></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Judul</th>
+                                    <th>Waktu</th>
+                                    <th>Provider</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in sessions %}
+                                {% set payload = session_payloads.get(row.id, {}) %}
+                                <tr>
+                                    <td>{{ row.title }}</td>
+                                    <td>{{ row.starts_at.strftime('%d/%m/%Y %H:%M') }} - {{ row.ends_at.strftime('%H:%M') }}</td>
+                                    <td>{{ payload.get('label', row.meeting_provider or '-') }}</td>
+                                    <td>
+                                        {% if payload.get('mode') == 'external' and payload.get('external_url') %}
+                                        <a href="{{ payload.get('external_url') }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary">Masuk (Tab Baru)</a>
+                                        {% else %}
+                                        <a href="{{ url_for('teacher.join_online_session', session_id=row.id) }}" class="btn btn-sm btn-outline-primary">Masuk</a>
+                                        {% endif %}
+                                        {% if payload.get('external_url') %}
+                                        <a href="{{ payload.get('external_url') }}" target="_blank" class="btn btn-sm btn-outline-secondary">Link</a>
+                                        {% endif %}
+                                        {% if row.teacher_id == teacher.id %}
+                                        <form method="POST" action="{{ url_for('teacher.delete_online_session', session_id=row.id) }}" class="d-inline">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">Hapus</button>
+                                        </form>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-center text-muted py-3">Belum ada sesi online.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header"><strong>Daftar Materi</strong></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Judul</th>
+                                    <th>Tipe</th>
+                                    <th>Mapel</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in materials %}
+                                <tr>
+                                    <td>{{ row.title }}</td>
+                                    <td>{{ row.material_type }}</td>
+                                    <td>{{ row.subject.name if row.subject else '-' }}</td>
+                                    <td>
+                                        {% if row.file_url %}
+                                        <a href="{{ row.file_url }}" target="_blank" class="btn btn-sm btn-outline-primary">Buka</a>
+                                        {% endif %}
+                                        {% if row.teacher_id == teacher.id %}
+                                        <form method="POST" action="{{ url_for('teacher.delete_online_material', material_id=row.id) }}" class="d-inline">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">Hapus</button>
+                                        </form>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-center text-muted py-3">Belum ada materi.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-header"><strong>Daftar Tugas</strong></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Judul</th>
+                                    <th>Deadline</th>
+                                    <th>Pengumpulan</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in assignments %}
+                                <tr>
+                                    <td>{{ row.title }}</td>
+                                    <td>
+                                        {{ row.due_at.strftime('%d/%m/%Y %H:%M') }}
+                                        {% if row.due_at < local_now() %}
+                                        <span class="badge bg-danger ms-1">Lewat</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% set stats = assignment_stats.get(row.id, {}) %}
+                                        {{ stats.get('total_submissions', 0) }} masuk /
+                                        {{ stats.get('graded_submissions', 0) }} dinilai
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('teacher.online_assignment_detail', assignment_id=row.id) }}" class="btn btn-sm btn-outline-success">Nilai</a>
+                                        {% if row.teacher_id == teacher.id %}
+                                        <form method="POST" action="{{ url_for('teacher.delete_online_assignment', assignment_id=row.id) }}" class="d-inline">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">Hapus</button>
+                                        </form>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-center text-muted py-3">Belum ada tugas.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

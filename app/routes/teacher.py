@@ -8,7 +8,8 @@ from app.models import (
     TahfidzEvaluation, TahfidzType, RecitationSource, ParticipantType, Grade,
     EvaluationPeriod,
     GradeType, Subject, MajlisSubject, Attendance, AttendanceStatus, AcademicYear, Schedule, db, UserRole, MajlisParticipant,
-    BehaviorReport, BehaviorReportType, Announcement, BoardingAttendance, ProgramType
+    BehaviorReport, BehaviorReportType, Announcement, BoardingAttendance, ProgramType,
+    OnlineClassSession, LearningMaterial, LearningAssignment, LearningAssignmentSubmission
 )
 from app.decorators import role_required
 from app.services.rumah_quran_service import is_rumah_quran_classroom, list_rumah_quran_students_for_class
@@ -18,10 +19,17 @@ from app.services.staff_assignment_service import (
     list_teacher_homeroom_classes_from_assignments,
     list_teacher_subject_classes_from_assignments,
 )
+from app.services.online_meeting_service import (
+    MEETING_PROVIDER_EXTERNAL,
+    MEETING_PROVIDER_JITSI,
+    MEETING_PROVIDER_LIVEKIT,
+    resolve_provider_and_url,
+    build_join_payload,
+)
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
 from app.utils.push_notifications import notify_announcement_created
 from app.utils.tenant import classroom_in_tenant, resolve_tenant_id, scoped_classrooms_query
-from app.utils.timezone import local_day_bounds_utc_naive, local_today, utc_now_naive
+from app.utils.timezone import local_day_bounds_utc_naive, local_now, local_today, utc_now_naive
 
 teacher_bp = Blueprint('teacher', __name__)
 
@@ -191,6 +199,7 @@ def build_teacher_sidebar_groups(teacher):
             {'endpoint': 'teacher.input_attendance', 'label': 'Input Absensi', 'icon': 'fas fa-clipboard-check'},
             {'endpoint': 'teacher.input_behavior_report', 'label': 'Laporan Perilaku', 'icon': 'fas fa-user-shield'},
             {'endpoint': 'teacher.class_announcements', 'label': 'Pengumuman Kelas', 'icon': 'fas fa-bullhorn'},
+            {'endpoint': 'teacher.online_classroom', 'label': 'Kelas Online', 'icon': 'fas fa-video'},
         ],
         'rumah_quran': [
             {'endpoint': 'teacher.input_tahfidz', 'label': 'Input Tahfidz', 'icon': 'fas fa-quran'},
@@ -199,12 +208,14 @@ def build_teacher_sidebar_groups(teacher):
             {'endpoint': 'teacher.input_attendance', 'label': 'Input Absensi', 'icon': 'fas fa-calendar-check'},
             {'endpoint': 'teacher.input_behavior_report', 'label': 'Laporan Perilaku', 'icon': 'fas fa-user-shield'},
             {'endpoint': 'teacher.class_announcements', 'label': 'Pengumuman Kelas', 'icon': 'fas fa-bullhorn'},
+            {'endpoint': 'teacher.online_classroom', 'label': 'Kelas Online', 'icon': 'fas fa-video'},
         ],
         'bahasa': [
             {'endpoint': 'teacher.input_grades', 'label': 'Input Nilai', 'icon': 'fas fa-pen-alt'},
             {'endpoint': 'teacher.input_attendance', 'label': 'Input Absensi', 'icon': 'fas fa-calendar-check'},
             {'endpoint': 'teacher.input_behavior_report', 'label': 'Laporan Perilaku', 'icon': 'fas fa-user-shield'},
             {'endpoint': 'teacher.class_announcements', 'label': 'Pengumuman Kelas', 'icon': 'fas fa-bullhorn'},
+            {'endpoint': 'teacher.online_classroom', 'label': 'Kelas Online', 'icon': 'fas fa-video'},
         ],
         'majlis': [
             {'endpoint': 'teacher.input_tahfidz', 'label': 'Input Tahfidz', 'icon': 'fas fa-quran'},
@@ -213,6 +224,7 @@ def build_teacher_sidebar_groups(teacher):
             {'endpoint': 'teacher.input_attendance', 'label': 'Input Absensi', 'icon': 'fas fa-calendar-check'},
             {'endpoint': 'teacher.input_behavior_report', 'label': 'Laporan Perilaku', 'icon': 'fas fa-user-shield'},
             {'endpoint': 'teacher.class_announcements', 'label': 'Pengumuman Kelas', 'icon': 'fas fa-bullhorn'},
+            {'endpoint': 'teacher.online_classroom', 'label': 'Kelas Online', 'icon': 'fas fa-video'},
         ],
     }
 
@@ -445,6 +457,68 @@ def _teacher_can_access_attendance_class(teacher, class_id):
     if not teacher or not class_id:
         return False
     return any(class_room.id == class_id for class_room in _get_teacher_attendance_classes(teacher))
+
+
+def _subject_options_for_class(teacher, class_id):
+    subject_options = []
+    majlis_subject_options = []
+    if not teacher or not class_id:
+        return subject_options, majlis_subject_options
+
+    schedules = (
+        Schedule.query.filter(
+            Schedule.teacher_id == teacher.id,
+            Schedule.class_id == class_id,
+            Schedule.is_deleted.is_(False),
+        )
+        .order_by(Schedule.day.asc(), Schedule.start_time.asc(), Schedule.id.asc())
+        .all()
+    )
+
+    seen_subject_ids = set()
+    seen_majlis_subject_ids = set()
+    for schedule in schedules:
+        if schedule.subject_id and schedule.subject and schedule.subject_id not in seen_subject_ids:
+            seen_subject_ids.add(schedule.subject_id)
+            subject_options.append(schedule.subject)
+        if (
+            schedule.majlis_subject_id
+            and schedule.majlis_subject
+            and schedule.majlis_subject_id not in seen_majlis_subject_ids
+        ):
+            seen_majlis_subject_ids.add(schedule.majlis_subject_id)
+            majlis_subject_options.append(schedule.majlis_subject)
+
+    return subject_options, majlis_subject_options
+
+
+def _parse_datetime_local(value):
+    raw_value = (value or '').strip()
+    if not raw_value:
+        return None
+    try:
+        return datetime.strptime(raw_value, '%Y-%m-%dT%H:%M')
+    except ValueError:
+        return None
+
+
+def _detect_meeting_provider(url):
+    haystack = (url or '').strip().lower()
+    if 'zoom.' in haystack:
+        return 'Zoom'
+    if 'meet.google.com' in haystack:
+        return 'Google Meet'
+    if 'teams.microsoft.com' in haystack:
+        return 'Microsoft Teams'
+    if 'wa.me' in haystack or 'whatsapp' in haystack:
+        return 'WhatsApp Call'
+    return 'Lainnya'
+
+
+def _to_datetime_local_input(value):
+    if value is None:
+        return ''
+    return value.strftime('%Y-%m-%dT%H:%M')
 
 
 def _parse_participant_key(participant_key):
@@ -2292,6 +2366,370 @@ def delete_class_announcement(announcement_id):
         flash("Gagal menghapus pengumuman.", "danger")
 
     return redirect(url_for('teacher.class_announcements', class_id=selected_class_id))
+
+
+@teacher_bp.route('/kelas-online', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.GURU)
+def online_classroom():
+    teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
+    my_classes = sorted(_get_teacher_classes(teacher), key=lambda item: item.name or '')
+    my_class_ids = {class_room.id for class_room in my_classes}
+
+    if not my_classes:
+        flash("Anda belum terhubung ke kelas manapun.", "warning")
+        return render_template(
+            'teacher/online_classroom.html',
+            teacher=teacher,
+            my_classes=[],
+            selected_class=None,
+            selected_class_id=0,
+            subject_options=[],
+            sessions=[],
+            materials=[],
+            assignments=[],
+            assignment_stats={},
+            now_input=local_now().strftime('%Y-%m-%dT%H:%M'),
+            meeting_provider_jitsi=MEETING_PROVIDER_JITSI,
+            meeting_provider_external=MEETING_PROVIDER_EXTERNAL,
+            meeting_provider_livekit=MEETING_PROVIDER_LIVEKIT,
+            session_payloads={},
+        )
+
+    selected_class_id = request.args.get('class_id', type=int)
+    if selected_class_id and selected_class_id not in my_class_ids:
+        flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
+        return redirect(url_for('teacher.online_classroom'))
+    selected_class = next((row for row in my_classes if row.id == selected_class_id), None) if selected_class_id else my_classes[0]
+    selected_class_id = selected_class.id
+
+    if request.method == 'POST':
+        action = (request.form.get('action') or '').strip()
+        class_id = request.form.get('class_id', type=int) or selected_class_id
+        if class_id not in my_class_ids:
+            flash("Kelas tidak valid untuk akun Anda.", "danger")
+            return redirect(url_for('teacher.online_classroom'))
+
+        target_class = _teacher_classroom_by_id(teacher, class_id)
+        if target_class is None:
+            flash("Kelas tidak ditemukan.", "danger")
+            return redirect(url_for('teacher.online_classroom'))
+
+        if action == 'create_session':
+            title = (request.form.get('title') or '').strip()
+            description = (request.form.get('description') or '').strip()
+            meeting_url = (request.form.get('meeting_url') or '').strip()
+            provider_raw = (request.form.get('meeting_provider') or MEETING_PROVIDER_JITSI).strip().upper()
+            start_at = _parse_datetime_local(request.form.get('starts_at'))
+            end_at = _parse_datetime_local(request.form.get('ends_at'))
+            subject_id = request.form.get('subject_id', type=int)
+            if not title or start_at is None or end_at is None:
+                flash("Judul dan jadwal sesi wajib diisi.", "warning")
+                return redirect(url_for('teacher.online_classroom', class_id=class_id))
+            if start_at >= end_at:
+                flash("Waktu mulai harus lebih awal dari waktu selesai.", "warning")
+                return redirect(url_for('teacher.online_classroom', class_id=class_id))
+            if provider_raw == MEETING_PROVIDER_EXTERNAL and not meeting_url:
+                flash("Untuk provider eksternal, link meeting wajib diisi.", "warning")
+                return redirect(url_for('teacher.online_classroom', class_id=class_id))
+
+            provider, resolved_meeting_url = resolve_provider_and_url(
+                provider_raw=provider_raw,
+                meeting_url_raw=meeting_url,
+                class_name=target_class.name or f"kelas-{class_id}",
+                session_title=title,
+            )
+
+            row = OnlineClassSession(
+                class_id=class_id,
+                teacher_id=teacher.id,
+                subject_id=subject_id if subject_id else None,
+                title=title,
+                description=description or None,
+                meeting_url=resolved_meeting_url,
+                meeting_provider=provider,
+                starts_at=start_at,
+                ends_at=end_at,
+                is_active=request.form.get('is_active') == 'on',
+            )
+            db.session.add(row)
+            db.session.commit()
+            flash("Sesi kelas online berhasil dibuat.", "success")
+            return redirect(url_for('teacher.online_classroom', class_id=class_id))
+
+        if action == 'create_material':
+            title = (request.form.get('title') or '').strip()
+            file_url = (request.form.get('file_url') or '').strip()
+            description = (request.form.get('description') or '').strip()
+            material_type = (request.form.get('material_type') or 'LINK').strip().upper()
+            subject_id = request.form.get('subject_id', type=int)
+            if not title:
+                flash("Judul materi wajib diisi.", "warning")
+                return redirect(url_for('teacher.online_classroom', class_id=class_id))
+            if not file_url and not description:
+                flash("Isi materi minimal harus punya link atau deskripsi.", "warning")
+                return redirect(url_for('teacher.online_classroom', class_id=class_id))
+            if material_type not in {'LINK', 'VIDEO', 'DOKUMEN'}:
+                material_type = 'LINK'
+
+            material = LearningMaterial(
+                class_id=class_id,
+                teacher_id=teacher.id,
+                subject_id=subject_id if subject_id else None,
+                title=title,
+                file_url=file_url or None,
+                description=description or None,
+                material_type=material_type,
+                is_published=request.form.get('is_published') == 'on',
+                published_at=utc_now_naive(),
+            )
+            db.session.add(material)
+            db.session.commit()
+            flash("Materi online berhasil ditambahkan.", "success")
+            return redirect(url_for('teacher.online_classroom', class_id=class_id))
+
+        if action == 'create_assignment':
+            title = (request.form.get('title') or '').strip()
+            description = (request.form.get('description') or '').strip()
+            resource_url = (request.form.get('resource_url') or '').strip()
+            due_at = _parse_datetime_local(request.form.get('due_at'))
+            subject_id = request.form.get('subject_id', type=int)
+            max_score_raw = (request.form.get('max_score') or '100').strip()
+            try:
+                max_score = float(max_score_raw)
+            except ValueError:
+                max_score = 100.0
+
+            if not title or not description or due_at is None:
+                flash("Judul, deskripsi, dan tenggat tugas wajib diisi.", "warning")
+                return redirect(url_for('teacher.online_classroom', class_id=class_id))
+            if max_score <= 0:
+                flash("Nilai maksimal harus lebih dari 0.", "warning")
+                return redirect(url_for('teacher.online_classroom', class_id=class_id))
+
+            assignment = LearningAssignment(
+                class_id=class_id,
+                teacher_id=teacher.id,
+                subject_id=subject_id if subject_id else None,
+                title=title,
+                description=description,
+                resource_url=resource_url or None,
+                due_at=due_at,
+                max_score=max_score,
+                is_published=request.form.get('is_published') == 'on',
+            )
+            db.session.add(assignment)
+            db.session.commit()
+            flash("Tugas online berhasil dibuat.", "success")
+            return redirect(url_for('teacher.online_classroom', class_id=class_id))
+
+        flash("Aksi tidak dikenal.", "warning")
+        return redirect(url_for('teacher.online_classroom', class_id=class_id))
+
+    subject_options, _ = _subject_options_for_class(teacher, selected_class_id)
+    sessions = (
+        OnlineClassSession.query.filter(
+            OnlineClassSession.class_id == selected_class_id,
+            OnlineClassSession.is_deleted.is_(False),
+        )
+        .order_by(OnlineClassSession.starts_at.desc())
+        .limit(60)
+        .all()
+    )
+    materials = (
+        LearningMaterial.query.filter(
+            LearningMaterial.class_id == selected_class_id,
+            LearningMaterial.is_deleted.is_(False),
+        )
+        .order_by(LearningMaterial.created_at.desc())
+        .limit(80)
+        .all()
+    )
+    assignments = (
+        LearningAssignment.query.filter(
+            LearningAssignment.class_id == selected_class_id,
+            LearningAssignment.is_deleted.is_(False),
+        )
+        .order_by(LearningAssignment.due_at.asc(), LearningAssignment.created_at.desc())
+        .all()
+    )
+    assignment_stats = {}
+    for assignment in assignments:
+        submissions = LearningAssignmentSubmission.query.filter(
+            LearningAssignmentSubmission.assignment_id == assignment.id,
+            LearningAssignmentSubmission.is_deleted.is_(False),
+        ).all()
+        assignment_stats[assignment.id] = {
+            'total_submissions': len(submissions),
+            'graded_submissions': len([row for row in submissions if row.score is not None]),
+        }
+    session_payloads = {
+        row.id: build_join_payload(
+            row,
+            teacher.full_name or current_user.username or "Guru",
+            is_moderator=True,
+            user_id=f"teacher-{teacher.id}",
+            email=current_user.email,
+        )
+        for row in sessions
+    }
+
+    return render_template(
+        'teacher/online_classroom.html',
+        teacher=teacher,
+        my_classes=my_classes,
+        selected_class=selected_class,
+        selected_class_id=selected_class_id,
+        subject_options=subject_options,
+        sessions=sessions,
+        materials=materials,
+        assignments=assignments,
+        assignment_stats=assignment_stats,
+        now_input=local_now().strftime('%Y-%m-%dT%H:%M'),
+        meeting_provider_jitsi=MEETING_PROVIDER_JITSI,
+        meeting_provider_external=MEETING_PROVIDER_EXTERNAL,
+        meeting_provider_livekit=MEETING_PROVIDER_LIVEKIT,
+        session_payloads=session_payloads,
+    )
+
+
+@teacher_bp.route('/kelas-online/sesi/<int:session_id>/join')
+@login_required
+@role_required(UserRole.GURU)
+def join_online_session(session_id):
+    teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
+    row = OnlineClassSession.query.filter_by(id=session_id, is_deleted=False).first_or_404()
+    if not _teacher_can_access_class(teacher, row.class_id):
+        flash("Anda tidak memiliki akses ke sesi ini.", "danger")
+        return redirect(url_for('teacher.online_classroom'))
+
+    payload = build_join_payload(
+        row,
+        teacher.full_name or current_user.username or "Guru",
+        is_moderator=True,
+        user_id=f"teacher-{teacher.id}",
+        email=current_user.email,
+    )
+    if payload.get('mode') == 'external' and payload.get('external_url'):
+        return redirect(payload['external_url'])
+    return render_template(
+        'online/session_room.html',
+        session=row,
+        payload=payload,
+        back_url=url_for('teacher.online_classroom', class_id=row.class_id),
+        role_label='Guru',
+    )
+
+
+@teacher_bp.route('/kelas-online/sesi/hapus/<int:session_id>', methods=['POST'])
+@login_required
+@role_required(UserRole.GURU)
+def delete_online_session(session_id):
+    teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
+    row = OnlineClassSession.query.filter_by(id=session_id, is_deleted=False).first_or_404()
+    if row.teacher_id != teacher.id or not _teacher_can_access_class(teacher, row.class_id):
+        flash("Anda tidak memiliki akses untuk menghapus sesi ini.", "danger")
+        return redirect(url_for('teacher.online_classroom'))
+
+    row.is_deleted = True
+    db.session.commit()
+    flash("Sesi kelas online berhasil dihapus.", "success")
+    return redirect(url_for('teacher.online_classroom', class_id=row.class_id))
+
+
+@teacher_bp.route('/kelas-online/materi/hapus/<int:material_id>', methods=['POST'])
+@login_required
+@role_required(UserRole.GURU)
+def delete_online_material(material_id):
+    teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
+    row = LearningMaterial.query.filter_by(id=material_id, is_deleted=False).first_or_404()
+    if row.teacher_id != teacher.id or not _teacher_can_access_class(teacher, row.class_id):
+        flash("Anda tidak memiliki akses untuk menghapus materi ini.", "danger")
+        return redirect(url_for('teacher.online_classroom'))
+
+    row.is_deleted = True
+    db.session.commit()
+    flash("Materi online berhasil dihapus.", "success")
+    return redirect(url_for('teacher.online_classroom', class_id=row.class_id))
+
+
+@teacher_bp.route('/kelas-online/tugas/hapus/<int:assignment_id>', methods=['POST'])
+@login_required
+@role_required(UserRole.GURU)
+def delete_online_assignment(assignment_id):
+    teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
+    row = LearningAssignment.query.filter_by(id=assignment_id, is_deleted=False).first_or_404()
+    if row.teacher_id != teacher.id or not _teacher_can_access_class(teacher, row.class_id):
+        flash("Anda tidak memiliki akses untuk menghapus tugas ini.", "danger")
+        return redirect(url_for('teacher.online_classroom'))
+
+    row.is_deleted = True
+    db.session.commit()
+    flash("Tugas online berhasil dihapus.", "success")
+    return redirect(url_for('teacher.online_classroom', class_id=row.class_id))
+
+
+@teacher_bp.route('/kelas-online/tugas/<int:assignment_id>', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.GURU)
+def online_assignment_detail(assignment_id):
+    teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
+    assignment = LearningAssignment.query.filter_by(id=assignment_id, is_deleted=False).first_or_404()
+    if not _teacher_can_access_class(teacher, assignment.class_id):
+        flash("Anda tidak memiliki akses ke tugas ini.", "danger")
+        return redirect(url_for('teacher.online_classroom'))
+
+    if request.method == 'POST':
+        submission_id = request.form.get('submission_id', type=int)
+        score_raw = (request.form.get('score') or '').strip()
+        feedback = (request.form.get('feedback') or '').strip()
+        submission = LearningAssignmentSubmission.query.filter_by(
+            id=submission_id,
+            assignment_id=assignment.id,
+            is_deleted=False,
+        ).first()
+        if submission is None:
+            flash("Data pengumpulan tidak ditemukan.", "danger")
+            return redirect(url_for('teacher.online_assignment_detail', assignment_id=assignment.id))
+
+        score_value = None
+        if score_raw:
+            try:
+                score_value = float(score_raw)
+            except ValueError:
+                flash("Nilai harus berupa angka.", "warning")
+                return redirect(url_for('teacher.online_assignment_detail', assignment_id=assignment.id))
+            if score_value < 0 or score_value > float(assignment.max_score or 100):
+                flash(f"Nilai harus di antara 0 sampai {assignment.max_score}.", "warning")
+                return redirect(url_for('teacher.online_assignment_detail', assignment_id=assignment.id))
+
+        submission.score = score_value
+        submission.feedback = feedback or None
+        submission.graded_at = utc_now_naive()
+        submission.graded_by_teacher_id = teacher.id
+        db.session.commit()
+        flash("Penilaian tugas berhasil disimpan.", "success")
+        return redirect(url_for('teacher.online_assignment_detail', assignment_id=assignment.id))
+
+    students, _ = _get_class_participants(assignment.class_id)
+    students = sorted(students, key=lambda row: row.full_name or '')
+    submission_rows = (
+        LearningAssignmentSubmission.query.filter(
+            LearningAssignmentSubmission.assignment_id == assignment.id,
+            LearningAssignmentSubmission.is_deleted.is_(False),
+        )
+        .order_by(LearningAssignmentSubmission.submitted_at.desc())
+        .all()
+    )
+    submission_map = {row.student_id: row for row in submission_rows}
+
+    return render_template(
+        'teacher/online_assignment_detail.html',
+        assignment=assignment,
+        students=students,
+        submission_map=submission_map,
+        now_value=utc_now_naive(),
+    )
 
 
 @teacher_bp.route('/siswa-wali-kelas')

@@ -786,11 +786,87 @@ class StudentClassHistory(BaseModel):
 class LearningMaterial(BaseModel):
     __tablename__ = 'learning_materials'
     id = db.Column(db.Integer, primary_key=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('class_rooms.id'), nullable=True, index=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'))
     subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'))
     title = db.Column(db.String(100))
     file_url = db.Column(db.String(255))
     description = db.Column(db.Text)
+    material_type = db.Column(db.String(20), default='LINK', nullable=False)
+    is_published = db.Column(db.Boolean, default=True, nullable=False)
+    published_at = db.Column(db.DateTime, default=utc_now_naive, nullable=True)
+
+    class_room = db.relationship('ClassRoom', backref='learning_materials')
+    teacher = db.relationship('Teacher', backref='learning_materials')
+    subject = db.relationship('Subject', backref='learning_materials')
+
+
+class OnlineClassSession(BaseModel):
+    __tablename__ = 'online_class_sessions'
+    id = db.Column(db.Integer, primary_key=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('class_rooms.id'), nullable=False, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False, index=True)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=True, index=True)
+    title = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    meeting_url = db.Column(db.String(255), nullable=False)
+    meeting_provider = db.Column(db.String(30), nullable=True)
+    starts_at = db.Column(db.DateTime, nullable=False, index=True)
+    ends_at = db.Column(db.DateTime, nullable=False, index=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    class_room = db.relationship('ClassRoom', backref='online_sessions')
+    teacher = db.relationship('Teacher', backref='online_sessions')
+    subject = db.relationship('Subject', backref='online_sessions')
+
+    __table_args__ = (
+        db.Index('idx_online_class_session_class_time', 'class_id', 'starts_at'),
+    )
+
+
+class LearningAssignment(BaseModel):
+    __tablename__ = 'learning_assignments'
+    id = db.Column(db.Integer, primary_key=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('class_rooms.id'), nullable=False, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False, index=True)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=True, index=True)
+    title = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    resource_url = db.Column(db.String(255), nullable=True)
+    due_at = db.Column(db.DateTime, nullable=False, index=True)
+    max_score = db.Column(db.Float, default=100.0, nullable=False)
+    is_published = db.Column(db.Boolean, default=True, nullable=False)
+
+    class_room = db.relationship('ClassRoom', backref='learning_assignments')
+    teacher = db.relationship('Teacher', backref='learning_assignments')
+    subject = db.relationship('Subject', backref='learning_assignments')
+
+    __table_args__ = (
+        db.Index('idx_learning_assignment_class_due', 'class_id', 'due_at'),
+    )
+
+
+class LearningAssignmentSubmission(BaseModel):
+    __tablename__ = 'learning_assignment_submissions'
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey('learning_assignments.id'), nullable=False, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    submission_text = db.Column(db.Text, nullable=True)
+    submission_url = db.Column(db.String(255), nullable=True)
+    submitted_at = db.Column(db.DateTime, default=utc_now_naive, nullable=False, index=True)
+    score = db.Column(db.Float, nullable=True)
+    feedback = db.Column(db.Text, nullable=True)
+    graded_at = db.Column(db.DateTime, nullable=True)
+    graded_by_teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True)
+
+    assignment = db.relationship('LearningAssignment', backref='submissions')
+    student = db.relationship('Student', backref='learning_submissions')
+    graded_by_teacher = db.relationship('Teacher', foreign_keys=[graded_by_teacher_id], backref='graded_submissions')
+
+    __table_args__ = (
+        db.UniqueConstraint('assignment_id', 'student_id', name='uq_assignment_submission_student'),
+        db.Index('idx_assignment_submission_assignment_submitted', 'assignment_id', 'submitted_at'),
+    )
 
 
 # ==========================================

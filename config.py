@@ -13,3 +13,19 @@ class Config:
         SQLALCHEMY_DATABASE_URI = SQLALCHEMY_DATABASE_URI.replace("postgres://", "postgresql://", 1)
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Online meeting backend options:
+    # - public_jitsi (default, demo)
+    # - jaas (8x8.vc + JWT)
+    # - self_host (Jitsi secure domain milik sendiri)
+    ONLINE_MEETING_BACKEND = os.environ.get('ONLINE_MEETING_BACKEND', 'public_jitsi')
+    JITSI_PUBLIC_BASE_URL = os.environ.get('JITSI_PUBLIC_BASE_URL', 'https://meet.jit.si')
+    JITSI_SELF_HOST_BASE_URL = os.environ.get('JITSI_SELF_HOST_BASE_URL', '')
+
+    # JaaS JWT (8x8.vc)
+    JITSI_JAAS_DOMAIN = os.environ.get('JITSI_JAAS_DOMAIN', '8x8.vc')
+    JITSI_JAAS_APP_ID = os.environ.get('JITSI_JAAS_APP_ID', '')
+    JITSI_JAAS_KID = os.environ.get('JITSI_JAAS_KID', '')
+    JITSI_JAAS_PRIVATE_KEY = os.environ.get('JITSI_JAAS_PRIVATE_KEY', '')
+    JITSI_JAAS_TOKEN_TTL_SECONDS = int(os.environ.get('JITSI_JAAS_TOKEN_TTL_SECONDS', '7200'))
+    JITSI_JAAS_ROOM_CLAIM_MODE = os.environ.get('JITSI_JAAS_ROOM_CLAIM_MODE', 'wildcard')

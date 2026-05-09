@@ -1,6 +1,6 @@
 # app/routes/student.py
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from datetime import datetime
 from sqlalchemy.orm import joinedload  # Wajib diimport untuk optimasi N+1
@@ -9,15 +9,194 @@ from app import db
 from app.models import (
     UserRole, Student, TahfidzRecord, TahfidzSummary, TahfidzEvaluation,
     RecitationRecord,Schedule, Grade, Violation, AcademicYear, BehaviorReport,
-    Attendance, ParticipantType, AttendanceStatus, BoardingAttendance, BoardingActivitySchedule, ClassRoom
+    Attendance, ParticipantType, AttendanceStatus, BoardingAttendance, BoardingActivitySchedule, ClassRoom,
+    OnlineClassSession, LearningMaterial, LearningAssignment, LearningAssignmentSubmission
 )
 from app.decorators import role_required
 from app.services.formal_service import get_student_formal_classroom
+from app.services.online_meeting_service import build_join_payload
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
 from app.utils.tenant import resolve_tenant_id, scoped_classrooms_query
 from app.utils.timezone import local_now, local_today
 
 student_bp = Blueprint('student', __name__)
+
+
+def _resolve_student_active_class(student):
+    formal_class = get_student_formal_classroom(student)
+    active_class = formal_class or student.current_class
+    if active_class is None:
+        return None
+
+    tenant_id = resolve_tenant_id(current_user, fallback_default=False)
+    if tenant_id is None:
+        return None
+    return scoped_classrooms_query(tenant_id).filter(ClassRoom.id == active_class.id).first()
+
+
+@student_bp.route('/kelas-online', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.SISWA)
+def online_classroom():
+    student = current_user.student_profile
+    if not student:
+        return "Data profil siswa tidak ditemukan", 404
+
+    active_class = _resolve_student_active_class(student)
+    if active_class is None:
+        flash('Anda belum terhubung ke kelas aktif.', 'warning')
+        return render_template(
+            'student/online_classroom.html',
+            student=student,
+            active_class=None,
+            sessions=[],
+            materials=[],
+            assignments=[],
+            submission_map={},
+            now_value=local_now(),
+            session_payloads={},
+        )
+
+    if request.method == 'POST':
+        action = (request.form.get('action') or '').strip()
+        if action != 'submit_assignment':
+            flash('Aksi tidak dikenal.', 'warning')
+            return redirect(url_for('student.online_classroom'))
+
+        assignment_id = request.form.get('assignment_id', type=int)
+        submission_text = (request.form.get('submission_text') or '').strip()
+        submission_url = (request.form.get('submission_url') or '').strip()
+        if not assignment_id:
+            flash('Tugas tidak valid.', 'danger')
+            return redirect(url_for('student.online_classroom'))
+        if not submission_text and not submission_url:
+            flash('Isi jawaban atau link pengumpulan wajib diisi.', 'warning')
+            return redirect(url_for('student.online_classroom'))
+
+        assignment = LearningAssignment.query.filter(
+            LearningAssignment.id == assignment_id,
+            LearningAssignment.class_id == active_class.id,
+            LearningAssignment.is_deleted.is_(False),
+            LearningAssignment.is_published.is_(True),
+        ).first()
+        if assignment is None:
+            flash('Tugas tidak ditemukan pada kelas Anda.', 'danger')
+            return redirect(url_for('student.online_classroom'))
+
+        submission = LearningAssignmentSubmission.query.filter(
+            LearningAssignmentSubmission.assignment_id == assignment.id,
+            LearningAssignmentSubmission.student_id == student.id,
+            LearningAssignmentSubmission.is_deleted.is_(False),
+        ).first()
+        if submission is None:
+            submission = LearningAssignmentSubmission(
+                assignment_id=assignment.id,
+                student_id=student.id,
+            )
+            db.session.add(submission)
+
+        submission.submission_text = submission_text or None
+        submission.submission_url = submission_url or None
+        submission.submitted_at = datetime.utcnow()
+        db.session.commit()
+        flash('Tugas berhasil dikumpulkan.', 'success')
+        return redirect(url_for('student.online_classroom'))
+
+    now_value = local_now()
+    sessions = (
+        OnlineClassSession.query.filter(
+            OnlineClassSession.class_id == active_class.id,
+            OnlineClassSession.is_deleted.is_(False),
+            OnlineClassSession.is_active.is_(True),
+        )
+        .order_by(OnlineClassSession.starts_at.asc())
+        .all()
+    )
+    materials = (
+        LearningMaterial.query.filter(
+            LearningMaterial.class_id == active_class.id,
+            LearningMaterial.is_deleted.is_(False),
+            LearningMaterial.is_published.is_(True),
+        )
+        .order_by(LearningMaterial.created_at.desc())
+        .all()
+    )
+    assignments = (
+        LearningAssignment.query.filter(
+            LearningAssignment.class_id == active_class.id,
+            LearningAssignment.is_deleted.is_(False),
+            LearningAssignment.is_published.is_(True),
+        )
+        .order_by(LearningAssignment.due_at.asc())
+        .all()
+    )
+    submissions = (
+        LearningAssignmentSubmission.query.filter(
+            LearningAssignmentSubmission.student_id == student.id,
+            LearningAssignmentSubmission.is_deleted.is_(False),
+        )
+        .all()
+    )
+    submission_map = {row.assignment_id: row for row in submissions}
+    session_payloads = {
+        row.id: build_join_payload(
+            row,
+            student.full_name or current_user.username or "Santri",
+            is_moderator=False,
+            user_id=f"student-{student.id}",
+            email=current_user.email,
+        )
+        for row in sessions
+    }
+
+    return render_template(
+        'student/online_classroom.html',
+        student=student,
+        active_class=active_class,
+        sessions=sessions,
+        materials=materials,
+        assignments=assignments,
+        submission_map=submission_map,
+        now_value=now_value,
+        session_payloads=session_payloads,
+    )
+
+
+@student_bp.route('/kelas-online/sesi/<int:session_id>/join')
+@login_required
+@role_required(UserRole.SISWA)
+def join_online_session(session_id):
+    student = current_user.student_profile
+    if not student:
+        return "Data profil siswa tidak ditemukan", 404
+
+    active_class = _resolve_student_active_class(student)
+    if active_class is None:
+        flash('Anda belum memiliki kelas aktif.', 'warning')
+        return redirect(url_for('student.online_classroom'))
+
+    row = OnlineClassSession.query.filter(
+        OnlineClassSession.id == session_id,
+        OnlineClassSession.is_deleted.is_(False),
+        OnlineClassSession.class_id == active_class.id,
+    ).first_or_404()
+
+    payload = build_join_payload(
+        row,
+        student.full_name or current_user.username or "Santri",
+        is_moderator=False,
+        user_id=f"student-{student.id}",
+        email=current_user.email,
+    )
+    if payload.get('mode') == 'external' and payload.get('external_url'):
+        return redirect(payload['external_url'])
+    return render_template(
+        'online/session_room.html',
+        session=row,
+        payload=payload,
+        back_url=url_for('student.online_classroom'),
+        role_label='Santri',
+    )
 
 
 @student_bp.route('/dashboard')

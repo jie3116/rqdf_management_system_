@@ -26,4 +26,5 @@ Werkzeug==3.0.3
 WTForms==3.2.1
 openpyxl==3.1.5
 firebase-admin==6.6.0
+PyJWT==2.12.1
 

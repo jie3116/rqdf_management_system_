@@ -99,6 +99,11 @@
                     {% endif %}
                 </li>
 
+                {% if active_role_value == 'student' and module_school_enabled %}
+                    <div class="nav-header">Pembelajaran</div>
+                    <li><a href="{{ url_for('student.online_classroom') }}"><i class="fas fa-video me-2"></i> Kelas Online</a></li>
+                {% endif %}
+
                 {% if active_role_value == 'admin' %}
                     {% if module_school_enabled %}
                     <div class="nav-header">Master Data</div>

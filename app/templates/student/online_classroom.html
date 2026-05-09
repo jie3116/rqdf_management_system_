@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h4 mb-1 text-gray-800">Kelas Online</h1>
+            <p class="text-muted mb-0">
+                {{ active_class.name if active_class else 'Belum ada kelas aktif' }}
+            </p>
+        </div>
+        <a href="{{ url_for('student.dashboard') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>Dashboard
+        </a>
+    </div>
+
+    {% if not active_class %}
+    <div class="alert alert-warning">Anda belum memiliki kelas aktif untuk pembelajaran online.</div>
+    {% else %}
+    <ul class="nav nav-pills mb-3 bg-white p-2 rounded shadow-sm" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#sessions-tab" type="button">Sesi Live</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="pill" data-bs-target="#materials-tab" type="button">Materi</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="pill" data-bs-target="#assignments-tab" type="button">Tugas</button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="sessions-tab" role="tabpanel">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header"><strong>Jadwal Sesi Online</strong></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Judul</th>
+                                    <th>Mapel</th>
+                                    <th>Jadwal</th>
+                                    <th>Status</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in sessions %}
+                                {% set payload = session_payloads.get(row.id, {}) %}
+                                <tr>
+                                    <td>{{ row.title }}</td>
+                                    <td>{{ row.subject.name if row.subject else '-' }}</td>
+                                    <td>{{ row.starts_at.strftime('%d/%m/%Y %H:%M') }} - {{ row.ends_at.strftime('%H:%M') }}</td>
+                                    <td>
+                                        {% if row.ends_at < now_value %}
+                                        <span class="badge bg-secondary">Selesai</span>
+                                        {% elif row.starts_at > now_value %}
+                                        <span class="badge bg-warning text-dark">Akan Datang</span>
+                                        {% else %}
+                                        <span class="badge bg-success">Sedang Berlangsung</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if payload.get('mode') == 'external' and payload.get('external_url') %}
+                                        <a href="{{ payload.get('external_url') }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary">Masuk (Tab Baru)</a>
+                                        {% else %}
+                                        <a href="{{ url_for('student.join_online_session', session_id=row.id) }}" class="btn btn-sm btn-outline-primary">Masuk</a>
+                                        {% endif %}
+                                        {% if payload.get('external_url') %}
+                                        <a href="{{ payload.get('external_url') }}" target="_blank" class="btn btn-sm btn-outline-secondary">Link</a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="5" class="text-center text-muted py-3">Belum ada sesi online.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="materials-tab" role="tabpanel">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header"><strong>Materi Kelas</strong></div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Judul</th>
+                                    <th>Mapel</th>
+                                    <th>Tipe</th>
+                                    <th>Catatan</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in materials %}
+                                <tr>
+                                    <td>{{ row.title }}</td>
+                                    <td>{{ row.subject.name if row.subject else '-' }}</td>
+                                    <td>{{ row.material_type }}</td>
+                                    <td>{{ row.description or '-' }}</td>
+                                    <td>
+                                        {% if row.file_url %}
+                                        <a href="{{ row.file_url }}" target="_blank" class="btn btn-sm btn-outline-primary">Buka</a>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="5" class="text-center text-muted py-3">Belum ada materi.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="assignments-tab" role="tabpanel">
+            {% for row in assignments %}
+            {% set submission = submission_map.get(row.id) %}
+            <div class="card shadow-sm mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <strong>{{ row.title }}</strong>
+                    <span class="badge {% if row.due_at < now_value %}bg-danger{% else %}bg-primary{% endif %}">
+                        Deadline {{ row.due_at.strftime('%d/%m/%Y %H:%M') }}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <p class="mb-2">{{ row.description }}</p>
+                    {% if row.resource_url %}
+                    <a href="{{ row.resource_url }}" target="_blank" class="btn btn-sm btn-outline-secondary mb-3">Lihat Referensi</a>
+                    {% endif %}
+
+                    {% if submission %}
+                    <div class="alert alert-info py-2">
+                        Submit terakhir: {{ submission.submitted_at.strftime('%d/%m/%Y %H:%M') if submission.submitted_at else '-' }}
+                        {% if submission.score is not none %}
+                        | Nilai: <strong>{{ submission.score }}</strong>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="submit_assignment">
+                        <input type="hidden" name="assignment_id" value="{{ row.id }}">
+                        <div class="mb-2">
+                            <label class="form-label">Jawaban Teks</label>
+                            <textarea name="submission_text" class="form-control" rows="2">{{ submission.submission_text if submission else '' }}</textarea>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Link File/Jawaban</label>
+                            <input type="url" name="submission_url" class="form-control" value="{{ submission.submission_url if submission else '' }}" placeholder="https://...">
+                        </div>
+                        <button type="submit" class="btn btn-success btn-sm">Kirim / Perbarui Tugas</button>
+                    </form>
+
+                    {% if submission and submission.feedback %}
+                    <div class="mt-2 small text-muted"><strong>Feedback Guru:</strong> {{ submission.feedback }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-light border text-muted">Belum ada tugas online.</div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
