@@ -23,4 +23,30 @@ class ParentFeatureRepository {
       payload: payload,
     );
   }
+
+  Future<Map<String, dynamic>> setSavingsPin({
+    required int childId,
+    required String pin,
+    required String pinConfirm,
+  }) {
+    return _service.setSavingsPin(
+      childId: childId,
+      pin: pin,
+      pinConfirm: pinConfirm,
+    );
+  }
+
+  Future<Map<String, dynamic>> submitSavingsTopup({
+    required int childId,
+    required int amount,
+    String? notes,
+    required String proofImagePath,
+  }) {
+    return _service.submitSavingsTopup(
+      childId: childId,
+      amount: amount,
+      notes: notes,
+      proofImagePath: proofImagePath,
+    );
+  }
 }

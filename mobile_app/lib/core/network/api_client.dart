@@ -56,6 +56,88 @@ class ApiClient {
     );
   }
 
+  Future<Map<String, dynamic>> postMultipart(
+    String path, {
+    Map<String, String>? fields,
+    String? fileField,
+    String? filePath,
+    String? fileName,
+    bool withAuth = true,
+    bool retryOnUnauthorized = true,
+  }) async {
+    final uri = Uri.parse('${AppConstants.baseUrl}$path');
+    final headers = await _buildMultipartHeaders(withAuth: withAuth);
+    final request = http.MultipartRequest('POST', uri);
+    request.headers.addAll(headers);
+    request.fields.addAll(fields ?? <String, String>{});
+    if (fileField != null && filePath != null && filePath.trim().isNotEmpty) {
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          fileField,
+          filePath,
+          filename: fileName,
+        ),
+      );
+    }
+
+    http.Response response;
+    try {
+      final streamed = await request.send().timeout(_timeout);
+      response = await http.Response.fromStream(streamed);
+    } on TimeoutException {
+      throw ApiException(message: 'Koneksi timeout. Coba beberapa saat lagi.');
+    } on SocketException {
+      throw ApiException(message: 'Tidak ada koneksi internet.');
+    }
+
+    final parsedPayload = _tryDecode(response.body);
+    final successFlag = parsedPayload['success'];
+    if (response.statusCode == 401 &&
+        withAuth &&
+        retryOnUnauthorized &&
+        _unauthorizedRecovery != null) {
+      final recovered = await _recoverUnauthorizedSingleFlight();
+      if (recovered) {
+        return postMultipart(
+          path,
+          fields: fields,
+          fileField: fileField,
+          filePath: filePath,
+          fileName: fileName,
+          withAuth: withAuth,
+          retryOnUnauthorized: false,
+        );
+      }
+    }
+
+    if (response.statusCode >= 500) {
+      throw ApiException(
+        statusCode: response.statusCode,
+        message: 'Server sedang bermasalah. Silakan coba lagi.',
+      );
+    }
+
+    final isWrappedApi = parsedPayload.containsKey('success');
+    if (isWrappedApi && successFlag != true) {
+      throw ApiException(
+        statusCode: response.statusCode,
+        code: parsedPayload['code']?.toString(),
+        message: ApiResponseParser.extractMessage(parsedPayload),
+      );
+    }
+
+    if (!isWrappedApi && response.statusCode >= 400) {
+      throw ApiException(
+        statusCode: response.statusCode,
+        message: 'Permintaan gagal (${response.statusCode}).',
+      );
+    }
+
+    return isWrappedApi
+        ? ApiResponseParser.extractData(parsedPayload)
+        : parsedPayload;
+  }
+
   Future<Map<String, dynamic>> _request({
     required String method,
     required String path,
@@ -160,6 +242,21 @@ class ApiClient {
   Future<Map<String, String>> _buildHeaders({required bool withAuth}) async {
     final headers = <String, String>{
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    if (withAuth) {
+      final token = await _tokenStorage.readAccessToken();
+      if (token != null && token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+      }
+    }
+    return headers;
+  }
+
+  Future<Map<String, String>> _buildMultipartHeaders({
+    required bool withAuth,
+  }) async {
+    final headers = <String, String>{
       'Accept': 'application/json',
     };
     if (withAuth) {

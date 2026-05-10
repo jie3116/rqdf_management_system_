@@ -13,6 +13,7 @@ class ParentFeatureService {
     'nilai': '/academic-grades',
     'absensi': '/attendance',
     'perilaku': '/behavior',
+    'tabungan': '/savings',
   };
 
   Future<Map<String, dynamic>> fetchFeature({
@@ -31,7 +32,8 @@ class ParentFeatureService {
         'message': 'Pilih data anak terlebih dahulu.',
       };
     }
-    final endpoint = '/parent/children/$childId$suffixPath${_buildQuery(query)}';
+    final endpoint =
+        '/parent/children/$childId$suffixPath${_buildQuery(query)}';
     return _apiClient.get(endpoint);
   }
 
@@ -47,5 +49,41 @@ class ParentFeatureService {
     }).toList();
     if (entries.isEmpty) return '';
     return '?${entries.join('&')}';
+  }
+
+  Future<Map<String, dynamic>> setSavingsPin({
+    required int childId,
+    required String pin,
+    required String pinConfirm,
+  }) async {
+    final endpoint = '/parent/children/$childId/savings/pin';
+    return _apiClient.post(
+      endpoint,
+      body: <String, dynamic>{
+        'pin': pin,
+        'pin_confirm': pinConfirm,
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> submitSavingsTopup({
+    required int childId,
+    required int amount,
+    String? notes,
+    required String proofImagePath,
+  }) {
+    final endpoint = '/parent/children/$childId/savings/topup';
+    final normalizedPath = proofImagePath.replaceAll('\\', '/');
+    final filename = normalizedPath.split('/').last;
+    return _apiClient.postMultipart(
+      endpoint,
+      fields: <String, String>{
+        'amount': '$amount',
+        'notes': notes?.trim() ?? '',
+      },
+      fileField: 'proof_image',
+      filePath: proofImagePath,
+      fileName: filename,
+    );
   }
 }

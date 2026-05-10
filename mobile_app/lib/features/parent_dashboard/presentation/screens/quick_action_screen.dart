@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../../core/theme/app_colors.dart';
@@ -56,6 +59,12 @@ class _QuickActionContentState extends State<QuickActionContent> {
   String? _selectedPeriodType;
   int? _selectedAcademicYearId;
   String? _selectedYearName;
+  final TextEditingController _pinController = TextEditingController();
+  final TextEditingController _pinConfirmController = TextEditingController();
+  final TextEditingController _topupAmountController = TextEditingController();
+  final TextEditingController _topupNotesController = TextEditingController();
+  final ImagePicker _imagePicker = ImagePicker();
+  XFile? _selectedProofImage;
 
   @override
   void initState() {
@@ -119,6 +128,15 @@ class _QuickActionContentState extends State<QuickActionContent> {
   }
 
   @override
+  void dispose() {
+    _pinController.dispose();
+    _pinConfirmController.dispose();
+    _topupAmountController.dispose();
+    _topupNotesController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final provider = context.watch<QuickActionProvider>();
 
@@ -174,10 +192,111 @@ class _QuickActionContentState extends State<QuickActionContent> {
                       _load();
                     }
                   : null,
+              pinController: _pinController,
+              pinConfirmController: _pinConfirmController,
+              topupAmountController: _topupAmountController,
+              topupNotesController: _topupNotesController,
+              selectedProofImagePath: _selectedProofImage?.path,
+              isSubmittingSavingsPin: provider.isSubmittingPin,
+              isSubmittingSavingsTopup: provider.isSubmittingTopup,
+              onSubmitSavingsPin: widget.childId == null
+                  ? null
+                  : () => _submitSavingsPin(provider),
+              onPickProofImage: _pickProofImage,
+              onSubmitSavingsTopup: widget.childId == null
+                  ? null
+                  : () => _submitSavingsTopup(provider),
             )
           else
             const AppErrorState(message: 'Data tidak tersedia.'),
         ],
+      ),
+    );
+  }
+
+  Future<void> _submitSavingsPin(QuickActionProvider provider) async {
+    final childId = widget.childId;
+    if (childId == null || childId <= 0) return;
+    final pin = _pinController.text.trim();
+    final pinConfirm = _pinConfirmController.text.trim();
+    if (pin.length < 4 || int.tryParse(pin) == null) {
+      _showSnack('PIN harus angka minimal 4 digit.');
+      return;
+    }
+    if (pin != pinConfirm) {
+      _showSnack('Konfirmasi PIN tidak sama.');
+      return;
+    }
+
+    final error = await provider.setSavingsPin(
+      childId: childId,
+      pin: pin,
+      pinConfirm: pinConfirm,
+    );
+    if (!mounted) return;
+    if (error != null) {
+      _showSnack(error);
+      return;
+    }
+    _pinController.clear();
+    _pinConfirmController.clear();
+    _showSnack('PIN tabungan berhasil disimpan.');
+    await _load();
+  }
+
+  Future<void> _pickProofImage() async {
+    final picked = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 86,
+      maxWidth: 1920,
+    );
+    if (!mounted || picked == null) return;
+    setState(() => _selectedProofImage = picked);
+  }
+
+  Future<void> _submitSavingsTopup(QuickActionProvider provider) async {
+    final childId = widget.childId;
+    if (childId == null || childId <= 0) return;
+
+    final rawAmount = _topupAmountController.text
+        .trim()
+        .replaceAll('.', '')
+        .replaceAll(',', '');
+    final amount = int.tryParse(rawAmount) ?? 0;
+    if (amount <= 0) {
+      _showSnack('Nominal top up harus lebih besar dari 0.');
+      return;
+    }
+    if (_selectedProofImage == null) {
+      _showSnack('Bukti transfer wajib diunggah.');
+      return;
+    }
+
+    final error = await provider.submitSavingsTopup(
+      childId: childId,
+      amount: amount,
+      notes: _topupNotesController.text.trim(),
+      proofImagePath: _selectedProofImage!.path,
+    );
+    if (!mounted) return;
+    if (error != null) {
+      _showSnack(error);
+      return;
+    }
+    _topupAmountController.clear();
+    _topupNotesController.clear();
+    setState(() => _selectedProofImage = null);
+    _showSnack('Pengajuan top up berhasil dikirim.');
+    await _load();
+  }
+
+  void _showSnack(String message) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -193,6 +312,16 @@ class _Renderer extends StatelessWidget {
     this.onPeriodTypeChanged,
     this.onSemesterChanged,
     this.onYearNameChanged,
+    this.pinController,
+    this.pinConfirmController,
+    this.topupAmountController,
+    this.topupNotesController,
+    this.selectedProofImagePath,
+    this.isSubmittingSavingsPin = false,
+    this.isSubmittingSavingsTopup = false,
+    this.onSubmitSavingsPin,
+    this.onPickProofImage,
+    this.onSubmitSavingsTopup,
   });
   final QuickActionModel action;
   final Map<String, dynamic> payload;
@@ -202,17 +331,28 @@ class _Renderer extends StatelessWidget {
   final ValueChanged<String?>? onPeriodTypeChanged;
   final ValueChanged<int?>? onSemesterChanged;
   final ValueChanged<String?>? onYearNameChanged;
+  final TextEditingController? pinController;
+  final TextEditingController? pinConfirmController;
+  final TextEditingController? topupAmountController;
+  final TextEditingController? topupNotesController;
+  final String? selectedProofImagePath;
+  final bool isSubmittingSavingsPin;
+  final bool isSubmittingSavingsTopup;
+  final VoidCallback? onSubmitSavingsPin;
+  final VoidCallback? onPickProofImage;
+  final VoidCallback? onSubmitSavingsTopup;
 
   @override
   Widget build(BuildContext context) {
     final key = action.key.toLowerCase();
     final accent = _accent(key);
     final student = JsonHelper.asMap(payload['student']);
-    final supportsPeriod = key == 'nilai' || key == 'absensi' || key == 'perilaku';
+    final supportsPeriod =
+        key == 'nilai' || key == 'absensi' || key == 'perilaku';
     final period = JsonHelper.asMap(payload['report_period']);
     final options = JsonHelper.asMap(payload['report_period_options']);
-    final periodType =
-        selectedPeriodType ?? JsonHelper.asString(period['period_type'], fallback: 'SEMESTER');
+    final periodType = selectedPeriodType ??
+        JsonHelper.asString(period['period_type'], fallback: 'SEMESTER');
     final semesterOptions = JsonHelper.asList(options['semester_options']);
     final yearOptions = JsonHelper.asList(options['year_options']);
 
@@ -236,8 +376,10 @@ class _Renderer extends StatelessWidget {
                   items: JsonHelper.asList(options['type_options']).map((item) {
                     final row = JsonHelper.asMap(item);
                     final value = JsonHelper.asString(row['key']);
-                    final label = JsonHelper.asString(row['label'], fallback: value);
-                    return DropdownMenuItem<String>(value: value, child: Text(label));
+                    final label =
+                        JsonHelper.asString(row['label'], fallback: value);
+                    return DropdownMenuItem<String>(
+                        value: value, child: Text(label));
                   }).toList(),
                   onChanged: onPeriodTypeChanged,
                   decoration: const InputDecoration(labelText: 'Jenis Periode'),
@@ -246,32 +388,39 @@ class _Renderer extends StatelessWidget {
                 if (periodType == 'YEAR')
                   DropdownButtonFormField<String>(
                     initialValue: () {
-                      final value =
-                          selectedYearName ?? JsonHelper.asString(period['year_name']);
+                      final value = selectedYearName ??
+                          JsonHelper.asString(period['year_name']);
                       final allowed = yearOptions
-                          .map((item) => JsonHelper.asString(JsonHelper.asMap(item)['key']))
+                          .map((item) => JsonHelper.asString(
+                              JsonHelper.asMap(item)['key']))
                           .toSet();
-                      return value.isNotEmpty && allowed.contains(value) ? value : null;
+                      return value.isNotEmpty && allowed.contains(value)
+                          ? value
+                          : null;
                     }(),
                     items: yearOptions.map((item) {
                       final row = JsonHelper.asMap(item);
                       final value = JsonHelper.asString(row['key']);
                       return DropdownMenuItem<String>(
                         value: value,
-                        child: Text(JsonHelper.asString(row['label'], fallback: value)),
+                        child: Text(
+                            JsonHelper.asString(row['label'], fallback: value)),
                       );
                     }).toList(),
                     onChanged: onYearNameChanged,
-                    decoration: const InputDecoration(labelText: 'Tahun Ajaran'),
+                    decoration:
+                        const InputDecoration(labelText: 'Tahun Ajaran'),
                   )
                 else
                   DropdownButtonFormField<int>(
                     initialValue: () {
-                      final fromPayload = JsonHelper.asInt(period['academic_year_id']);
-                      final candidate =
-                          selectedAcademicYearId ?? (fromPayload > 0 ? fromPayload : null);
+                      final fromPayload =
+                          JsonHelper.asInt(period['academic_year_id']);
+                      final candidate = selectedAcademicYearId ??
+                          (fromPayload > 0 ? fromPayload : null);
                       final allowed = semesterOptions
-                          .map((item) => JsonHelper.asInt(JsonHelper.asMap(item)['id']))
+                          .map((item) =>
+                              JsonHelper.asInt(JsonHelper.asMap(item)['id']))
                           .toSet();
                       return candidate != null && allowed.contains(candidate)
                           ? candidate
@@ -282,7 +431,8 @@ class _Renderer extends StatelessWidget {
                       final id = JsonHelper.asInt(row['id']);
                       return DropdownMenuItem<int>(
                         value: id,
-                        child: Text(JsonHelper.asString(row['label'], fallback: '$id')),
+                        child: Text(
+                            JsonHelper.asString(row['label'], fallback: '$id')),
                       );
                     }).toList(),
                     onChanged: onSemesterChanged,
@@ -300,6 +450,21 @@ class _Renderer extends StatelessWidget {
         if (key == 'jadwal') ..._scheduleSections(payload, accent),
         if (key == 'absensi') ..._attendanceSections(payload, accent),
         if (key == 'perilaku') ..._behaviorSections(payload, accent),
+        if (key == 'tabungan')
+          ..._savingsSections(
+            payload,
+            accent,
+            pinController: pinController,
+            pinConfirmController: pinConfirmController,
+            topupAmountController: topupAmountController,
+            topupNotesController: topupNotesController,
+            selectedProofImagePath: selectedProofImagePath,
+            isSubmittingSavingsPin: isSubmittingSavingsPin,
+            isSubmittingSavingsTopup: isSubmittingSavingsTopup,
+            onSubmitSavingsPin: onSubmitSavingsPin,
+            onPickProofImage: onPickProofImage,
+            onSubmitSavingsTopup: onSubmitSavingsTopup,
+          ),
       ],
     );
   }
@@ -470,10 +635,20 @@ List<Widget> _financeSections(Map<String, dynamic> payload, Color accent) {
       title: 'Ringkasan Keuangan',
       accent: accent,
       items: [
-        MapEntry('Total', CurrencyFormatter.rupiah(JsonHelper.asDouble(summary['total_amount']))),
-        MapEntry('Dibayar', CurrencyFormatter.rupiah(JsonHelper.asDouble(summary['paid_amount']))),
-        MapEntry('Sisa', CurrencyFormatter.rupiah(JsonHelper.asDouble(summary['remaining_amount']))),
-        MapEntry('Belum lunas', '${JsonHelper.asInt(summary['unpaid_count'])} invoice'),
+        MapEntry(
+            'Total',
+            CurrencyFormatter.rupiah(
+                JsonHelper.asDouble(summary['total_amount']))),
+        MapEntry(
+            'Dibayar',
+            CurrencyFormatter.rupiah(
+                JsonHelper.asDouble(summary['paid_amount']))),
+        MapEntry(
+            'Sisa',
+            CurrencyFormatter.rupiah(
+                JsonHelper.asDouble(summary['remaining_amount']))),
+        MapEntry('Belum lunas',
+            '${JsonHelper.asInt(summary['unpaid_count'])} invoice'),
       ],
     ),
     const SizedBox(height: 20),
@@ -482,10 +657,190 @@ List<Widget> _financeSections(Map<String, dynamic> payload, Color accent) {
     _CardList(
       items: items,
       emptySubtitle: 'Belum ada data tagihan untuk anak ini.',
-      titleBuilder: (row) => JsonHelper.asString(row['invoice_number'], fallback: 'Invoice'),
+      titleBuilder: (row) =>
+          JsonHelper.asString(row['invoice_number'], fallback: 'Invoice'),
       subtitleBuilder: (row) =>
           'Jenis ${JsonHelper.asString(row['fee_type'], fallback: '-')}\n${AppDateFormatter.dateLabel(JsonHelper.asString(row['created_at']))} • Jatuh tempo ${AppDateFormatter.shortDate(JsonHelper.asString(row['due_date']))}\nSisa ${CurrencyFormatter.rupiah(JsonHelper.asDouble(row['remaining_amount']))}',
-      badgeBuilder: (row) => JsonHelper.asString(row['status_label'], fallback: '-'),
+      badgeBuilder: (row) =>
+          JsonHelper.asString(row['status_label'], fallback: '-'),
+      accent: accent,
+    ),
+  ];
+}
+
+List<Widget> _savingsSections(
+  Map<String, dynamic> payload,
+  Color accent, {
+  TextEditingController? pinController,
+  TextEditingController? pinConfirmController,
+  TextEditingController? topupAmountController,
+  TextEditingController? topupNotesController,
+  String? selectedProofImagePath,
+  bool isSubmittingSavingsPin = false,
+  bool isSubmittingSavingsTopup = false,
+  VoidCallback? onSubmitSavingsPin,
+  VoidCallback? onPickProofImage,
+  VoidCallback? onSubmitSavingsTopup,
+}) {
+  final account = JsonHelper.asMap(payload['account']);
+  final hasPin = account['has_pin'] == true;
+  final balance = JsonHelper.asInt(account['balance']);
+  final transactions = JsonHelper.asList(payload['transactions']);
+  final canTopupViaMobile = payload['can_topup_via_mobile'] == true;
+  final topupInfo = JsonHelper.asString(payload['topup_info'], fallback: '-');
+
+  return [
+    _MetricGrid(
+      title: 'Ringkasan Tabungan',
+      accent: accent,
+      items: [
+        MapEntry('Saldo saat ini', CurrencyFormatter.rupiah(balance)),
+        MapEntry('PIN santri', hasPin ? 'Sudah diset' : 'Belum diset'),
+        MapEntry('Total riwayat', '${transactions.length}'),
+        MapEntry('Top up mobile', canTopupViaMobile ? 'Aktif' : 'Belum aktif'),
+      ],
+    ),
+    const SizedBox(height: 14),
+    AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Atur PIN Tabungan Santri',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: pinController,
+            keyboardType: TextInputType.number,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'PIN baru',
+              hintText: 'Minimal 4 digit',
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: pinConfirmController,
+            keyboardType: TextInputType.number,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'Konfirmasi PIN',
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: isSubmittingSavingsPin ? null : onSubmitSavingsPin,
+              child:
+                  Text(isSubmittingSavingsPin ? 'Menyimpan...' : 'Simpan PIN'),
+            ),
+          ),
+        ],
+      ),
+    ),
+    const SizedBox(height: 14),
+    _InfoCard(
+      accent: accent,
+      title: 'Top Up via Mobile',
+      subtitle: topupInfo,
+    ),
+    const SizedBox(height: 14),
+    AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Pengajuan Top Up',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: topupAmountController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Nominal top up',
+              hintText: 'Contoh: 100000',
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: topupNotesController,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: 'Catatan (opsional)',
+            ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: onPickProofImage,
+            icon: const Icon(Icons.photo_library_outlined),
+            label: Text(
+              selectedProofImagePath == null
+                  ? 'Pilih bukti transfer'
+                  : 'Ganti bukti transfer',
+            ),
+          ),
+          if (selectedProofImagePath != null) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(
+                File(selectedProofImagePath),
+                height: 170,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              selectedProofImagePath.split(RegExp(r'[\\/]')).last,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: isSubmittingSavingsTopup ? null : onSubmitSavingsTopup,
+              child: Text(
+                isSubmittingSavingsTopup
+                    ? 'Mengirim...'
+                    : 'Kirim Pengajuan Top Up',
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+    const SizedBox(height: 20),
+    const SectionTitle(title: 'Riwayat Transaksi'),
+    const SizedBox(height: 10),
+    _CardList(
+      items: transactions,
+      emptySubtitle: 'Belum ada transaksi tabungan.',
+      titleBuilder: (row) {
+        final type = JsonHelper.asString(
+          row['transaction_type_label'],
+          fallback: JsonHelper.asString(row['transaction_type'], fallback: '-'),
+        );
+        return '$type - ${CurrencyFormatter.rupiah(JsonHelper.asInt(row['amount']))}';
+      },
+      subtitleBuilder: (row) {
+        final createdAt = AppDateFormatter.shortDate(
+          JsonHelper.asString(row['created_at'], fallback: '-'),
+        );
+        final notes = JsonHelper.asString(row['notes'], fallback: '-');
+        return 'Tanggal $createdAt\n$notes';
+      },
+      badgeBuilder: (row) => JsonHelper.asString(
+        row['status_label'],
+        fallback: JsonHelper.asString(row['status'], fallback: '-'),
+      ),
       accent: accent,
     ),
   ];
@@ -499,9 +854,12 @@ List<Widget> _memorizationSections(Map<String, dynamic> payload, Color accent) {
       accent: accent,
       items: [
         MapEntry('Total juz', '${JsonHelper.asInt(summary['total_juz'])}'),
-        MapEntry('Surah terakhir', JsonHelper.asString(summary['last_surah'], fallback: '-')),
-        MapEntry('Ayat terakhir', JsonHelper.asString(summary['last_ayat'], fallback: '-')),
-        MapEntry('Progress', JsonHelper.asString(summary['last_target_text'], fallback: '-')),
+        MapEntry('Surah terakhir',
+            JsonHelper.asString(summary['last_surah'], fallback: '-')),
+        MapEntry('Ayat terakhir',
+            JsonHelper.asString(summary['last_ayat'], fallback: '-')),
+        MapEntry('Progress',
+            JsonHelper.asString(summary['last_target_text'], fallback: '-')),
       ],
     ),
     const SizedBox(height: 20),
@@ -511,7 +869,7 @@ List<Widget> _memorizationSections(Map<String, dynamic> payload, Color accent) {
       items: JsonHelper.asList(payload['records']),
       emptySubtitle: 'Belum ada data hafalan.',
       titleBuilder: (row) =>
-          '${JsonHelper.asString(row['surah'], fallback: '-') } (${JsonHelper.asString(row['ayat_start'], fallback: '?')}-${JsonHelper.asString(row['ayat_end'], fallback: '?')})',
+          '${JsonHelper.asString(row['surah'], fallback: '-')} (${JsonHelper.asString(row['ayat_start'], fallback: '?')}-${JsonHelper.asString(row['ayat_end'], fallback: '?')})',
       subtitleBuilder: (row) =>
           'Tanggal ${JsonHelper.asString(row['date'], fallback: '-')}\nJenis ${JsonHelper.asString(row['type_label'], fallback: '-')}',
       badgeBuilder: (row) => JsonHelper.asString(row['score'], fallback: '-'),
@@ -523,7 +881,8 @@ List<Widget> _memorizationSections(Map<String, dynamic> payload, Color accent) {
     _CardList(
       items: JsonHelper.asList(payload['recitation_records']),
       emptySubtitle: 'Belum ada data setoran bacaan.',
-      titleBuilder: (row) => JsonHelper.asString(row['material_text'], fallback: '-'),
+      titleBuilder: (row) =>
+          JsonHelper.asString(row['material_text'], fallback: '-'),
       subtitleBuilder: (row) =>
           'Tanggal ${JsonHelper.asString(row['date'], fallback: '-')}\nSumber ${JsonHelper.asString(row['recitation_source_label'], fallback: '-')}',
       badgeBuilder: (row) => JsonHelper.asString(row['score'], fallback: '-'),
@@ -535,7 +894,8 @@ List<Widget> _memorizationSections(Map<String, dynamic> payload, Color accent) {
     _CardList(
       items: JsonHelper.asList(payload['evaluations']),
       emptySubtitle: 'Belum ada evaluasi tahfidz.',
-      titleBuilder: (row) => JsonHelper.asString(row['period_type_label'], fallback: 'Evaluasi'),
+      titleBuilder: (row) =>
+          JsonHelper.asString(row['period_type_label'], fallback: 'Evaluasi'),
       subtitleBuilder: (row) =>
           'Tanggal ${JsonHelper.asString(row['date'], fallback: '-')}\n${JsonHelper.asString(row['notes'], fallback: '-')}',
       badgeBuilder: (row) => JsonHelper.asString(row['score'], fallback: '-'),
@@ -551,10 +911,14 @@ List<Widget> _gradeSections(Map<String, dynamic> payload, Color accent) {
       title: 'Ringkasan Akademik',
       accent: accent,
       items: [
-        MapEntry('Tahun ajaran', JsonHelper.asString(year['name'], fallback: '-')),
-        MapEntry('Semester', JsonHelper.asString(year['semester'], fallback: '-')),
-        MapEntry('Ringkasan mapel', '${JsonHelper.asList(payload['summary']).length}'),
-        MapEntry('Detail nilai', '${JsonHelper.asList(payload['grades']).length}'),
+        MapEntry(
+            'Tahun ajaran', JsonHelper.asString(year['name'], fallback: '-')),
+        MapEntry(
+            'Semester', JsonHelper.asString(year['semester'], fallback: '-')),
+        MapEntry('Ringkasan mapel',
+            '${JsonHelper.asList(payload['summary']).length}'),
+        MapEntry(
+            'Detail nilai', '${JsonHelper.asList(payload['grades']).length}'),
       ],
     ),
     const SizedBox(height: 20),
@@ -563,7 +927,8 @@ List<Widget> _gradeSections(Map<String, dynamic> payload, Color accent) {
     _CardList(
       items: JsonHelper.asList(payload['grades']),
       emptySubtitle: 'Data nilai belum tersedia.',
-      titleBuilder: (row) => JsonHelper.asString(row['subject_name'], fallback: '-'),
+      titleBuilder: (row) =>
+          JsonHelper.asString(row['subject_name'], fallback: '-'),
       subtitleBuilder: (row) =>
           'Tipe ${JsonHelper.asString(row['type_label'], fallback: '-')}\n${AppDateFormatter.dateLabel(JsonHelper.asString(row['created_at']))}\n${JsonHelper.asString(row['notes'], fallback: '-')}',
       badgeBuilder: (row) => JsonHelper.asString(row['score'], fallback: '-'),
@@ -573,12 +938,14 @@ List<Widget> _gradeSections(Map<String, dynamic> payload, Color accent) {
 }
 
 List<Widget> _scheduleSections(Map<String, dynamic> payload, Color accent) {
-  final todayName = JsonHelper.asString(payload['today_name'], fallback: 'Hari ini');
+  final todayName =
+      JsonHelper.asString(payload['today_name'], fallback: 'Hari ini');
   return [
     _InfoCard(
       accent: accent,
       title: 'Jadwal hari ini: $todayName',
-      subtitle: '${JsonHelper.asList(payload['today_items']).length} item terjadwal.',
+      subtitle:
+          '${JsonHelper.asList(payload['today_items']).length} item terjadwal.',
     ),
     const SizedBox(height: 14),
     const SectionTitle(title: 'Jadwal Mingguan'),
@@ -589,12 +956,10 @@ List<Widget> _scheduleSections(Map<String, dynamic> payload, Color accent) {
       titleBuilder: (row) => JsonHelper.asString(row['day'], fallback: 'Hari'),
       subtitleBuilder: (row) => JsonHelper.asList(row['items']).isEmpty
           ? 'Libur'
-          : JsonHelper.asList(row['items'])
-              .map((item) {
-                final entry = JsonHelper.asMap(item);
-                return '${JsonHelper.asString(entry['start_time'], fallback: '--:--')} ${JsonHelper.asString(entry['subject_name'], fallback: '-')}';
-              })
-              .join('\n'),
+          : JsonHelper.asList(row['items']).map((item) {
+              final entry = JsonHelper.asMap(item);
+              return '${JsonHelper.asString(entry['start_time'], fallback: '--:--')} ${JsonHelper.asString(entry['subject_name'], fallback: '-')}';
+            }).join('\n'),
       badgeBuilder: (row) => '${JsonHelper.asList(row['items']).length} item',
       accent: accent,
     ),
@@ -621,10 +986,12 @@ List<Widget> _attendanceSections(Map<String, dynamic> payload, Color accent) {
     _CardList(
       items: JsonHelper.asList(payload['records']),
       emptySubtitle: 'Belum ada data absensi kelas.',
-      titleBuilder: (row) => JsonHelper.asString(row['status_label'], fallback: '-'),
+      titleBuilder: (row) =>
+          JsonHelper.asString(row['status_label'], fallback: '-'),
       subtitleBuilder: (row) =>
           'Tanggal ${JsonHelper.asString(row['date'], fallback: '-')}\nGuru ${JsonHelper.asString(row['teacher_name'], fallback: '-')}',
-      badgeBuilder: (row) => JsonHelper.asString(row['status_label'], fallback: '-'),
+      badgeBuilder: (row) =>
+          JsonHelper.asString(row['status_label'], fallback: '-'),
       accent: accent,
     ),
     if (payload['is_boarding_student'] == true) ...[
@@ -645,10 +1012,12 @@ List<Widget> _attendanceSections(Map<String, dynamic> payload, Color accent) {
       _CardList(
         items: JsonHelper.asList(payload['boarding_records']),
         emptySubtitle: 'Belum ada data absensi asrama.',
-        titleBuilder: (row) => JsonHelper.asString(row['activity_name'], fallback: '-'),
+        titleBuilder: (row) =>
+            JsonHelper.asString(row['activity_name'], fallback: '-'),
         subtitleBuilder: (row) =>
             'Tanggal ${JsonHelper.asString(row['date'], fallback: '-')}\n${JsonHelper.asString(row['notes'], fallback: '-')}',
-        badgeBuilder: (row) => JsonHelper.asString(row['status_label'], fallback: '-'),
+        badgeBuilder: (row) =>
+            JsonHelper.asString(row['status_label'], fallback: '-'),
         accent: accent,
       ),
     ],
@@ -666,8 +1035,10 @@ List<Widget> _behaviorSections(Map<String, dynamic> payload, Color accent) {
       accent: accent,
       items: [
         MapEntry('Total poin', '${JsonHelper.asInt(summary['point_total'])}'),
-        MapEntry('Pelanggaran', '${JsonHelper.asInt(summary['violation_count'])}'),
-        MapEntry('Laporan guru', '${JsonHelper.asInt(summary['behavior_report_count'])}'),
+        MapEntry(
+            'Pelanggaran', '${JsonHelper.asInt(summary['violation_count'])}'),
+        MapEntry('Laporan guru',
+            '${JsonHelper.asInt(summary['behavior_report_count'])}'),
         MapEntry('Pertemuan', '${JsonHelper.asInt(summary['total_meetings'])}'),
       ],
     ),
@@ -706,7 +1077,8 @@ List<Widget> _behaviorSections(Map<String, dynamic> payload, Color accent) {
     _CardList(
       items: JsonHelper.asList(payload['violations']),
       emptySubtitle: 'Bersih, tidak ada pelanggaran.',
-      titleBuilder: (row) => JsonHelper.asString(row['description'], fallback: '-'),
+      titleBuilder: (row) =>
+          JsonHelper.asString(row['description'], fallback: '-'),
       subtitleBuilder: (row) =>
           'Tanggal ${JsonHelper.asString(row['date'], fallback: '-')}\nSanksi ${JsonHelper.asString(row['sanction'], fallback: '-')}',
       badgeBuilder: (row) => '+${JsonHelper.asInt(row['points'])}',
@@ -731,7 +1103,8 @@ class _BehaviorMatrixCards extends StatelessWidget {
     return Column(
       children: rows.map((item) {
         final row = JsonHelper.asMap(item);
-        final category = JsonHelper.asString(row['category_key'], fallback: 'TP');
+        final category =
+            JsonHelper.asString(row['category_key'], fallback: 'TP');
         return AppCard(
           margin: const EdgeInsets.only(bottom: 8),
           child: Row(
@@ -743,7 +1116,8 @@ class _BehaviorMatrixCards extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                 decoration: BoxDecoration(
                   color: const Color(0xFFE8F1FF),
                   borderRadius: BorderRadius.circular(999),
@@ -951,7 +1325,8 @@ class _InfoCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text(title,
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 6),
                 Text(
                   subtitle,
@@ -969,7 +1344,8 @@ class _InfoCard extends StatelessWidget {
   }
 }
 
-IconData _icon(String key) => {
+IconData _icon(String key) =>
+    {
       'pengumuman': Icons.campaign_rounded,
       'keuangan': Icons.account_balance_wallet_rounded,
       'tahfidz': Icons.menu_book_rounded,
@@ -977,10 +1353,12 @@ IconData _icon(String key) => {
       'absensi': Icons.fact_check_rounded,
       'jadwal': Icons.calendar_month_rounded,
       'perilaku': Icons.shield_outlined,
+      'tabungan': Icons.savings_outlined,
     }[key.toLowerCase()] ??
     Icons.apps_rounded;
 
-Color _accent(String key) => {
+Color _accent(String key) =>
+    {
       'pengumuman': const Color(0xFFEF4444),
       'keuangan': const Color(0xFFF59E0B),
       'tahfidz': AppColors.success,
@@ -988,17 +1366,17 @@ Color _accent(String key) => {
       'absensi': AppColors.accentTeal,
       'jadwal': const Color(0xFF7C3AED),
       'perilaku': AppColors.danger,
+      'tabungan': const Color(0xFF0EA5A4),
     }[key.toLowerCase()] ??
     AppColors.primary;
 
 Color _dark(Color color) {
   final hsl = HSLColor.fromColor(color);
-  return hsl
-      .withLightness((hsl.lightness - 0.14).clamp(0.0, 1.0))
-      .toColor();
+  return hsl.withLightness((hsl.lightness - 0.14).clamp(0.0, 1.0)).toColor();
 }
 
-String _description(String key) => {
+String _description(String key) =>
+    {
       'pengumuman':
           'Lihat informasi terbaru sekolah yang relevan untuk profil anak.',
       'keuangan':
@@ -1010,7 +1388,8 @@ String _description(String key) => {
       'absensi':
           'Periksa absensi kelas dan absensi asrama bila anak tinggal di asrama.',
       'jadwal': 'Pantau jadwal mingguan dan agenda pelajaran harian siswa.',
-      'perilaku':
-          'Lihat laporan perilaku guru dan catatan kedisiplinan siswa.',
+      'perilaku': 'Lihat laporan perilaku guru dan catatan kedisiplinan siswa.',
+      'tabungan':
+          'Pantau saldo tabungan santri pesantren, riwayat transaksi, dan kelola PIN tabungan.',
     }[key.toLowerCase()] ??
     'Detail fitur ditampilkan di halaman ini.';

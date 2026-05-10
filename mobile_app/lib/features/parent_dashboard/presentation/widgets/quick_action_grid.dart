@@ -95,6 +95,8 @@ class QuickActionGrid extends StatelessWidget {
         return Icons.person_outline_rounded;
       case 'perilaku':
         return Icons.emoji_people_outlined;
+      case 'tabungan':
+        return Icons.savings_outlined;
       default:
         return Icons.apps_rounded;
     }
@@ -120,6 +122,8 @@ class QuickActionGrid extends StatelessWidget {
         return const Color(0xFF0EA5A4);
       case 'perilaku':
         return AppColors.danger;
+      case 'tabungan':
+        return const Color(0xFF0EA5A4);
       default:
         return AppColors.primary;
     }

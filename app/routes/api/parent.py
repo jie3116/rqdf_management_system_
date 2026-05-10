@@ -1,7 +1,10 @@
 from collections import defaultdict
 from datetime import datetime
+import os
+import uuid
 
 from flask import g, request
+from werkzeug.utils import secure_filename
 
 from app.models import (
     AcademicYear,
@@ -16,6 +19,10 @@ from app.models import (
     PaymentStatus,
     RecitationRecord,
     Schedule,
+    StudentSavingsAccount,
+    StudentSavingsTransaction,
+    SavingsTransactionStatus,
+    SavingsTransactionType,
     TahfidzEvaluation,
     TahfidzRecord,
     TahfidzSummary,
@@ -23,10 +30,12 @@ from app.models import (
     Violation,
 )
 from app.services.formal_service import get_student_formal_classroom
+from app.services.pesantren_service import is_student_in_pesantren_program
 from app.utils.announcements import get_announcements_for_dashboard
 from app.utils.tenant import resolve_tenant_id, scoped_classrooms_query
 from app.utils.timezone import local_today
 from app.routes.teacher import _behavior_matrix_for_student
+from app.extensions import db
 
 from .common import (
     DAY_NAMES,
@@ -46,7 +55,28 @@ from .common import (
 def _student_payload(user, student):
     payload = dict(serialize_child(user, student))
     payload["nis"] = student.nis or "-"
+    tenant_id = resolve_tenant_id(user)
+    payload["is_pesantren_student"] = is_student_in_pesantren_program(student, tenant_id=tenant_id)
     return payload
+
+
+def _ensure_pesantren_student(user, student):
+    tenant_id = resolve_tenant_id(user)
+    if not is_student_in_pesantren_program(student, tenant_id=tenant_id):
+        return None, None, api_error(
+            "forbidden",
+            "Fitur tabungan hanya berlaku untuk santri program pesantren.",
+            403,
+        )
+    return tenant_id, student, None
+
+
+def _normalize_amount(raw_value):
+    cleaned = str(raw_value or "").replace(".", "").replace(",", "").strip()
+    try:
+        return int(cleaned)
+    except ValueError:
+        return 0
 
 
 def _resolve_parent_children_context():
@@ -352,6 +382,19 @@ def register_parent_routes(api_bp):
             program_types=[class_program] if class_program else [],
             show_all=False,
         )
+        tenant_id = resolve_tenant_id(user)
+        is_pesantren_student = is_student_in_pesantren_program(selected_child, tenant_id=tenant_id)
+        quick_actions = [
+            {"key": "pengumuman", "label": "Pengumuman"},
+            {"key": "keuangan", "label": "Keuangan"},
+            {"key": "tahfidz", "label": "Tahfidz"},
+            {"key": "jadwal", "label": "Jadwal"},
+            {"key": "nilai", "label": "Nilai"},
+            {"key": "absensi", "label": "Absensi"},
+            {"key": "perilaku", "label": "Perilaku"},
+        ]
+        if is_pesantren_student:
+            quick_actions.append({"key": "tabungan", "label": "Tabungan"})
 
         return api_success(
             {
@@ -364,19 +407,12 @@ def register_parent_routes(api_bp):
                     "memorization_progress": memorization_progress,
                     "attendance_status": attendance_status,
                 },
-                "quick_actions": [
-                    {"key": "pengumuman", "label": "Pengumuman"},
-                    {"key": "keuangan", "label": "Keuangan"},
-                    {"key": "tahfidz", "label": "Tahfidz"},
-                    {"key": "jadwal", "label": "Jadwal"},
-                    {"key": "nilai", "label": "Nilai"},
-                    {"key": "absensi", "label": "Absensi"},
-                    {"key": "perilaku", "label": "Perilaku"},
-                ],
+                "quick_actions": quick_actions,
                 "recent_activities": activities,
                 "announcements": [announcement_payload(item) for item in announcements],
                 "unread_announcements_count": unread_count,
                 "is_majlis_participant": bool(parent.is_majlis_participant),
+                "is_pesantren_student": is_pesantren_student,
             }
         )
 
@@ -582,6 +618,190 @@ def register_parent_routes(api_bp):
                     for row in evaluations
                 ],
             }
+        )
+
+    @api_bp.get("/parent/children/<int:child_id>/savings")
+    @mobile_auth_required(UserRole.WALI_MURID)
+    def parent_child_savings(child_id):
+        user, _, children, error_response = _resolve_parent_children_context()
+        if error_response is not None:
+            return error_response
+
+        selected_child = _resolve_selected_child(children, child_id)
+        if selected_child is None:
+            return api_error("forbidden", "Akses data siswa tidak diizinkan.", 403)
+
+        tenant_id, _, pesantren_error = _ensure_pesantren_student(user, selected_child)
+        if pesantren_error is not None:
+            return pesantren_error
+
+        account = StudentSavingsAccount.query.filter_by(
+            tenant_id=tenant_id,
+            student_id=selected_child.id,
+        ).first()
+        if account is None:
+            account = StudentSavingsAccount(
+                tenant_id=tenant_id,
+                student_id=selected_child.id,
+                balance=0,
+            )
+            db.session.add(account)
+            db.session.commit()
+
+        transactions = (
+            StudentSavingsTransaction.query.filter_by(
+                tenant_id=tenant_id,
+                student_id=selected_child.id,
+            )
+            .order_by(StudentSavingsTransaction.id.desc())
+            .limit(30)
+            .all()
+        )
+        return api_success(
+            {
+                "student": _student_payload(user, selected_child),
+                "account": {
+                    "id": account.id,
+                    "balance": int(account.balance or 0),
+                    "has_pin": bool(account.pin_hash),
+                },
+                "can_topup_via_mobile": True,
+                "topup_info": "Top up via mobile tersedia. Unggah bukti transfer lalu kirim pengajuan.",
+                "transactions": [
+                    {
+                        "id": row.id,
+                        "amount": int(row.amount or 0),
+                        "transaction_type": row.transaction_type.name if row.transaction_type else "-",
+                        "transaction_type_label": row.transaction_type.value if row.transaction_type else "-",
+                        "status": row.status.name if row.status else "-",
+                        "status_label": row.status.value if row.status else "-",
+                        "created_at": fmt_datetime(row.created_at),
+                        "notes": row.notes or "-",
+                        "proof_image_url": (
+                            f"/static/{row.proof_image}"
+                            if row.proof_image
+                            else None
+                        ),
+                    }
+                    for row in transactions
+                ],
+            }
+        )
+
+    @api_bp.post("/parent/children/<int:child_id>/savings/pin")
+    @mobile_auth_required(UserRole.WALI_MURID)
+    def parent_child_savings_set_pin(child_id):
+        user, _, children, error_response = _resolve_parent_children_context()
+        if error_response is not None:
+            return error_response
+
+        selected_child = _resolve_selected_child(children, child_id)
+        if selected_child is None:
+            return api_error("forbidden", "Akses data siswa tidak diizinkan.", 403)
+
+        tenant_id, _, pesantren_error = _ensure_pesantren_student(user, selected_child)
+        if pesantren_error is not None:
+            return pesantren_error
+
+        payload = request.get_json(silent=True) or {}
+        pin = str(payload.get("pin") or "").strip()
+        pin_confirm = str(payload.get("pin_confirm") or "").strip()
+        if len(pin) < 4 or not pin.isdigit():
+            return api_error("validation_error", "PIN tabungan harus angka minimal 4 digit.", 422)
+        if pin != pin_confirm:
+            return api_error("validation_error", "Konfirmasi PIN tidak sama.", 422)
+
+        account = StudentSavingsAccount.query.filter_by(
+            tenant_id=tenant_id,
+            student_id=selected_child.id,
+        ).first()
+        if account is None:
+            account = StudentSavingsAccount(
+                tenant_id=tenant_id,
+                student_id=selected_child.id,
+                balance=0,
+            )
+            db.session.add(account)
+
+        account.set_pin(pin)
+        account.pin_failed_attempts = 0
+        account.pin_locked_until = None
+        db.session.commit()
+        return api_success(
+            {
+                "student": _student_payload(user, selected_child),
+                "has_pin": True,
+            },
+            message="PIN tabungan berhasil disimpan.",
+        )
+
+    @api_bp.post("/parent/children/<int:child_id>/savings/topup")
+    @mobile_auth_required(UserRole.WALI_MURID)
+    def parent_child_savings_topup(child_id):
+        user, _, children, error_response = _resolve_parent_children_context()
+        if error_response is not None:
+            return error_response
+
+        selected_child = _resolve_selected_child(children, child_id)
+        if selected_child is None:
+            return api_error("forbidden", "Akses data siswa tidak diizinkan.", 403)
+
+        tenant_id, _, pesantren_error = _ensure_pesantren_student(user, selected_child)
+        if pesantren_error is not None:
+            return pesantren_error
+
+        amount = _normalize_amount(request.form.get("amount"))
+        notes = str(request.form.get("notes") or "").strip()
+        proof = request.files.get("proof_image")
+        if amount <= 0:
+            return api_error("validation_error", "Nominal top up harus lebih besar dari 0.", 422)
+        if not proof or not proof.filename:
+            return api_error("validation_error", "Bukti transfer wajib diunggah.", 422)
+
+        secure_name = secure_filename(proof.filename)
+        ext = os.path.splitext(secure_name)[1].lower()
+        allowed_ext = {".jpg", ".jpeg", ".png", ".webp"}
+        if ext not in allowed_ext:
+            return api_error("validation_error", "Format bukti transfer harus JPG, PNG, atau WEBP.", 422)
+
+        account = StudentSavingsAccount.query.filter_by(
+            tenant_id=tenant_id,
+            student_id=selected_child.id,
+        ).first()
+        if account is None:
+            account = StudentSavingsAccount(
+                tenant_id=tenant_id,
+                student_id=selected_child.id,
+                balance=0,
+            )
+            db.session.add(account)
+            db.session.flush()
+
+        uploads_dir = os.path.join("app", "static", "uploads", "savings_proofs")
+        os.makedirs(uploads_dir, exist_ok=True)
+        filename = f"{uuid.uuid4().hex}{ext}"
+        proof.save(os.path.join(uploads_dir, filename))
+
+        trx = StudentSavingsTransaction(
+            tenant_id=tenant_id,
+            account_id=account.id,
+            student_id=selected_child.id,
+            amount=amount,
+            transaction_type=SavingsTransactionType.DEPOSIT,
+            status=SavingsTransactionStatus.PENDING,
+            proof_image=f"uploads/savings_proofs/{filename}",
+            requested_by_user_id=user.id,
+            notes=notes or None,
+        )
+        db.session.add(trx)
+        db.session.commit()
+        return api_success(
+            {
+                "student": _student_payload(user, selected_child),
+                "transaction_id": trx.id,
+                "status": trx.status.name if trx.status else "PENDING",
+            },
+            message="Pengajuan top up tabungan berhasil dikirim. Menunggu verifikasi admin.",
         )
 
     @api_bp.get("/parent/children/<int:child_id>/weekly-schedule")

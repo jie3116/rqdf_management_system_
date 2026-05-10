@@ -25,11 +25,13 @@ from app.models import (
     BoardingHoliday,
     GroupType,
     Program,
+    ProgramEnrollment,
     ProgramGroup,
     StudentSavingsAccount,
     StudentSavingsTransaction,
     SavingsTransactionType,
     SavingsTransactionStatus,
+    EnrollmentStatus,
 )
 
 
@@ -130,6 +132,32 @@ def _tenant_students_query(tenant_id):
         Student.is_deleted.is_(False),
         User.is_deleted.is_(False),
         User.tenant_id == tenant_id,
+    )
+
+
+def _tenant_pesantren_students_query(tenant_id):
+    return (
+        Student.query
+        .join(User, Student.user_id == User.id)
+        .join(
+            ProgramEnrollment,
+            (ProgramEnrollment.person_id == Student.person_id)
+            & (ProgramEnrollment.status == EnrollmentStatus.ACTIVE)
+            & (ProgramEnrollment.is_deleted.is_(False)),
+        )
+        .join(
+            Program,
+            (Program.id == ProgramEnrollment.program_id)
+            & (Program.code == 'PESANTREN')
+            & (Program.is_deleted.is_(False)),
+        )
+        .filter(
+            Student.is_deleted.is_(False),
+            User.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+            ProgramEnrollment.tenant_id == tenant_id,
+        )
+        .distinct()
     )
 
 
@@ -962,6 +990,16 @@ def manage_savings():
                         flash('Transaksi tidak ditemukan atau sudah diproses.', 'warning')
                         return redirect(url_for('boarding.manage_savings'))
 
+                    is_pesantren_student = (
+                        _tenant_pesantren_students_query(tenant_id)
+                        .filter(Student.id == locked_trx.student_id)
+                        .first()
+                        is not None
+                    )
+                    if not is_pesantren_student:
+                        flash('Transaksi tabungan hanya berlaku untuk santri program pesantren.', 'warning')
+                        return redirect(url_for('boarding.manage_savings'))
+
                     locked_trx.status = SavingsTransactionStatus.APPROVED if action == 'approve' else SavingsTransactionStatus.REJECTED
                     locked_trx.approved_by_user_id = current_user.id
                     locked_trx.approved_at = utc_now_naive()
@@ -1034,6 +1072,15 @@ def manage_savings():
 
             try:
                 with db.session.begin_nested():
+                    pesantren_student = (
+                        _tenant_pesantren_students_query(tenant_id)
+                        .filter(Student.id == student_id)
+                        .first()
+                    )
+                    if not pesantren_student:
+                        flash('Penarikan hanya berlaku untuk santri program pesantren.', 'warning')
+                        return redirect(url_for('boarding.manage_savings'))
+
                     account = (
                         StudentSavingsAccount.query
                         .filter_by(tenant_id=tenant_id, student_id=student_id)
@@ -1091,16 +1138,22 @@ def manage_savings():
     selected_recon_date = local_today()
     recon_start_utc, recon_end_utc = local_day_bounds_utc_naive(selected_recon_date)
 
-    students = _tenant_students_query(tenant_id).order_by(Student.full_name.asc()).all()
-    pending = (
+    students = _tenant_pesantren_students_query(tenant_id).order_by(Student.full_name.asc()).all()
+    pesantren_student_ids = [student.id for student in students]
+    pending_query = (
         StudentSavingsTransaction.query
         .filter_by(tenant_id=tenant_id, status=SavingsTransactionStatus.PENDING)
-        .order_by(StudentSavingsTransaction.id.desc())
-        .all()
     )
+    if pesantren_student_ids:
+        pending_query = pending_query.filter(StudentSavingsTransaction.student_id.in_(pesantren_student_ids))
+    else:
+        pending_query = pending_query.filter(False)
+    pending = pending_query.order_by(StudentSavingsTransaction.id.desc()).all()
+
     accounts = (
         StudentSavingsAccount.query
         .filter_by(tenant_id=tenant_id)
+        .filter(StudentSavingsAccount.student_id.in_(pesantren_student_ids) if pesantren_student_ids else False)
         .order_by(StudentSavingsAccount.id.asc())
         .all()
     )

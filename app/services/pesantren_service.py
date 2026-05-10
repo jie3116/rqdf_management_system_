@@ -52,6 +52,17 @@ def _active_pesantren_enrollment(tenant_id, person_id):
     )
 
 
+def is_student_in_pesantren_program(student, tenant_id=None):
+    if student is None or not student.person_id:
+        return False
+
+    resolved_tenant_id = tenant_id or _resolve_student_tenant_id(student)
+    if not resolved_tenant_id:
+        return False
+
+    return _active_pesantren_enrollment(resolved_tenant_id, student.person_id) is not None
+
+
 def list_students_for_dormitory(dormitory_id, tenant_id=None):
     query = (
         Student.query.join(

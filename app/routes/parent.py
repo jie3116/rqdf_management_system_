@@ -15,6 +15,7 @@ from app.models import (
 )
 from app.decorators import role_required
 from app.services.formal_service import get_student_formal_classroom
+from app.services.pesantren_service import is_student_in_pesantren_program
 from app.utils.tenant import resolve_tenant_id, scoped_classrooms_query
 from app.utils.timezone import local_now, local_today
 from app.extensions import db
@@ -498,13 +499,22 @@ def student_savings():
         flash('Profil wali murid tidak ditemukan.', 'danger')
         return redirect(url_for('parent.dashboard'))
 
-    children = (
+    tenant_id = resolve_tenant_id(current_user)
+    all_children = (
         Student.query.filter_by(parent_id=parent.id, is_deleted=False)
         .order_by(Student.full_name.asc(), Student.id.asc())
         .all()
     )
-    if not children:
+    if not all_children:
         flash('Belum ada data santri terkait akun ini.', 'warning')
+        return redirect(url_for('parent.dashboard'))
+
+    children = [
+        child for child in all_children
+        if is_student_in_pesantren_program(child, tenant_id=tenant_id)
+    ]
+    if not children:
+        flash('Fitur tabungan hanya berlaku untuk santri program pesantren.', 'warning')
         return redirect(url_for('parent.dashboard'))
 
     selected_student_id = request.values.get('student_id', type=int)
@@ -513,7 +523,6 @@ def student_savings():
         flash('Santri yang dipilih tidak valid.', 'warning')
         return redirect(url_for('parent.student_savings'))
 
-    tenant_id = resolve_tenant_id(current_user)
     account = StudentSavingsAccount.query.filter_by(tenant_id=tenant_id, student_id=student.id).first()
     if not account:
         account = StudentSavingsAccount(tenant_id=tenant_id, student_id=student.id, balance=0)
