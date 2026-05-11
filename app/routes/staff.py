@@ -28,6 +28,7 @@ from app.services.bahasa_service import (
 )
 from app.services.formal_service import sync_student_formal_class_membership
 from app.services.ppdb_fee_service import build_candidate_fee_drafts
+from app.services.finance_posting_service import post_invoice_payment
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType, Tenant, AppConfig,
@@ -387,6 +388,23 @@ def cashier_pay(student_id):
                 invoice.status = PaymentStatus.UNPAID
 
             db.session.commit()
+            try:
+                post_invoice_payment(
+                    tenant_id=tenant_id,
+                    transaction_id=trx.id,
+                    actor_user_id=current_user.id,
+                )
+            except Exception:
+                current_app.logger.exception(
+                    "Gagal auto-post jurnal pembayaran kasir tenant_id=%s transaction_id=%s",
+                    tenant_id,
+                    trx.id,
+                )
+                flash(
+                    'Pembayaran tersimpan, tetapi jurnal finance belum terposting otomatis. '
+                    'Silakan cek menu rekonsiliasi posting.',
+                    'warning'
+                )
             flash(f'Pembayaran Rp {bayar:,.0f} diterima!', 'success')
             return redirect(url_for('staff.cashier_pay', student_id=student.id, trx=trx.id))
 

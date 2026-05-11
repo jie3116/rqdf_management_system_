@@ -44,6 +44,13 @@
                             <div class="small text-muted">
                                 {{ c.gender.value if c.gender else '-' }} | {{ c.education_level.value if c.education_level else '-' }}
                             </div>
+                            {% if c.nik or c.kk_number %}
+                            <div class="small text-muted">
+                                {% if c.nik %}NIK: {{ c.nik }}{% endif %}
+                                {% if c.nik and c.kk_number %} | {% endif %}
+                                {% if c.kk_number %}KK: {{ c.kk_number }}{% endif %}
+                            </div>
+                            {% endif %}
                         </td>
                         <td>
                             {% if c.program_type and c.program_type.name == 'MAJLIS_TALIM' %}

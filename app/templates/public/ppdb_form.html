@@ -210,7 +210,7 @@
                 <div class="card-body p-4">
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold">Pilihan Jadwal</label>
+                            <label class="form-label fw-bold">Pilihan Jadwal <span class="text-danger">*</span></label>
                             {{ form.tahfidz_schedule(class="form-select") }}
                         </div>
                         <div class="col-md-6 mb-3">
@@ -219,7 +219,7 @@
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Infaq Pembangunan</label>
+                        <label class="form-label fw-bold">Infaq Pembangunan <span class="text-danger">*</span></label>
                         {{ form.initial_pledge_amount(class="form-select", id="infaqSelector") }}
                     </div>
                 </div>
@@ -292,6 +292,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const paymentCaption = document.getElementById('payment_caption');
     const paymentTableBody = document.getElementById('payment_table_body');
     const paymentTotal = document.getElementById('payment_total');
+    const ppdbForm = document.querySelector('form[method="POST"]');
 
     function formatRupiah(amount) {
         return new Intl.NumberFormat('id-ID', {
@@ -406,8 +407,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const isMajlis = program === 'MAJLIS_TALIM';
         const isRqdf = program === 'RQDF_SORE';
         const isTakhosus = program === 'TAKHOSUS_TAHFIDZ';
+        const tahfidzScheduleField = document.querySelector('[name="tahfidz_schedule"]');
+        const initialPledgeField = document.querySelector('[name="initial_pledge_amount"]');
 
         toggleMajlisFields(isMajlis);
+        if (tahfidzScheduleField) tahfidzScheduleField.required = isRqdf;
+        if (initialPledgeField) initialPledgeField.required = isRqdf;
 
         if (rqdfOptions) rqdfOptions.style.display = isRqdf ? 'block' : 'none';
         if (groupFormalOptions) groupFormalOptions.style.display = isMajlis || isRqdf || isTakhosus ? 'none' : 'block';
@@ -451,13 +456,41 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function syncRqdfCustomValidity() {
+        if (!programSelect) return;
+        const isRqdf = programSelect.value === 'RQDF_SORE';
+        if (infaqSelect) {
+            const infaqValue = parseInt(infaqSelect.value || '0', 10) || 0;
+            infaqSelect.setCustomValidity(
+                isRqdf && infaqValue <= 0 ? 'Infaq pembangunan wajib dipilih untuk kelas reguler RQDF.' : ''
+            );
+        }
+        const tahfidzScheduleField = document.querySelector('[name="tahfidz_schedule"]');
+        if (tahfidzScheduleField) {
+            tahfidzScheduleField.setCustomValidity(
+                isRqdf && tahfidzScheduleField.value === 'TIDAK_ADA' ? 'Jadwal kelas RQDF wajib dipilih.' : ''
+            );
+        }
+    }
+
     if (programSelect) programSelect.addEventListener('change', updateForm);
     if (educationSelect) educationSelect.addEventListener('change', updateForm);
     if (scholarshipSelect) scholarshipSelect.addEventListener('change', updateForm);
     if (uniformSelect) uniformSelect.addEventListener('change', updateForm);
     if (infaqSelect) infaqSelect.addEventListener('change', updateForm);
 
+    if (programSelect) programSelect.addEventListener('change', syncRqdfCustomValidity);
+    if (infaqSelect) infaqSelect.addEventListener('change', syncRqdfCustomValidity);
+    const tahfidzScheduleField = document.querySelector('[name="tahfidz_schedule"]');
+    if (tahfidzScheduleField) tahfidzScheduleField.addEventListener('change', syncRqdfCustomValidity);
+    if (ppdbForm) {
+        ppdbForm.addEventListener('submit', function () {
+            syncRqdfCustomValidity();
+        });
+    }
+
     updateForm();
+    syncRqdfCustomValidity();
 });
 </script>
 {% endblock %}

@@ -11,6 +11,7 @@ from app.utils.timezone import APP_TIMEZONE, local_today, local_day_bounds_utc_n
 from app.utils.tenant import resolve_tenant_id, scoped_dormitories_query
 from app.extensions import db
 from app.services.pesantren_service import list_students_for_dormitory, sync_student_dormitory_membership
+from app.services.finance_posting_service import post_savings_transaction
 from app.models import (
     User,
     UserRole,
@@ -1021,6 +1022,19 @@ def manage_savings():
                             flash('Saldo akun tidak cukup untuk memproses transaksi.', 'warning')
                             return redirect(url_for('boarding.manage_savings'))
                 db.session.commit()
+                if action == 'approve':
+                    try:
+                        post_savings_transaction(
+                            tenant_id=tenant_id,
+                            savings_transaction_id=trx_id,
+                            actor_user_id=current_user.id,
+                        )
+                    except Exception:
+                        flash(
+                            'Transaksi tabungan tersimpan, tetapi jurnal finance belum terposting otomatis. '
+                            'Silakan cek menu rekonsiliasi posting.',
+                            'warning'
+                        )
                 flash('Transaksi tabungan berhasil diproses.', 'success')
             except Exception:
                 db.session.rollback()
@@ -1124,6 +1138,18 @@ def manage_savings():
                     account.balance -= amount
                     db.session.add(trx)
                 db.session.commit()
+                try:
+                    post_savings_transaction(
+                        tenant_id=tenant_id,
+                        savings_transaction_id=trx.id,
+                        actor_user_id=current_user.id,
+                    )
+                except Exception:
+                    flash(
+                        'Penarikan tercatat, tetapi jurnal finance belum terposting otomatis. '
+                        'Silakan cek menu rekonsiliasi posting.',
+                        'warning'
+                    )
                 _register_officer_tx_auth_use()
                 flash('Penarikan tunai berhasil dicatat. Serahkan uang ke santri.', 'success')
             except Exception:

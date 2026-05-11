@@ -224,6 +224,69 @@ class SavingsTransactionStatus(enum.Enum):
     REJECTED = "Ditolak"
 
 
+class FinanceAccountCategory(enum.Enum):
+    ASSET = "ASSET"
+    LIABILITY = "LIABILITY"
+    EQUITY = "EQUITY"
+    REVENUE = "REVENUE"
+    EXPENSE = "EXPENSE"
+
+
+class FinanceNormalBalance(enum.Enum):
+    DEBIT = "DEBIT"
+    CREDIT = "CREDIT"
+
+
+class FinancePeriodStatus(enum.Enum):
+    OPEN = "OPEN"
+    CLOSED = "CLOSED"
+    LOCKED = "LOCKED"
+
+
+class FinanceAccountingBasis(enum.Enum):
+    CASH = "CASH"
+    ACCRUAL = "ACCRUAL"
+
+
+class FinanceJournalStatus(enum.Enum):
+    DRAFT = "DRAFT"
+    POSTED = "POSTED"
+    VOID = "VOID"
+
+
+class FinanceEntrySide(enum.Enum):
+    DEBIT = "DEBIT"
+    CREDIT = "CREDIT"
+
+
+class FinanceJournalSourceType(enum.Enum):
+    INVOICE_PAYMENT = "INVOICE_PAYMENT"
+    SAVINGS_DEPOSIT = "SAVINGS_DEPOSIT"
+    SAVINGS_WITHDRAWAL = "SAVINGS_WITHDRAWAL"
+    CASH_BANK_TRANSACTION = "CASH_BANK_TRANSACTION"
+    ADJUSTMENT = "ADJUSTMENT"
+    REVERSAL = "REVERSAL"
+    MANUAL = "MANUAL"
+
+
+class FinanceCashBankAccountType(enum.Enum):
+    CASH = "CASH"
+    BANK = "BANK"
+    EWALLET = "EWALLET"
+
+
+class FinanceCashBankTransactionType(enum.Enum):
+    IN = "IN"
+    OUT = "OUT"
+    TRANSFER = "TRANSFER"
+
+
+class FinanceCashBankTransactionStatus(enum.Enum):
+    DRAFT = "DRAFT"
+    POSTED = "POSTED"
+    VOID = "VOID"
+
+
 # ==========================================
 # 2. ASSOCIATION TABLES
 # ==========================================
@@ -1221,6 +1284,171 @@ class TahfidzEvaluation(BaseModel):
 # ==========================================
 # 8. FINANCE
 # ==========================================
+class FinanceAccount(BaseModel):
+    __tablename__ = 'finance_accounts'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    code = db.Column(db.String(20), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    category = db.Column(db.Enum(FinanceAccountCategory, name='financeaccountcategory'), nullable=False)
+    normal_balance = db.Column(db.Enum(FinanceNormalBalance, name='financenormalbalance'), nullable=False)
+    parent_id = db.Column(db.Integer, db.ForeignKey('finance_accounts.id'), nullable=True, index=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    parent = db.relationship('FinanceAccount', remote_side=[id], backref=db.backref('children', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'code', name='uq_finance_accounts_tenant_code'),
+    )
+
+
+class FinancePeriod(BaseModel):
+    __tablename__ = 'finance_periods'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    name = db.Column(db.String(20), nullable=False)
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    status = db.Column(db.Enum(FinancePeriodStatus, name='financeperiodstatus'), default=FinancePeriodStatus.OPEN, nullable=False)
+    closed_at = db.Column(db.DateTime, nullable=True)
+    closed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    closed_by = db.relationship('User', foreign_keys=[closed_by_user_id], backref='closed_finance_periods')
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'name', name='uq_finance_periods_tenant_name'),
+    )
+
+
+class FinanceCashBankAccount(BaseModel):
+    __tablename__ = 'finance_cash_bank_accounts'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    account_name = db.Column(db.String(120), nullable=False)
+    account_type = db.Column(db.Enum(FinanceCashBankAccountType, name='financecashbankaccounttype'), nullable=False)
+    gl_account_id = db.Column(db.Integer, db.ForeignKey('finance_accounts.id'), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    gl_account = db.relationship('FinanceAccount', backref='cash_bank_accounts')
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'account_name', name='uq_finance_cash_bank_accounts_tenant_name'),
+    )
+
+
+class FinanceSetting(BaseModel):
+    __tablename__ = 'finance_settings'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    accounting_basis = db.Column(
+        db.Enum(FinanceAccountingBasis, name='financeaccountingbasis'),
+        default=FinanceAccountingBasis.CASH,
+        nullable=False,
+    )
+    default_cash_bank_account_id = db.Column(db.Integer, db.ForeignKey('finance_cash_bank_accounts.id'), nullable=True)
+    default_spp_revenue_account_id = db.Column(db.Integer, db.ForeignKey('finance_accounts.id'), nullable=True)
+    default_registration_revenue_account_id = db.Column(db.Integer, db.ForeignKey('finance_accounts.id'), nullable=True)
+    default_savings_liability_account_id = db.Column(db.Integer, db.ForeignKey('finance_accounts.id'), nullable=True)
+    default_donation_revenue_account_id = db.Column(db.Integer, db.ForeignKey('finance_accounts.id'), nullable=True)
+
+    default_cash_bank_account = db.relationship('FinanceCashBankAccount', foreign_keys=[default_cash_bank_account_id], backref='finance_settings_default')
+    default_spp_revenue_account = db.relationship('FinanceAccount', foreign_keys=[default_spp_revenue_account_id], backref='finance_settings_spp_revenue')
+    default_registration_revenue_account = db.relationship('FinanceAccount', foreign_keys=[default_registration_revenue_account_id], backref='finance_settings_registration_revenue')
+    default_savings_liability_account = db.relationship('FinanceAccount', foreign_keys=[default_savings_liability_account_id], backref='finance_settings_savings_liability')
+    default_donation_revenue_account = db.relationship('FinanceAccount', foreign_keys=[default_donation_revenue_account_id], backref='finance_settings_donation_revenue')
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', name='uq_finance_settings_tenant'),
+    )
+
+
+class FinanceJournalSequence(BaseModel):
+    __tablename__ = 'finance_journal_sequences'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    year_month = db.Column(db.String(7), nullable=False)
+    last_value = db.Column(db.Integer, default=0, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'year_month', name='uq_finance_journal_sequences_tenant_month'),
+    )
+
+
+class FinanceJournal(BaseModel):
+    __tablename__ = 'finance_journals'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    journal_no = db.Column(db.String(30), nullable=False)
+    journal_date = db.Column(db.Date, nullable=False, default=local_today)
+    description = db.Column(db.Text, nullable=True)
+    source_type = db.Column(db.Enum(FinanceJournalSourceType, name='financejournalsourcetype'), nullable=True)
+    source_id = db.Column(db.Integer, nullable=True)
+    status = db.Column(db.Enum(FinanceJournalStatus, name='financejournalstatus'), default=FinanceJournalStatus.DRAFT, nullable=False)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    approved_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    posted_at = db.Column(db.DateTime, nullable=True)
+    voided_at = db.Column(db.DateTime, nullable=True)
+    void_reason = db.Column(db.Text, nullable=True)
+
+    created_by = db.relationship('User', foreign_keys=[created_by_user_id], backref='created_finance_journals')
+    approved_by = db.relationship('User', foreign_keys=[approved_by_user_id], backref='approved_finance_journals')
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'journal_no', name='uq_finance_journals_tenant_journal_no'),
+        db.UniqueConstraint('tenant_id', 'source_type', 'source_id', name='uq_finance_journals_tenant_source'),
+    )
+
+
+class FinanceJournalLine(BaseModel):
+    __tablename__ = 'finance_journal_lines'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    journal_id = db.Column(db.Integer, db.ForeignKey('finance_journals.id'), nullable=False, index=True)
+    account_id = db.Column(db.Integer, db.ForeignKey('finance_accounts.id'), nullable=False)
+    entry_side = db.Column(db.Enum(FinanceEntrySide, name='financeentryside'), nullable=False)
+    amount = db.Column(db.Integer, nullable=False)
+    memo = db.Column(db.Text, nullable=True)
+    reference_type = db.Column(db.String(50), nullable=True)
+    reference_id = db.Column(db.Integer, nullable=True)
+
+    journal = db.relationship('FinanceJournal', backref='lines')
+    account = db.relationship('FinanceAccount', backref='journal_lines')
+
+    __table_args__ = (
+        db.CheckConstraint('amount > 0', name='ck_finance_journal_lines_amount_positive'),
+    )
+
+
+class FinanceCashBankTransaction(BaseModel):
+    __tablename__ = 'finance_cash_bank_transactions'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    cash_bank_account_id = db.Column(db.Integer, db.ForeignKey('finance_cash_bank_accounts.id'), nullable=False)
+    trx_date = db.Column(db.Date, nullable=False, default=local_today)
+    trx_type = db.Column(db.Enum(FinanceCashBankTransactionType, name='financecashbanktransactiontype'), nullable=False)
+    amount = db.Column(db.Integer, nullable=False)
+    counterpart_account_id = db.Column(db.Integer, db.ForeignKey('finance_accounts.id'), nullable=True)
+    description = db.Column(db.Text, nullable=True)
+    journal_id = db.Column(db.Integer, db.ForeignKey('finance_journals.id'), nullable=True)
+    status = db.Column(
+        db.Enum(FinanceCashBankTransactionStatus, name='financecashbanktransactionstatus'),
+        default=FinanceCashBankTransactionStatus.DRAFT,
+        nullable=False,
+    )
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    approved_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    cash_bank_account = db.relationship('FinanceCashBankAccount', backref='transactions')
+    counterpart_account = db.relationship('FinanceAccount', foreign_keys=[counterpart_account_id], backref='cash_bank_counterparts')
+    journal = db.relationship('FinanceJournal', backref='cash_bank_transactions')
+    created_by = db.relationship('User', foreign_keys=[created_by_user_id], backref='created_cash_bank_transactions')
+    approved_by = db.relationship('User', foreign_keys=[approved_by_user_id], backref='approved_cash_bank_transactions')
+
+    __table_args__ = (
+        db.CheckConstraint('amount > 0', name='ck_finance_cash_bank_transactions_amount_positive'),
+    )
+
+
 class FeeType(BaseModel):
     __tablename__ = 'fee_types'
     id = db.Column(db.Integer, primary_key=True)

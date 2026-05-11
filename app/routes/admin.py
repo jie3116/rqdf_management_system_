@@ -45,7 +45,12 @@ from app.services.ppdb_fee_service import (
     get_ppdb_fee_template_admin_fields,
     save_ppdb_fee_templates,
 )
-from app.utils.timezone import local_day_bounds_utc_naive, local_now
+from app.services.finance_posting_service import (
+    post_invoice_payment,
+    post_journal,
+    post_savings_transaction,
+)
+from app.utils.timezone import local_day_bounds_utc_naive, local_now, local_today
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
     # Base & Enums
@@ -56,6 +61,12 @@ from app.models import (
     AcademicYear, ClassRoom, Subject, Schedule, Program, ProgramGroup, StaffAssignment,
     # Finance
     FeeType, Invoice, Transaction,
+    FinanceAccount, FinanceAccountCategory, FinanceNormalBalance,
+    FinanceSetting, FinanceAccountingBasis,
+    FinancePeriod, FinancePeriodStatus,
+    FinanceCashBankAccount, FinanceCashBankAccountType,
+    FinanceJournal, FinanceJournalLine, FinanceJournalStatus, FinanceJournalSourceType,
+    SavingsTransactionType, SavingsTransactionStatus, StudentSavingsTransaction,
     # Student Related
     StudentClassHistory, Attendance, BoardingAttendance, Grade, ReportCard, StudentAttitude,
     Violation, BehaviorReport, TahfidzRecord, TahfidzSummary, RecitationRecord, TahfidzEvaluation,
@@ -185,6 +196,16 @@ def _slugify_tenant(raw_value):
 def _normalize_tenant_code(raw_value):
     code = re.sub(r"[^A-Za-z0-9_-]+", "", (raw_value or "").strip().upper())
     return code
+
+
+def _parse_iso_date(value):
+    raw = (value or '').strip()
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, '%Y-%m-%d').date()
+    except ValueError:
+        return None
 
 
 def _iter_upload_rows(file):
@@ -1864,6 +1885,395 @@ def delete_student(id):
 # =========================================================
 # 7. MANAJEMEN KEUANGAN
 # =========================================================
+
+@admin_bp.route('/keuangan/akun', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def manage_finance_accounts():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    if request.method == 'POST':
+        action = (request.form.get('action') or 'create').strip()
+
+        if action == 'create':
+            code = (request.form.get('code') or '').strip()
+            name = (request.form.get('name') or '').strip()
+            category_raw = (request.form.get('category') or '').strip().upper()
+            normal_balance_raw = (request.form.get('normal_balance') or '').strip().upper()
+
+            if not code or not name:
+                flash('Kode akun dan nama akun wajib diisi.', 'warning')
+                return redirect(url_for('admin.manage_finance_accounts'))
+
+            try:
+                category = FinanceAccountCategory[category_raw]
+                normal_balance = FinanceNormalBalance[normal_balance_raw]
+            except KeyError:
+                flash('Kategori akun atau normal balance tidak valid.', 'danger')
+                return redirect(url_for('admin.manage_finance_accounts'))
+
+            existing = FinanceAccount.query.filter_by(tenant_id=tenant_id, code=code).first()
+            if existing:
+                flash(f'Kode akun "{code}" sudah digunakan.', 'warning')
+                return redirect(url_for('admin.manage_finance_accounts'))
+
+            db.session.add(FinanceAccount(
+                tenant_id=tenant_id,
+                code=code,
+                name=name,
+                category=category,
+                normal_balance=normal_balance,
+                is_active=True,
+            ))
+            db.session.commit()
+            flash(f'Akun "{code} - {name}" berhasil ditambahkan.', 'success')
+            return redirect(url_for('admin.manage_finance_accounts'))
+
+        if action == 'toggle':
+            account_id = request.form.get('account_id', type=int)
+            account = FinanceAccount.query.filter_by(id=account_id, tenant_id=tenant_id).first_or_404()
+            account.is_active = not account.is_active
+            db.session.commit()
+            flash(
+                f'Akun "{account.code} - {account.name}" {"diaktifkan" if account.is_active else "dinonaktifkan"}.',
+                'success'
+            )
+            return redirect(url_for('admin.manage_finance_accounts'))
+
+    query = (request.args.get('q') or '').strip()
+    category_filter = (request.args.get('category') or '').strip().upper()
+    accounts_query = FinanceAccount.query.filter(FinanceAccount.tenant_id == tenant_id)
+    if query:
+        accounts_query = accounts_query.filter(
+            or_(
+                FinanceAccount.code.ilike(f'%{query}%'),
+                FinanceAccount.name.ilike(f'%{query}%'),
+            )
+        )
+    if category_filter and category_filter in FinanceAccountCategory.__members__:
+        accounts_query = accounts_query.filter(FinanceAccount.category == FinanceAccountCategory[category_filter])
+
+    accounts = accounts_query.order_by(FinanceAccount.code.asc()).all()
+    return render_template(
+        'admin/finance/accounts.html',
+        accounts=accounts,
+        query=query,
+        category_filter=category_filter,
+        categories=list(FinanceAccountCategory),
+        normal_balances=list(FinanceNormalBalance),
+    )
+
+
+@admin_bp.route('/keuangan/settings', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def manage_finance_settings():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    settings = FinanceSetting.query.filter_by(tenant_id=tenant_id).first()
+
+    if request.method == 'POST':
+        action = (request.form.get('action') or 'save_defaults').strip()
+
+        if action == 'save_defaults':
+            if not settings:
+                settings = FinanceSetting(tenant_id=tenant_id)
+                db.session.add(settings)
+
+            basis_raw = (request.form.get('accounting_basis') or 'CASH').strip().upper()
+            if basis_raw not in FinanceAccountingBasis.__members__:
+                flash('Accounting basis tidak valid.', 'warning')
+                return redirect(url_for('admin.manage_finance_settings'))
+
+            settings.accounting_basis = FinanceAccountingBasis[basis_raw]
+            settings.default_cash_bank_account_id = request.form.get('default_cash_bank_account_id', type=int) or None
+            settings.default_spp_revenue_account_id = request.form.get('default_spp_revenue_account_id', type=int) or None
+            settings.default_registration_revenue_account_id = request.form.get('default_registration_revenue_account_id', type=int) or None
+            settings.default_savings_liability_account_id = request.form.get('default_savings_liability_account_id', type=int) or None
+            settings.default_donation_revenue_account_id = request.form.get('default_donation_revenue_account_id', type=int) or None
+
+            if settings.default_cash_bank_account_id:
+                cash_bank = FinanceCashBankAccount.query.filter_by(
+                    id=settings.default_cash_bank_account_id,
+                    tenant_id=tenant_id
+                ).first()
+                if not cash_bank:
+                    flash('Default kas/bank tidak valid untuk tenant ini.', 'danger')
+                    db.session.rollback()
+                    return redirect(url_for('admin.manage_finance_settings'))
+
+            account_ids = [
+                settings.default_spp_revenue_account_id,
+                settings.default_registration_revenue_account_id,
+                settings.default_savings_liability_account_id,
+                settings.default_donation_revenue_account_id,
+            ]
+            valid_account_ids = [account_id for account_id in account_ids if account_id]
+            if valid_account_ids:
+                count_valid = FinanceAccount.query.filter(
+                    FinanceAccount.tenant_id == tenant_id,
+                    FinanceAccount.id.in_(valid_account_ids)
+                ).count()
+                if count_valid != len(set(valid_account_ids)):
+                    flash('Salah satu default akun tidak valid untuk tenant ini.', 'danger')
+                    db.session.rollback()
+                    return redirect(url_for('admin.manage_finance_settings'))
+
+            db.session.commit()
+            flash('Finance settings berhasil disimpan.', 'success')
+            return redirect(url_for('admin.manage_finance_settings'))
+
+        if action == 'create_period':
+            name = (request.form.get('name') or '').strip()
+            start_date = _parse_iso_date(request.form.get('start_date'))
+            end_date = _parse_iso_date(request.form.get('end_date'))
+            status_raw = (request.form.get('status') or 'OPEN').strip().upper()
+
+            if not start_date or not end_date:
+                flash('Tanggal mulai dan akhir periode wajib valid.', 'warning')
+                return redirect(url_for('admin.manage_finance_settings'))
+            if start_date > end_date:
+                flash('Tanggal mulai periode tidak boleh lebih besar dari tanggal akhir.', 'warning')
+                return redirect(url_for('admin.manage_finance_settings'))
+            if status_raw not in FinancePeriodStatus.__members__:
+                flash('Status periode tidak valid.', 'warning')
+                return redirect(url_for('admin.manage_finance_settings'))
+            if not name:
+                name = f'{start_date.year}-{start_date.month:02d}'
+
+            overlap = FinancePeriod.query.filter(
+                FinancePeriod.tenant_id == tenant_id,
+                FinancePeriod.start_date <= end_date,
+                FinancePeriod.end_date >= start_date,
+            ).first()
+            if overlap:
+                flash(
+                    f'Periode bentrok dengan periode "{overlap.name}" ({overlap.start_date} s.d {overlap.end_date}).',
+                    'warning'
+                )
+                return redirect(url_for('admin.manage_finance_settings'))
+
+            db.session.add(FinancePeriod(
+                tenant_id=tenant_id,
+                name=name,
+                start_date=start_date,
+                end_date=end_date,
+                status=FinancePeriodStatus[status_raw],
+            ))
+            db.session.commit()
+            flash(f'Periode "{name}" berhasil dibuat.', 'success')
+            return redirect(url_for('admin.manage_finance_settings'))
+
+        if action == 'set_period_status':
+            period_id = request.form.get('period_id', type=int)
+            status_raw = (request.form.get('status') or '').strip().upper()
+            if status_raw not in FinancePeriodStatus.__members__:
+                flash('Status periode tidak valid.', 'warning')
+                return redirect(url_for('admin.manage_finance_settings'))
+            period = FinancePeriod.query.filter_by(id=period_id, tenant_id=tenant_id).first_or_404()
+            period.status = FinancePeriodStatus[status_raw]
+            if period.status in (FinancePeriodStatus.CLOSED, FinancePeriodStatus.LOCKED):
+                period.closed_at = local_now()
+                period.closed_by_user_id = current_user.id
+            else:
+                period.closed_at = None
+                period.closed_by_user_id = None
+            db.session.commit()
+            flash(f'Status periode "{period.name}" diperbarui menjadi {period.status.value}.', 'success')
+            return redirect(url_for('admin.manage_finance_settings'))
+
+    settings = FinanceSetting.query.filter_by(tenant_id=tenant_id).first()
+    accounts = FinanceAccount.query.filter_by(tenant_id=tenant_id, is_active=True).order_by(FinanceAccount.code.asc()).all()
+    cash_bank_accounts = FinanceCashBankAccount.query.filter_by(tenant_id=tenant_id, is_active=True).order_by(FinanceCashBankAccount.account_name.asc()).all()
+    periods = FinancePeriod.query.filter_by(tenant_id=tenant_id).order_by(FinancePeriod.start_date.desc(), FinancePeriod.id.desc()).all()
+    return render_template(
+        'admin/finance/settings.html',
+        settings=settings,
+        accounts=accounts,
+        cash_bank_accounts=cash_bank_accounts,
+        periods=periods,
+        accounting_basis_options=list(FinanceAccountingBasis),
+        period_status_options=list(FinancePeriodStatus),
+    )
+
+
+def _unposted_invoice_payment_transactions(tenant_id):
+    posted_payment_ids = db.session.query(FinanceJournal.source_id).filter(
+        FinanceJournal.tenant_id == tenant_id,
+        FinanceJournal.source_type == FinanceJournalSourceType.INVOICE_PAYMENT,
+        FinanceJournal.status == FinanceJournalStatus.POSTED,
+    )
+    return (
+        Transaction.query
+        .join(Invoice, Invoice.id == Transaction.invoice_id)
+        .join(Student, Student.id == Invoice.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            User.tenant_id == tenant_id,
+            Invoice.is_deleted.is_(False),
+            Student.is_deleted.is_(False),
+            ~Transaction.id.in_(posted_payment_ids),
+        )
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+    )
+
+
+def _unposted_savings_transactions(tenant_id):
+    posted_deposit_ids = db.session.query(FinanceJournal.source_id).filter(
+        FinanceJournal.tenant_id == tenant_id,
+        FinanceJournal.source_type == FinanceJournalSourceType.SAVINGS_DEPOSIT,
+        FinanceJournal.status == FinanceJournalStatus.POSTED,
+    )
+    posted_withdrawal_ids = db.session.query(FinanceJournal.source_id).filter(
+        FinanceJournal.tenant_id == tenant_id,
+        FinanceJournal.source_type == FinanceJournalSourceType.SAVINGS_WITHDRAWAL,
+        FinanceJournal.status == FinanceJournalStatus.POSTED,
+    )
+    return (
+        StudentSavingsTransaction.query
+        .filter(
+            StudentSavingsTransaction.tenant_id == tenant_id,
+            StudentSavingsTransaction.status == SavingsTransactionStatus.APPROVED,
+            or_(
+                and_(
+                    StudentSavingsTransaction.transaction_type == SavingsTransactionType.DEPOSIT,
+                    ~StudentSavingsTransaction.id.in_(posted_deposit_ids),
+                ),
+                and_(
+                    StudentSavingsTransaction.transaction_type == SavingsTransactionType.WITHDRAWAL,
+                    ~StudentSavingsTransaction.id.in_(posted_withdrawal_ids),
+                ),
+            ),
+        )
+        .order_by(StudentSavingsTransaction.approved_at.desc(), StudentSavingsTransaction.id.desc())
+    )
+
+
+@admin_bp.route('/keuangan/rekonsiliasi')
+@login_required
+@role_required(UserRole.ADMIN)
+def finance_reconciliation():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    current_day = local_today()
+    period_today = FinancePeriod.query.filter(
+        FinancePeriod.tenant_id == tenant_id,
+        FinancePeriod.start_date <= current_day,
+        FinancePeriod.end_date >= current_day,
+    ).first()
+
+    invoice_unposted = _unposted_invoice_payment_transactions(tenant_id).limit(50).all()
+    savings_unposted = _unposted_savings_transactions(tenant_id).limit(50).all()
+    draft_journals = FinanceJournal.query.filter_by(
+        tenant_id=tenant_id,
+        status=FinanceJournalStatus.DRAFT,
+    ).order_by(FinanceJournal.id.desc()).limit(100).all()
+
+    return render_template(
+        'admin/finance/reconciliation.html',
+        invoice_unposted=invoice_unposted,
+        savings_unposted=savings_unposted,
+        draft_journals=draft_journals,
+        period_today=period_today,
+    )
+
+
+@admin_bp.route('/keuangan/rekonsiliasi/retry-journal/<int:journal_id>', methods=['POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def finance_reconciliation_retry_journal(journal_id):
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.finance_reconciliation'))
+    try:
+        post_journal(tenant_id=tenant_id, journal_id=journal_id, actor_user_id=current_user.id)
+        db.session.commit()
+        flash(f'Jurnal #{journal_id} berhasil diposting.', 'success')
+    except Exception as exc:
+        db.session.rollback()
+        flash(f'Gagal posting jurnal #{journal_id}: {exc}', 'warning')
+    return redirect(url_for('admin.finance_reconciliation'))
+
+
+@admin_bp.route('/keuangan/rekonsiliasi/retry-draft-all', methods=['POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def finance_reconciliation_retry_draft_all():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.finance_reconciliation'))
+
+    drafts = FinanceJournal.query.filter_by(
+        tenant_id=tenant_id,
+        status=FinanceJournalStatus.DRAFT,
+    ).order_by(FinanceJournal.id.asc()).all()
+    success = 0
+    failed = 0
+    for journal in drafts:
+        try:
+            post_journal(tenant_id=tenant_id, journal_id=journal.id, actor_user_id=current_user.id)
+            db.session.commit()
+            success += 1
+        except Exception:
+            db.session.rollback()
+            failed += 1
+    flash(f'Retry posting draft selesai. Berhasil: {success}, gagal: {failed}.', 'info')
+    return redirect(url_for('admin.finance_reconciliation'))
+
+
+@admin_bp.route('/keuangan/rekonsiliasi/retry-sources', methods=['POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def finance_reconciliation_retry_sources():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.finance_reconciliation'))
+
+    source = (request.form.get('source') or '').strip().lower()
+    success = 0
+    failed = 0
+
+    if source == 'invoice':
+        for trx in _unposted_invoice_payment_transactions(tenant_id).limit(200).all():
+            try:
+                post_invoice_payment(tenant_id=tenant_id, transaction_id=trx.id, actor_user_id=current_user.id)
+                success += 1
+            except Exception:
+                db.session.rollback()
+                failed += 1
+        flash(f'Retry sumber pembayaran selesai. Berhasil: {success}, gagal: {failed}.', 'info')
+        return redirect(url_for('admin.finance_reconciliation'))
+
+    if source == 'savings':
+        for savings_trx in _unposted_savings_transactions(tenant_id).limit(200).all():
+            try:
+                post_savings_transaction(
+                    tenant_id=tenant_id,
+                    savings_transaction_id=savings_trx.id,
+                    actor_user_id=current_user.id
+                )
+                success += 1
+            except Exception:
+                db.session.rollback()
+                failed += 1
+        flash(f'Retry sumber tabungan selesai. Berhasil: {success}, gagal: {failed}.', 'info')
+        return redirect(url_for('admin.finance_reconciliation'))
+
+    flash('Sumber retry tidak valid.', 'warning')
+    return redirect(url_for('admin.finance_reconciliation'))
+
 
 @admin_bp.route('/keuangan/master-biaya', methods=['GET', 'POST'])
 @login_required

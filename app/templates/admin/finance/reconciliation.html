@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0 fw-bold text-primary"><i class="fas fa-sync-alt me-2"></i>Rekonsiliasi Posting Finance</h4>
+    <a href="{{ url_for('admin.manage_finance_settings') }}" class="btn btn-sm btn-outline-primary">
+        <i class="fas fa-cog me-1"></i>Finance Settings
+    </a>
+</div>
+
+{% if period_today and period_today.status.value == 'OPEN' %}
+<div class="alert alert-success">
+    Periode aktif hari ini: <strong>{{ period_today.name }}</strong> ({{ period_today.start_date }} s.d {{ period_today.end_date }}) - status OPEN.
+</div>
+{% elif period_today %}
+<div class="alert alert-warning">
+    Periode hari ini ditemukan (<strong>{{ period_today.name }}</strong>) tetapi statusnya <strong>{{ period_today.status.value }}</strong>.
+</div>
+{% else %}
+<div class="alert alert-danger">
+    Tidak ada periode yang mencakup tanggal hari ini. Jurnal otomatis akan tetap DRAFT.
+</div>
+{% endif %}
+
+<div class="row mb-3">
+    <div class="col-md-4 mb-2">
+        <form method="POST" action="{{ url_for('admin.finance_reconciliation_retry_sources') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="source" value="invoice"/>
+            <button type="submit" class="btn btn-outline-primary w-100">
+                Retry Sumber Pembayaran ({{ invoice_unposted|length }})
+            </button>
+        </form>
+    </div>
+    <div class="col-md-4 mb-2">
+        <form method="POST" action="{{ url_for('admin.finance_reconciliation_retry_sources') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="source" value="savings"/>
+            <button type="submit" class="btn btn-outline-primary w-100">
+                Retry Sumber Tabungan ({{ savings_unposted|length }})
+            </button>
+        </form>
+    </div>
+    <div class="col-md-4 mb-2">
+        <form method="POST" action="{{ url_for('admin.finance_reconciliation_retry_draft_all') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <button type="submit" class="btn btn-outline-warning w-100">
+                Retry Semua Draft ({{ draft_journals|length }})
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 fw-bold text-primary">Pembayaran Belum POSTED</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle js-row-paginate" data-default-per-page="10">
+                <thead>
+                    <tr>
+                        <th>ID Transaksi</th>
+                        <th>Tanggal</th>
+                        <th>Siswa</th>
+                        <th>Invoice</th>
+                        <th>Metode</th>
+                        <th>Nominal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trx in invoice_unposted %}
+                    <tr>
+                        <td>{{ trx.id }}</td>
+                        <td>{{ trx.date.strftime('%Y-%m-%d %H:%M') if trx.date else '-' }}</td>
+                        <td>{{ trx.invoice.student.full_name if trx.invoice and trx.invoice.student else '-' }}</td>
+                        <td>{{ trx.invoice.invoice_number if trx.invoice else '-' }}</td>
+                        <td>{{ trx.method or '-' }}</td>
+                        <td>Rp {{ "{:,.0f}".format(trx.amount or 0) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center text-muted">Tidak ada transaksi pembayaran yang tertunda posting.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 fw-bold text-primary">Tabungan APPROVED Belum POSTED</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle js-row-paginate" data-default-per-page="10">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Tanggal Approve</th>
+                        <th>Siswa</th>
+                        <th>Tipe</th>
+                        <th>Nominal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trx in savings_unposted %}
+                    <tr>
+                        <td>{{ trx.id }}</td>
+                        <td>{{ trx.approved_at.strftime('%Y-%m-%d %H:%M') if trx.approved_at else '-' }}</td>
+                        <td>{{ trx.student.full_name if trx.student else '-' }}</td>
+                        <td>{{ trx.transaction_type.value }}</td>
+                        <td>Rp {{ "{:,.0f}".format(trx.amount or 0) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center text-muted">Tidak ada transaksi tabungan approved yang tertunda posting.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow">
+    <div class="card-header py-3">
+        <h6 class="m-0 fw-bold text-warning">Jurnal DRAFT</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle js-row-paginate" data-default-per-page="10">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>No Jurnal</th>
+                        <th>Tanggal</th>
+                        <th>Source</th>
+                        <th>Deskripsi</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for j in draft_journals %}
+                    <tr>
+                        <td>{{ j.id }}</td>
+                        <td class="fw-bold">{{ j.journal_no }}</td>
+                        <td>{{ j.journal_date }}</td>
+                        <td>{{ j.source_type.value if j.source_type else '-' }} #{{ j.source_id or '-' }}</td>
+                        <td>{{ j.description or '-' }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('admin.finance_reconciliation_retry_journal', journal_id=j.id) }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <button type="submit" class="btn btn-sm btn-outline-success">Post Sekarang</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center text-muted">Tidak ada jurnal draft.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

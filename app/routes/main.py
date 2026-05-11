@@ -277,7 +277,19 @@ def majlis_dashboard():
 def ppdb_register():
     form = PPDBForm()
 
-    if form.validate_on_submit():
+    if request.method == 'POST':
+        if not form.validate_on_submit():
+            # Tampilkan sumber error agar user tahu field yang bermasalah.
+            first_field_name = next(iter(form.errors), None)
+            if first_field_name and hasattr(form, first_field_name):
+                field = getattr(form, first_field_name)
+                field_label = field.label.text if getattr(field, "label", None) else first_field_name
+                first_error = form.errors[first_field_name][0] if form.errors[first_field_name] else "Input tidak valid."
+                flash(f'{field_label}: {first_error}', 'danger')
+            else:
+                flash('Mohon lengkapi data pendaftaran yang wajib diisi.', 'danger')
+            current_app.logger.warning("PPDB form validation errors: %s", form.errors)
+            return _render_ppdb_form(form)
         try:
             # Logika berdasarkan program type
             try:
@@ -312,6 +324,13 @@ def ppdb_register():
                 if not nik_value or not kk_number_value:
                     flash('Nomor NIK dan Nomor KK wajib diisi.', 'danger')
                     return _render_ppdb_form(form)
+                if is_rqdf:
+                    if form.tahfidz_schedule.data == TahfidzSchedule.TIDAK_ADA.name:
+                        flash('Jadwal kelas RQDF wajib dipilih.', 'danger')
+                        return _render_ppdb_form(form)
+                    if (form.initial_pledge_amount.data or 0) <= 0:
+                        flash('Infaq pembangunan wajib dipilih untuk kelas reguler RQDF.', 'danger')
+                        return _render_ppdb_form(form)
             if is_majlis:
                 nik_value = (form.nik.data or '').strip() or None
                 kk_number_value = (form.kk_number.data or '').strip() or None

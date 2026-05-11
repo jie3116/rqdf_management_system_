@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow">
+            <div class="card-header py-3 bg-primary text-white">
+                <h6 class="m-0 fw-bold"><i class="fas fa-book me-2"></i>Tambah Akun Finance</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="action" value="create"/>
+
+                    <div class="mb-3">
+                        <label class="form-label">Kode Akun</label>
+                        <input type="text" name="code" class="form-control" placeholder="Contoh: 4100" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nama Akun</label>
+                        <input type="text" name="name" class="form-control" placeholder="Contoh: Pendapatan SPP" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Kategori</label>
+                        <select name="category" class="form-select" required>
+                            {% for c in categories %}
+                            <option value="{{ c.name }}">{{ c.value }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Normal Balance</label>
+                        <select name="normal_balance" class="form-select" required>
+                            {% for b in normal_balances %}
+                            <option value="{{ b.name }}">{{ b.value }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Simpan Akun</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 fw-bold text-primary">Master Akun Finance</h6>
+                <a href="{{ url_for('admin.manage_finance_settings') }}" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-cog me-1"></i>Finance Settings
+                </a>
+            </div>
+            <div class="card-body">
+                <form method="GET" class="row g-2 mb-3">
+                    <div class="col-md-7">
+                        <input type="text" name="q" class="form-control" value="{{ query or '' }}" placeholder="Cari kode atau nama akun...">
+                    </div>
+                    <div class="col-md-3">
+                        <select name="category" class="form-select">
+                            <option value="">Semua Kategori</option>
+                            {% for c in categories %}
+                            <option value="{{ c.name }}" {% if category_filter == c.name %}selected{% endif %}>{{ c.value }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-outline-primary w-100">Filter</button>
+                    </div>
+                </form>
+
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle js-row-paginate" data-default-per-page="15">
+                        <thead>
+                            <tr>
+                                <th style="width: 12%;">Kode</th>
+                                <th>Nama</th>
+                                <th style="width: 15%;">Kategori</th>
+                                <th style="width: 14%;">Normal</th>
+                                <th style="width: 12%;">Status</th>
+                                <th style="width: 12%;">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for acc in accounts %}
+                            <tr>
+                                <td class="fw-bold">{{ acc.code }}</td>
+                                <td>{{ acc.name }}</td>
+                                <td>{{ acc.category.value }}</td>
+                                <td>{{ acc.normal_balance.value }}</td>
+                                <td>
+                                    {% if acc.is_active %}
+                                    <span class="badge bg-success">Aktif</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Nonaktif</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <form method="POST">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                        <input type="hidden" name="action" value="toggle"/>
+                                        <input type="hidden" name="account_id" value="{{ acc.id }}"/>
+                                        <button type="submit" class="btn btn-sm btn-outline-warning">
+                                            {% if acc.is_active %}Nonaktifkan{% else %}Aktifkan{% endif %}
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">Belum ada akun finance.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
