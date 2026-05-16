@@ -307,6 +307,29 @@
                 {% endif %}
             {% endwith %}
 
+            {% if current_user.is_authenticated and current_user.has_role('admin') %}
+                {% if finance_draft_journal_count and finance_draft_journal_count > 0 %}
+                <div class="alert alert-warning d-flex justify-content-between align-items-center shadow-sm" role="alert">
+                    <span>
+                        Terdapat {{ finance_draft_journal_count }} jurnal finance berstatus DRAFT.
+                    </span>
+                    <a href="{{ url_for('admin.finance_reconciliation') }}" class="btn btn-sm btn-outline-warning">
+                        Buka Rekonsiliasi
+                    </a>
+                </div>
+                {% endif %}
+                {% if finance_has_open_period_today is not none and not finance_has_open_period_today %}
+                <div class="alert alert-danger d-flex justify-content-between align-items-center shadow-sm" role="alert">
+                    <span>
+                        Periode finance untuk tanggal hari ini belum OPEN{% if finance_current_period_status %} (status: {{ finance_current_period_status }}){% endif %}.
+                    </span>
+                    <a href="{{ url_for('admin.manage_finance_settings') }}" class="btn btn-sm btn-outline-light">
+                        Kelola Periode
+                    </a>
+                </div>
+                {% endif %}
+            {% endif %}
+
             {% block content %}{% endblock %}
         </div>
     </div>

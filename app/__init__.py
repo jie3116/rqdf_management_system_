@@ -21,7 +21,7 @@ def create_app(config_class=Config):
         from datetime import datetime
         import locale
         from flask_login import current_user
-        from app.models import Teacher
+        from app.models import Teacher, FinanceJournal, FinanceJournalStatus, FinancePeriod
         from app.routes.teacher import build_teacher_sidebar_groups
         from app.utils.roles import get_active_role, role_label
         from app.utils.tenant import resolve_tenant_id
@@ -41,11 +41,28 @@ def create_app(config_class=Config):
         teacher_sidebar_groups = []
         user_role_labels = []
         tenant_package = PACKAGE_FULL
+        finance_draft_journal_count = 0
+        finance_has_open_period_today = True
+        finance_current_period_status = None
         if current_user.is_authenticated:
             tenant_id = resolve_tenant_id(current_user, fallback_default=False)
             tenant_package = get_tenant_package(tenant_id)
             user_roles = sorted(list(current_user.all_roles()), key=lambda role: role.value)
             user_role_labels = [role_label(role) for role in user_roles]
+            if current_user.has_role('admin') and tenant_id is not None:
+                finance_draft_journal_count = FinanceJournal.query.filter_by(
+                    tenant_id=tenant_id,
+                    status=FinanceJournalStatus.DRAFT,
+                ).count()
+                period_today = FinancePeriod.query.filter(
+                    FinancePeriod.tenant_id == tenant_id,
+                    FinancePeriod.start_date <= local_today(),
+                    FinancePeriod.end_date >= local_today(),
+                ).first()
+                finance_current_period_status = period_today.status.value if period_today else None
+                finance_has_open_period_today = bool(
+                    period_today and period_today.status.value == "OPEN"
+                )
         if current_user.is_authenticated and current_user.has_role('teacher'):
             teacher = Teacher.query.filter_by(user_id=current_user.id, is_deleted=False).first()
             teacher_sidebar_groups = build_teacher_sidebar_groups(teacher)
@@ -62,6 +79,9 @@ def create_app(config_class=Config):
             'module_rumah_quran_enabled': tenant_package in (PACKAGE_FULL, PACKAGE_RUMAH_QURAN),
             'module_boarding_enabled': tenant_package == PACKAGE_FULL,
             'teacher_sidebar_groups': teacher_sidebar_groups,
+            'finance_draft_journal_count': finance_draft_journal_count,
+            'finance_has_open_period_today': finance_has_open_period_today,
+            'finance_current_period_status': finance_current_period_status,
         }
 
     # 3. Import Models (Penting agar db.create_all mendeteksi tabel)

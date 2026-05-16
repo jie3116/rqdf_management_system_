@@ -2088,16 +2088,72 @@ def manage_finance_settings():
             flash(f'Status periode "{period.name}" diperbarui menjadi {period.status.value}.', 'success')
             return redirect(url_for('admin.manage_finance_settings'))
 
+        if action == 'ensure_current_period':
+            today = local_today()
+            period_name = f'{today.year:04d}-{today.month:02d}'
+            start_date = date(today.year, today.month, 1)
+            if today.month == 12:
+                end_date = date(today.year, 12, 31)
+            else:
+                next_month_start = date(today.year, today.month + 1, 1)
+                end_date = next_month_start - timedelta(days=1)
+
+            period = FinancePeriod.query.filter_by(tenant_id=tenant_id, name=period_name).first()
+            if period:
+                if period.status != FinancePeriodStatus.OPEN:
+                    period.status = FinancePeriodStatus.OPEN
+                    period.closed_at = None
+                    period.closed_by_user_id = None
+                    db.session.commit()
+                    flash(f'Periode {period_name} sudah ada dan diubah ke status OPEN.', 'success')
+                else:
+                    flash(f'Periode {period_name} sudah tersedia dan OPEN.', 'info')
+                return redirect(url_for('admin.manage_finance_settings'))
+
+            db.session.add(FinancePeriod(
+                tenant_id=tenant_id,
+                name=period_name,
+                start_date=start_date,
+                end_date=end_date,
+                status=FinancePeriodStatus.OPEN,
+            ))
+            db.session.commit()
+            flash(f'Periode {period_name} berhasil dibuat dengan status OPEN.', 'success')
+            return redirect(url_for('admin.manage_finance_settings'))
+
+        if action == 'lock_old_periods':
+            today = local_today()
+            current_month_start = date(today.year, today.month, 1)
+            periods = FinancePeriod.query.filter(
+                FinancePeriod.tenant_id == tenant_id,
+                FinancePeriod.end_date < current_month_start,
+                FinancePeriod.status.in_([FinancePeriodStatus.OPEN, FinancePeriodStatus.CLOSED]),
+            ).all()
+            locked = 0
+            for period in periods:
+                period.status = FinancePeriodStatus.LOCKED
+                period.closed_at = local_now()
+                period.closed_by_user_id = current_user.id
+                locked += 1
+            db.session.commit()
+            flash(f'Periode lama berhasil dikunci: {locked}.', 'success')
+            return redirect(url_for('admin.manage_finance_settings'))
+
     settings = FinanceSetting.query.filter_by(tenant_id=tenant_id).first()
     accounts = FinanceAccount.query.filter_by(tenant_id=tenant_id, is_active=True).order_by(FinanceAccount.code.asc()).all()
     cash_bank_accounts = FinanceCashBankAccount.query.filter_by(tenant_id=tenant_id, is_active=True).order_by(FinanceCashBankAccount.account_name.asc()).all()
     periods = FinancePeriod.query.filter_by(tenant_id=tenant_id).order_by(FinancePeriod.start_date.desc(), FinancePeriod.id.desc()).all()
+    finance_draft_count = FinanceJournal.query.filter_by(
+        tenant_id=tenant_id,
+        status=FinanceJournalStatus.DRAFT,
+    ).count()
     return render_template(
         'admin/finance/settings.html',
         settings=settings,
         accounts=accounts,
         cash_bank_accounts=cash_bank_accounts,
         periods=periods,
+        finance_draft_count=finance_draft_count,
         accounting_basis_options=list(FinanceAccountingBasis),
         period_status_options=list(FinancePeriodStatus),
     )
