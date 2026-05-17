@@ -1,0 +1,507 @@
+{% extends "base.html" %}
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+    .analytics-card {
+        border: 0;
+        border-radius: 8px;
+        box-shadow: 0 0.4rem 1rem rgba(15, 23, 42, 0.08);
+    }
+    .metric-label {
+        font-size: 0.72rem;
+        color: #64748b;
+        text-transform: uppercase;
+        font-weight: 700;
+    }
+    .metric-value {
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: #111827;
+        line-height: 1.2;
+    }
+    .metric-sub {
+        font-size: 0.78rem;
+        color: #64748b;
+    }
+    .chart-box {
+        position: relative;
+        height: 260px;
+        min-height: 260px;
+    }
+    .chart-box-sm {
+        position: relative;
+        height: 210px;
+        min-height: 210px;
+    }
+    .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+    .leaderboard-row {
+        display: grid;
+        grid-template-columns: minmax(90px, 1fr) 64px 64px;
+        gap: 12px;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid #edf2f7;
+    }
+    .leaderboard-row:last-child {
+        border-bottom: 0;
+    }
+    .progress-thin {
+        height: 6px;
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="mb-1 fw-bold text-primary"><i class="fas fa-chart-pie me-2"></i>Dashboard Pimpinan</h4>
+        <div class="text-muted small">
+            <span data-analytics="period.label">{{ analytics.period.label }}</span>
+            (<span data-analytics="period.start_date">{{ analytics.period.start_date }}</span> s.d <span data-analytics="period.end_date">{{ analytics.period.end_date }}</span>)
+            · Update terakhir: <span data-analytics="generated_at">{{ analytics.generated_at }}</span>
+        </div>
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+        <select id="periodSelect" class="form-select form-select-sm" aria-label="Pilih timeline">
+            {% for option in analytics.period.options %}
+            <option value="{{ option.key }}" {% if option.key == analytics.period.key %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+        </select>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="refreshAnalytics" title="Refresh data" aria-label="Refresh data">
+            <i class="fas fa-sync-alt"></i>
+        </button>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-xl-2 col-md-4 col-sm-6">
+        <div class="card analytics-card h-100">
+            <div class="card-body">
+                <div class="metric-label">Santri</div>
+                <div class="metric-value" data-analytics="cards.students">{{ analytics.cards.students }}</div>
+                <div class="metric-sub">aktif terdaftar</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6">
+        <div class="card analytics-card h-100">
+            <div class="card-body">
+                <div class="metric-label">Guru & Staff</div>
+                <div class="metric-value" data-analytics="cards.teachers_staff">{{ analytics.cards.teachers_staff }}</div>
+                <div class="metric-sub">tenaga lembaga</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6">
+        <div class="card analytics-card h-100">
+            <div class="card-body">
+                <div class="metric-label">Kehadiran</div>
+                <div class="metric-value"><span data-analytics="cards.attendance_rate">{{ analytics.cards.attendance_rate }}</span>%</div>
+                <div class="metric-sub">hari ini</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6">
+        <div class="card analytics-card h-100">
+            <div class="card-body">
+                <div class="metric-label">Kas Masuk</div>
+                <div class="metric-value" data-money="cards.income_today">Rp {{ "{:,.0f}".format(analytics.cards.income_today or 0) }}</div>
+                <div class="metric-sub">hari ini</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6">
+        <div class="card analytics-card h-100">
+            <div class="card-body">
+                <div class="metric-label">Piutang</div>
+                <div class="metric-value" data-money="cards.receivable_total">Rp {{ "{:,.0f}".format(analytics.cards.receivable_total or 0) }}</div>
+                <div class="metric-sub">belum tertagih</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-2 col-md-4 col-sm-6">
+        <div class="card analytics-card h-100">
+            <div class="card-body">
+                <div class="metric-label">Surplus</div>
+                <div class="metric-value" data-money="cards.monthly_surplus">Rp {{ "{:,.0f}".format(analytics.cards.monthly_surplus or 0) }}</div>
+                <div class="metric-sub">periode terpilih</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-xl-8">
+        <div class="card analytics-card mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-bold text-primary">Operasional: Pembayaran & Kehadiran</h6>
+                <span class="small text-muted">Auto-refresh 30 detik</span>
+            </div>
+            <div class="card-body">
+                <div class="chart-box">
+                    <canvas id="paymentAttendanceChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="card analytics-card mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0 fw-bold text-primary">Keuangan: Pendapatan vs Beban</h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-box">
+                    <canvas id="financeTrendChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="card analytics-card">
+            <div class="card-header bg-white">
+                <h6 class="mb-0 fw-bold text-primary">Operasional: Kelas & Input Kehadiran Hari Ini</h6>
+            </div>
+            <div class="card-body" id="classOverview"></div>
+        </div>
+    </div>
+
+    <div class="col-xl-4">
+        <div class="card analytics-card mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0 fw-bold text-primary">Operasional: Komposisi Kehadiran</h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-box-sm">
+                    <canvas id="attendanceStatusChart"></canvas>
+                </div>
+                <div id="attendanceBreakdown" class="d-grid gap-2 mt-3"></div>
+            </div>
+        </div>
+
+        <div class="card analytics-card mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0 fw-bold text-primary">Keuangan: Status Tagihan</h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-box-sm">
+                    <canvas id="invoiceStatusChart"></canvas>
+                </div>
+                <div id="invoiceStatusList" class="mt-3"></div>
+            </div>
+        </div>
+
+        <div class="card analytics-card mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0 fw-bold text-primary">Kondisi Finance</h6>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between border-bottom py-2">
+                    <span>Pendapatan Periode</span>
+                    <strong data-money="finance.monthly_revenue">Rp {{ "{:,.0f}".format(analytics.finance.monthly_revenue or 0) }}</strong>
+                </div>
+                <div class="d-flex justify-content-between border-bottom py-2">
+                    <span>Beban Periode</span>
+                    <strong data-money="finance.monthly_expense">Rp {{ "{:,.0f}".format(analytics.finance.monthly_expense or 0) }}</strong>
+                </div>
+                <div class="d-flex justify-content-between border-bottom py-2">
+                    <span>Jurnal Draft</span>
+                    <strong data-analytics="finance.draft_journals">{{ analytics.finance.draft_journals }}</strong>
+                </div>
+                <div class="d-flex justify-content-between py-2">
+                    <span>Periode Hari Ini</span>
+                    <strong data-analytics="finance.period_status">{{ analytics.finance.period_status }}</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="card analytics-card mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0 fw-bold text-primary">PPDB</h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-box-sm">
+                    <canvas id="ppdbStatusChart"></canvas>
+                </div>
+                <div id="ppdbSummary" class="mt-3"></div>
+            </div>
+        </div>
+
+        <div class="card analytics-card mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0 fw-bold text-primary">Pembinaan</h6>
+            </div>
+            <div class="card-body">
+                <div class="chart-box-sm">
+                    <canvas id="behaviorStatusChart"></canvas>
+                </div>
+                <div id="behaviorSummary" class="mt-3"></div>
+                <div id="alertSummary" class="mt-3"></div>
+            </div>
+        </div>
+
+        <div class="card analytics-card">
+            <div class="card-header bg-white">
+                <h6 class="mb-0 fw-bold text-primary">Pembayaran Terbaru</h6>
+            </div>
+            <div class="card-body">
+                <div id="recentPayments" class="d-grid gap-3"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const analyticsEndpoint = "{{ url_for('admin.leadership_dashboard_data') }}";
+    const initialAnalytics = {{ analytics|tojson }};
+    const charts = {};
+    const chartColors = {
+        blue: '#2563eb',
+        green: '#16a34a',
+        amber: '#f59e0b',
+        red: '#dc2626',
+        purple: '#7c3aed',
+        cyan: '#0891b2',
+        gray: '#94a3b8'
+    };
+
+    function getValue(data, path) {
+        return path.split('.').reduce((current, key) => current && current[key], data);
+    }
+
+    function formatMoney(value) {
+        return `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
+    }
+
+    function createOrUpdateChart(key, config) {
+        if (charts[key]) {
+            charts[key].data = config.data;
+            charts[key].options = config.options;
+            charts[key].update();
+            return;
+        }
+        charts[key] = new Chart(document.getElementById(key), config);
+    }
+
+    function renderPaymentAttendanceChart(data) {
+        const paymentRows = data.payment_trend || [];
+        const attendanceRows = data.attendance_trend || [];
+        createOrUpdateChart('paymentAttendanceChart', {
+            type: 'line',
+            data: {
+                labels: attendanceRows.map(row => row.label),
+                datasets: [
+                    {
+                        label: 'Kehadiran (%)',
+                        data: attendanceRows.map(row => row.rate),
+                        borderColor: chartColors.green,
+                        backgroundColor: 'rgba(22, 163, 74, 0.12)',
+                        fill: true,
+                        tension: 0.35,
+                        yAxisID: 'rate'
+                    },
+                    {
+                        label: 'Pembayaran',
+                        data: attendanceRows.map((row, index) => {
+                            const paymentOffset = paymentRows.length - attendanceRows.length + index;
+                            return paymentOffset >= 0 ? paymentRows[paymentOffset]?.amount || 0 : 0;
+                        }),
+                        borderColor: chartColors.blue,
+                        backgroundColor: chartColors.blue,
+                        type: 'bar',
+                        yAxisID: 'money'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    rate: { beginAtZero: true, max: 100, position: 'left', ticks: { callback: value => `${value}%` } },
+                    money: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: value => Number(value).toLocaleString('id-ID') } }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: context => context.dataset.yAxisID === 'money'
+                                ? `${context.dataset.label}: ${formatMoney(context.raw)}`
+                                : `${context.dataset.label}: ${context.raw}%`
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderFinanceTrendChart(rows) {
+        createOrUpdateChart('financeTrendChart', {
+            type: 'bar',
+            data: {
+                labels: rows.map(row => row.label),
+                datasets: [
+                    { label: 'Pendapatan', data: rows.map(row => row.revenue), backgroundColor: chartColors.green },
+                    { label: 'Beban', data: rows.map(row => row.expense), backgroundColor: chartColors.red },
+                    { label: 'Surplus', data: rows.map(row => row.surplus), type: 'line', borderColor: chartColors.blue, backgroundColor: chartColors.blue, tension: 0.35 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true, ticks: { callback: value => Number(value).toLocaleString('id-ID') } } },
+                plugins: { tooltip: { callbacks: { label: context => `${context.dataset.label}: ${formatMoney(context.raw)}` } } }
+            }
+        });
+    }
+
+    function renderAttendance(attendance) {
+        const entries = Object.entries(attendance.counts || {});
+        createOrUpdateChart('attendanceStatusChart', {
+            type: 'doughnut',
+            data: {
+                labels: entries.map(([label]) => label),
+                datasets: [{ data: entries.map(([, count]) => count), backgroundColor: [chartColors.green, chartColors.amber, chartColors.blue, chartColors.red] }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+        });
+
+        const host = document.getElementById('attendanceBreakdown');
+        host.innerHTML = entries.map(([label, count], index) => `
+            <div class="d-flex justify-content-between align-items-center">
+                <span><span class="status-dot me-2" style="background:${[chartColors.green, chartColors.amber, chartColors.blue, chartColors.red][index % 4]}"></span>${label}</span>
+                <strong>${count}</strong>
+            </div>
+        `).join('') || '<div class="text-muted">Belum ada absensi hari ini.</div>';
+    }
+
+    function renderInvoiceStatus(rows) {
+        createOrUpdateChart('invoiceStatusChart', {
+            type: 'doughnut',
+            data: {
+                labels: rows.map(row => row.label),
+                datasets: [{ data: rows.map(row => row.outstanding_amount || row.total_amount || row.count), backgroundColor: [chartColors.red, chartColors.green, chartColors.amber] }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: context => `${context.label}: ${formatMoney(context.raw)}` } } }
+            }
+        });
+        document.getElementById('invoiceStatusList').innerHTML = rows.map(row => `
+            <div class="d-flex justify-content-between border-bottom py-2">
+                <span>${row.label} <span class="text-muted small">(${row.count})</span></span>
+                <strong>${formatMoney(row.outstanding_amount)}</strong>
+            </div>
+        `).join('') || '<div class="text-muted">Belum ada tagihan.</div>';
+    }
+
+    function renderCountChart(chartId, rows, color) {
+        createOrUpdateChart(chartId, {
+            type: 'bar',
+            data: {
+                labels: rows.map(row => row.label),
+                datasets: [{ label: 'Jumlah', data: rows.map(row => row.count), backgroundColor: color }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', scales: { x: { beginAtZero: true } }, plugins: { legend: { display: false } } }
+        });
+    }
+
+    function renderSimpleList(hostId, rows, emptyText) {
+        document.getElementById(hostId).innerHTML = rows.map(row => `
+            <div class="d-flex justify-content-between border-bottom py-2">
+                <span>${row.label}</span>
+                <strong>${row.count}</strong>
+            </div>
+        `).join('') || `<div class="text-muted">${emptyText}</div>`;
+    }
+
+    function renderPpdbStatus(rows) {
+        renderCountChart('ppdbStatusChart', rows, chartColors.cyan);
+        renderSimpleList('ppdbSummary', rows, 'Belum ada data PPDB pada periode ini.');
+    }
+
+    function renderBehaviorStatus(rows) {
+        renderCountChart('behaviorStatusChart', rows, chartColors.purple);
+        renderSimpleList('behaviorSummary', rows, 'Belum ada laporan pembinaan pada periode ini.');
+    }
+
+    function renderClassOverview(rows) {
+        const host = document.getElementById('classOverview');
+        host.innerHTML = rows.map(row => {
+            const percent = row.student_count ? Math.min(100, Math.round((row.attendance_count / row.student_count) * 100)) : 0;
+            return `
+                <div class="leaderboard-row">
+                    <div>
+                        <div class="fw-bold">${row.name}</div>
+                        <div class="progress progress-thin mt-1">
+                            <div class="progress-bar" style="width:${percent}%"></div>
+                        </div>
+                    </div>
+                    <div class="text-end">${row.student_count}</div>
+                    <div class="text-end fw-bold">${row.attendance_count}</div>
+                </div>
+            `;
+        }).join('') || '<div class="text-center text-muted py-3">Belum ada kelas aktif.</div>';
+    }
+
+    function renderAlerts(alerts) {
+        const statusClass = alerts.period_status === 'OPEN' ? 'success' : 'danger';
+        document.getElementById('alertSummary').innerHTML = `
+            <div class="d-flex justify-content-between border-bottom py-2"><span>PPDB pending</span><strong>${alerts.ppdb_pending || 0}</strong></div>
+            <div class="d-flex justify-content-between border-bottom py-2"><span>Catatan terbuka</span><strong>${alerts.behavior_open || 0}</strong></div>
+            <div class="d-flex justify-content-between border-bottom py-2"><span>Jurnal draft</span><strong>${alerts.draft_journals || 0}</strong></div>
+            <div class="d-flex justify-content-between py-2"><span>Periode finance</span><span class="badge bg-${statusClass}">${alerts.period_status || '-'}</span></div>
+        `;
+    }
+
+    function renderRecentPayments(rows) {
+        const host = document.getElementById('recentPayments');
+        host.innerHTML = rows.map(row => `
+            <div>
+                <div class="d-flex justify-content-between gap-2">
+                    <strong>${row.student}</strong>
+                    <span>${formatMoney(row.amount)}</span>
+                </div>
+                <div class="small text-muted">${row.date} - ${row.method}</div>
+            </div>
+        `).join('') || '<div class="text-muted">Belum ada pembayaran.</div>';
+    }
+
+    function renderAnalytics(data) {
+        if (data.period && data.period.key) {
+            document.getElementById('periodSelect').value = data.period.key;
+        }
+        document.querySelectorAll('[data-analytics]').forEach((node) => {
+            const value = getValue(data, node.dataset.analytics);
+            node.textContent = value ?? '-';
+        });
+        document.querySelectorAll('[data-money]').forEach((node) => {
+            node.textContent = formatMoney(getValue(data, node.dataset.money));
+        });
+        renderPaymentAttendanceChart(data);
+        renderFinanceTrendChart(data.finance_trend || []);
+        renderAttendance(data.attendance || {});
+        renderInvoiceStatus(data.invoice_status || []);
+        renderPpdbStatus(data.ppdb_status || []);
+        renderBehaviorStatus(data.behavior_summary || []);
+        renderClassOverview(data.class_overview || []);
+        renderAlerts(data.alerts || {});
+        renderRecentPayments(data.recent_payments || []);
+    }
+
+    async function refreshAnalytics() {
+        const period = document.getElementById('periodSelect').value;
+        const response = await fetch(`${analyticsEndpoint}?period=${encodeURIComponent(period)}`, { headers: { 'Accept': 'application/json' } });
+        if (!response.ok) {
+            return;
+        }
+        renderAnalytics(await response.json());
+    }
+
+    document.getElementById('refreshAnalytics').addEventListener('click', refreshAnalytics);
+    document.getElementById('periodSelect').addEventListener('change', refreshAnalytics);
+    renderAnalytics(initialAnalytics);
+    setInterval(refreshAnalytics, 30000);
+</script>
+{% endblock %}

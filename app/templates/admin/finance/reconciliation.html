@@ -2,8 +2,8 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="mb-0 fw-bold text-primary"><i class="fas fa-sync-alt me-2"></i>Rekonsiliasi Posting Finance</h4>
-    <a href="{{ url_for('admin.manage_finance_settings') }}" class="btn btn-sm btn-outline-primary">
-        <i class="fas fa-cog me-1"></i>Finance Settings
+    <a href="{{ url_for('admin.manage_finance_settings') }}" class="btn btn-sm btn-outline-primary" title="Finance Settings" aria-label="Finance Settings">
+        <i class="fas fa-cog"></i>
     </a>
 </div>
 
@@ -21,30 +21,33 @@
 </div>
 {% endif %}
 
-<div class="row mb-3">
-    <div class="col-md-4 mb-2">
+<div class="row mb-3 g-2">
+    <div class="col-auto">
         <form method="POST" action="{{ url_for('admin.finance_reconciliation_retry_sources') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="source" value="invoice"/>
-            <button type="submit" class="btn btn-outline-primary w-100">
-                Retry Sumber Pembayaran ({{ invoice_unposted|length }})
+            <button type="submit" class="btn btn-outline-primary position-relative" title="Retry sumber pembayaran belum POSTED" aria-label="Retry sumber pembayaran belum POSTED">
+                <i class="fas fa-receipt"></i>
+                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">{{ invoice_unposted|length }}</span>
             </button>
         </form>
     </div>
-    <div class="col-md-4 mb-2">
+    <div class="col-auto">
         <form method="POST" action="{{ url_for('admin.finance_reconciliation_retry_sources') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="source" value="savings"/>
-            <button type="submit" class="btn btn-outline-primary w-100">
-                Retry Sumber Tabungan ({{ savings_unposted|length }})
+            <button type="submit" class="btn btn-outline-primary position-relative" title="Retry sumber tabungan APPROVED belum POSTED" aria-label="Retry sumber tabungan APPROVED belum POSTED">
+                <i class="fas fa-coins"></i>
+                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">{{ savings_unposted|length }}</span>
             </button>
         </form>
     </div>
-    <div class="col-md-4 mb-2">
+    <div class="col-auto">
         <form method="POST" action="{{ url_for('admin.finance_reconciliation_retry_draft_all') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <button type="submit" class="btn btn-outline-warning w-100">
-                Retry Semua Draft ({{ draft_journals|length }})
+            <button type="submit" class="btn btn-outline-warning position-relative" title="Retry posting semua jurnal DRAFT" aria-label="Retry posting semua jurnal DRAFT">
+                <i class="fas fa-layer-group"></i>
+                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning text-dark">{{ draft_journals|length }}</span>
             </button>
         </form>
     </div>
@@ -145,10 +148,12 @@
                         <td>{{ j.journal_date }}</td>
                         <td>{{ j.source_type.value if j.source_type else '-' }} #{{ j.source_id or '-' }}</td>
                         <td>{{ j.description or '-' }}</td>
-                        <td>
+                        <td class="text-center">
                             <form method="POST" action="{{ url_for('admin.finance_reconciliation_retry_journal', journal_id=j.id) }}">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                <button type="submit" class="btn btn-sm btn-outline-success">Post Sekarang</button>
+                                <button type="submit" class="btn btn-sm btn-outline-success" title="Post jurnal ini sekarang" aria-label="Post jurnal ini sekarang">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
                             </form>
                         </td>
                     </tr>

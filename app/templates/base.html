@@ -94,6 +94,7 @@
                 {% endif %}
                 {% if has_admin %}
                     <li><a href="{{ url_for('admin.dashboard') }}" class="nav-link"><i class="fas fa-tachometer-alt me-2"></i> Dashboard Admin</a></li>
+                    <li><a href="{{ url_for('admin.leadership_dashboard') }}" class="nav-link"><i class="fas fa-chart-pie me-2"></i> Dashboard Pimpinan</a></li>
                 {% endif %}
                 {% if has_teacher %}
                     <li><a href="{{ url_for('teacher.dashboard') }}" class="nav-link"><i class="fas fa-chalkboard-teacher me-2"></i> Dashboard Guru</a></li>

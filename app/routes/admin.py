@@ -3,7 +3,7 @@ import csv
 import re
 from urllib.parse import urlsplit
 from io import BytesIO, StringIO, TextIOWrapper
-from flask import Blueprint, Response, render_template, redirect, url_for, flash, request
+from flask import Blueprint, Response, jsonify, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from werkzeug.security import generate_password_hash
 from sqlalchemy import func, or_, and_
@@ -56,7 +56,7 @@ from app.utils.timezone import local_day_bounds_utc_naive, local_now, local_toda
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
     # Base & Enums
-    UserRole, Gender, PaymentStatus, RegistrationStatus, ProgramType, EducationLevel, AssignmentRole, TenantStatus,
+    UserRole, Gender, AttendanceStatus, PaymentStatus, RegistrationStatus, ProgramType, EducationLevel, AssignmentRole, TenantStatus,
     # Users
     User, UserRoleAssignment, Student, Parent, Teacher, Staff, MajlisParticipant, BoardingGuardian, Tenant,
     # Academic
@@ -305,6 +305,448 @@ def dashboard():
                            total_students=total_students,
                            total_teachers=total_teachers,
                            income_today=income_today)  # <--- JANGAN LUPA INI
+
+
+def _format_chart_date(day):
+    return day.strftime('%d/%m')
+
+
+def _shift_month(month_start, offset):
+    month_index = month_start.month - 1 + offset
+    year = month_start.year + month_index // 12
+    month = month_index % 12 + 1
+    return date(year, month, 1)
+
+
+def _next_month(month_start):
+    return _shift_month(month_start, 1)
+
+
+def _leadership_period(raw_period):
+    today = local_today()
+    options = {
+        '7d': ('7 Hari', today - timedelta(days=6), today),
+        '14d': ('14 Hari', today - timedelta(days=13), today),
+        '30d': ('30 Hari', today - timedelta(days=29), today),
+        '90d': ('90 Hari', today - timedelta(days=89), today),
+        'month': ('Bulan Ini', date(today.year, today.month, 1), today),
+        'year': ('Tahun Ini', date(today.year, 1, 1), today),
+    }
+    key = raw_period if raw_period in options else '14d'
+    label, start_date, end_date = options[key]
+    return key, label, start_date, end_date, [{'key': item_key, 'label': item[0]} for item_key, item in options.items()]
+
+
+def _date_series(start_date, end_date):
+    days = (end_date - start_date).days
+    return [start_date + timedelta(days=offset) for offset in range(days + 1)]
+
+
+def _month_series(start_date, end_date):
+    cursor = date(start_date.year, start_date.month, 1)
+    end_month = date(end_date.year, end_date.month, 1)
+    months = []
+    while cursor <= end_month:
+        months.append(cursor)
+        cursor = _next_month(cursor)
+    return months
+
+
+def _finance_amount_for_categories(tenant_id, start_date, end_date, categories):
+    rows = (
+        db.session.query(
+            FinanceAccount.category,
+            FinanceJournalLine.entry_side,
+            func.sum(FinanceJournalLine.amount),
+        )
+        .join(FinanceJournal, FinanceJournal.id == FinanceJournalLine.journal_id)
+        .join(FinanceAccount, FinanceAccount.id == FinanceJournalLine.account_id)
+        .filter(
+            FinanceJournalLine.tenant_id == tenant_id,
+            FinanceJournal.tenant_id == tenant_id,
+            FinanceJournal.status == FinanceJournalStatus.POSTED,
+            FinanceJournal.journal_date >= start_date,
+            FinanceJournal.journal_date <= end_date,
+            FinanceAccount.category.in_(categories),
+        )
+        .group_by(FinanceAccount.category, FinanceJournalLine.entry_side)
+        .all()
+    )
+    totals = {category: {'debit': 0, 'credit': 0} for category in categories}
+    for category, entry_side, amount in rows:
+        key = 'debit' if entry_side == FinanceEntrySide.DEBIT else 'credit'
+        totals[category][key] += int(amount or 0)
+    return totals
+
+
+def _leadership_analytics_payload(tenant_id, period_key='14d'):
+    today = local_today()
+    period_key, period_label, period_start, period_end, period_options = _leadership_period(period_key)
+    start_utc, end_utc = local_day_bounds_utc_naive()
+
+    total_students = (
+        Student.query.join(User, Student.user_id == User.id)
+        .filter(Student.is_deleted.is_(False), User.tenant_id == tenant_id)
+        .count()
+    )
+    total_teachers = (
+        Teacher.query.join(User, Teacher.user_id == User.id)
+        .filter(Teacher.is_deleted.is_(False), User.tenant_id == tenant_id)
+        .count()
+    )
+    total_staff = (
+        Staff.query.join(User, Staff.user_id == User.id)
+        .filter(Staff.is_deleted.is_(False), User.tenant_id == tenant_id)
+        .count()
+    )
+
+    income_today = (
+        db.session.query(func.sum(Transaction.amount))
+        .join(Invoice, Invoice.id == Transaction.invoice_id)
+        .join(Student, Student.id == Invoice.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            Transaction.date >= start_utc,
+            Transaction.date < end_utc,
+            Invoice.is_deleted.is_(False),
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .scalar()
+        or 0
+    )
+    receivable_total = (
+        db.session.query(func.sum(Invoice.total_amount - Invoice.paid_amount))
+        .join(Student, Student.id == Invoice.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            Invoice.is_deleted.is_(False),
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+            Invoice.status != PaymentStatus.PAID,
+        )
+        .scalar()
+        or 0
+    )
+
+    finance_totals = _finance_amount_for_categories(
+        tenant_id,
+        period_start,
+        period_end,
+        [FinanceAccountCategory.REVENUE, FinanceAccountCategory.EXPENSE],
+    )
+    monthly_revenue = (
+        finance_totals[FinanceAccountCategory.REVENUE]['credit']
+        - finance_totals[FinanceAccountCategory.REVENUE]['debit']
+    )
+    monthly_expense = (
+        finance_totals[FinanceAccountCategory.EXPENSE]['debit']
+        - finance_totals[FinanceAccountCategory.EXPENSE]['credit']
+    )
+
+    attendance_counts = {
+        status.value: Attendance.query.join(Student, Student.id == Attendance.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            Attendance.date == today,
+            Attendance.status == status,
+            Attendance.student_id.isnot(None),
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .count()
+        for status in AttendanceStatus
+    }
+    attendance_total = sum(attendance_counts.values())
+    attendance_present = attendance_counts.get(AttendanceStatus.HADIR.value, 0)
+    attendance_rate = round((attendance_present / attendance_total) * 100, 1) if attendance_total else 0
+
+    attendance_trend_rows = (
+        db.session.query(Attendance.date, Attendance.status, func.count(Attendance.id))
+        .join(Student, Student.id == Attendance.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            Attendance.date >= period_start,
+            Attendance.date <= period_end,
+            Attendance.student_id.isnot(None),
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .group_by(Attendance.date, Attendance.status)
+        .all()
+    )
+    attendance_by_day = {}
+    for day, status, count in attendance_trend_rows:
+        day_key = day.isoformat()
+        attendance_by_day.setdefault(day_key, {'total': 0, 'present': 0})
+        attendance_by_day[day_key]['total'] += int(count or 0)
+        if status == AttendanceStatus.HADIR:
+            attendance_by_day[day_key]['present'] += int(count or 0)
+    attendance_trend = []
+    for day in _date_series(period_start, period_end):
+        day_data = attendance_by_day.get(day.isoformat(), {'total': 0, 'present': 0})
+        rate = round((day_data['present'] / day_data['total']) * 100, 1) if day_data['total'] else 0
+        attendance_trend.append({
+            'label': _format_chart_date(day),
+            'present': day_data['present'],
+            'total': day_data['total'],
+            'rate': rate,
+        })
+
+    payment_rows = (
+        db.session.query(func.date(Transaction.date), func.sum(Transaction.amount))
+        .join(Invoice, Invoice.id == Transaction.invoice_id)
+        .join(Student, Student.id == Invoice.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            Transaction.date >= datetime.combine(period_start, datetime.min.time()),
+            Transaction.date < datetime.combine(period_end + timedelta(days=1), datetime.min.time()),
+            Invoice.is_deleted.is_(False),
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .group_by(func.date(Transaction.date))
+        .all()
+    )
+    payments_by_day = {str(day): int(amount or 0) for day, amount in payment_rows}
+    payment_trend = []
+    for day in _date_series(period_start, period_end):
+        payment_trend.append({
+            'label': _format_chart_date(day),
+            'amount': payments_by_day.get(day.isoformat(), 0),
+        })
+
+    finance_trend = []
+    for trend_month_start in _month_series(period_start, period_end):
+        trend_month_end = min(_next_month(trend_month_start) - timedelta(days=1), period_end)
+        trend_totals = _finance_amount_for_categories(
+            tenant_id,
+            max(trend_month_start, period_start),
+            min(trend_month_end, today),
+            [FinanceAccountCategory.REVENUE, FinanceAccountCategory.EXPENSE],
+        )
+        revenue = (
+            trend_totals[FinanceAccountCategory.REVENUE]['credit']
+            - trend_totals[FinanceAccountCategory.REVENUE]['debit']
+        )
+        expense = (
+            trend_totals[FinanceAccountCategory.EXPENSE]['debit']
+            - trend_totals[FinanceAccountCategory.EXPENSE]['credit']
+        )
+        finance_trend.append({
+            'label': trend_month_start.strftime('%b %Y'),
+            'revenue': int(revenue),
+            'expense': int(expense),
+            'surplus': int(revenue - expense),
+        })
+
+    invoice_status_rows = (
+        db.session.query(
+            Invoice.status,
+            func.count(Invoice.id),
+            func.sum(Invoice.total_amount),
+            func.sum(Invoice.paid_amount),
+        )
+        .join(Student, Student.id == Invoice.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            Invoice.is_deleted.is_(False),
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .group_by(Invoice.status)
+        .all()
+    )
+    invoice_status = []
+    for status, count, total_amount, paid_amount in invoice_status_rows:
+        total_amount = int(total_amount or 0)
+        paid_amount = int(paid_amount or 0)
+        invoice_status.append({
+            'label': status.value if status else '-',
+            'count': int(count or 0),
+            'total_amount': total_amount,
+            'paid_amount': paid_amount,
+            'outstanding_amount': max(total_amount - paid_amount, 0),
+        })
+
+    class_overview = []
+    for class_room in scoped_classrooms_query(tenant_id).order_by(ClassRoom.name.asc()).limit(8).all():
+        student_count = (
+            Student.query.join(User, Student.user_id == User.id)
+            .filter(
+                Student.current_class_id == class_room.id,
+                Student.is_deleted.is_(False),
+                User.tenant_id == tenant_id,
+            )
+            .count()
+        )
+        today_attendance = (
+            Attendance.query.join(Student, Student.id == Attendance.student_id)
+            .join(User, User.id == Student.user_id)
+            .filter(
+                Attendance.class_id == class_room.id,
+                Attendance.date == today,
+                Attendance.student_id.isnot(None),
+                Student.is_deleted.is_(False),
+                User.tenant_id == tenant_id,
+            )
+            .count()
+        )
+        class_overview.append({
+            'name': class_room.name,
+            'student_count': student_count,
+            'attendance_count': today_attendance,
+        })
+
+    ppdb_pending = StudentCandidate.query.filter_by(
+        tenant_id=tenant_id,
+        status=RegistrationStatus.PENDING,
+    ).count()
+    behavior_open = (
+        BehaviorReport.query.join(Student, Student.id == BehaviorReport.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            BehaviorReport.is_resolved.is_(False),
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .count()
+    )
+    behavior_rows = (
+        db.session.query(BehaviorReport.report_type, func.count(BehaviorReport.id))
+        .join(Student, Student.id == BehaviorReport.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            BehaviorReport.report_date >= period_start,
+            BehaviorReport.report_date <= period_end,
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .group_by(BehaviorReport.report_type)
+        .all()
+    )
+    behavior_summary = [
+        {
+            'label': report_type.value if report_type else '-',
+            'count': int(count or 0),
+        }
+        for report_type, count in behavior_rows
+    ]
+    ppdb_status_rows = (
+        db.session.query(StudentCandidate.status, func.count(StudentCandidate.id))
+        .filter(
+            StudentCandidate.tenant_id == tenant_id,
+            StudentCandidate.created_at >= datetime.combine(period_start, datetime.min.time()),
+            StudentCandidate.created_at < datetime.combine(period_end + timedelta(days=1), datetime.min.time()),
+        )
+        .group_by(StudentCandidate.status)
+        .all()
+    )
+    ppdb_status = [
+        {
+            'label': status.value if status else '-',
+            'count': int(count or 0),
+        }
+        for status, count in ppdb_status_rows
+    ]
+    draft_journals = FinanceJournal.query.filter_by(
+        tenant_id=tenant_id,
+        status=FinanceJournalStatus.DRAFT,
+    ).count()
+    period_today = FinancePeriod.query.filter(
+        FinancePeriod.tenant_id == tenant_id,
+        FinancePeriod.start_date <= today,
+        FinancePeriod.end_date >= today,
+    ).first()
+
+    recent_payments = (
+        Transaction.query.join(Invoice, Invoice.id == Transaction.invoice_id)
+        .join(Student, Student.id == Invoice.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            Invoice.is_deleted.is_(False),
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+        .limit(5)
+        .all()
+    )
+
+    return {
+        'generated_at': local_now().strftime('%d/%m/%Y %H:%M:%S'),
+        'period': {
+            'key': period_key,
+            'label': period_label,
+            'start_date': period_start.isoformat(),
+            'end_date': period_end.isoformat(),
+            'options': period_options,
+        },
+        'cards': {
+            'students': total_students,
+            'teachers_staff': total_teachers + total_staff,
+            'attendance_rate': attendance_rate,
+            'income_today': int(income_today or 0),
+            'receivable_total': int(receivable_total or 0),
+            'monthly_surplus': int(monthly_revenue - monthly_expense),
+        },
+        'finance': {
+            'monthly_revenue': int(monthly_revenue),
+            'monthly_expense': int(monthly_expense),
+            'monthly_surplus': int(monthly_revenue - monthly_expense),
+            'draft_journals': draft_journals,
+            'period_status': period_today.status.value if period_today else 'BELUM ADA',
+        },
+        'attendance': {
+            'counts': attendance_counts,
+            'total': attendance_total,
+            'rate': attendance_rate,
+        },
+        'payment_trend': payment_trend,
+        'attendance_trend': attendance_trend,
+        'finance_trend': finance_trend,
+        'invoice_status': invoice_status,
+        'class_overview': class_overview,
+        'behavior_summary': behavior_summary,
+        'ppdb_status': ppdb_status,
+        'alerts': {
+            'ppdb_pending': ppdb_pending,
+            'behavior_open': behavior_open,
+            'draft_journals': draft_journals,
+            'period_status': period_today.status.value if period_today else 'BELUM ADA',
+        },
+        'recent_payments': [
+            {
+                'student': payment.invoice.student.full_name if payment.invoice and payment.invoice.student else '-',
+                'amount': int(payment.amount or 0),
+                'method': payment.method or '-',
+                'date': payment.date.strftime('%d/%m/%Y %H:%M') if payment.date else '-',
+            }
+            for payment in recent_payments
+        ],
+    }
+
+
+@admin_bp.route('/dashboard/pimpinan')
+@login_required
+@role_required(UserRole.ADMIN)
+def leadership_dashboard():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    payload = _leadership_analytics_payload(tenant_id, request.args.get('period'))
+    return render_template('admin/leadership_dashboard.html', analytics=payload)
+
+
+@admin_bp.route('/dashboard/pimpinan/data')
+@login_required
+@role_required(UserRole.ADMIN)
+def leadership_dashboard_data():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        return jsonify({'error': 'Tenant default tidak ditemukan.'}), 404
+    return jsonify(_leadership_analytics_payload(tenant_id, request.args.get('period')))
 
 
 @admin_bp.route('/pengaturan/sistem', methods=['GET', 'POST'])
