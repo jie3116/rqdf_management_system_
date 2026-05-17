@@ -729,7 +729,7 @@ def _leadership_analytics_payload(tenant_id, period_key='14d'):
 
 @admin_bp.route('/dashboard/pimpinan')
 @login_required
-@role_required(UserRole.ADMIN)
+@role_required(UserRole.PIMPINAN)
 def leadership_dashboard():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -741,7 +741,7 @@ def leadership_dashboard():
 
 @admin_bp.route('/dashboard/pimpinan/data')
 @login_required
-@role_required(UserRole.ADMIN)
+@role_required(UserRole.PIMPINAN)
 def leadership_dashboard_data():
     tenant_id = _current_tenant_id()
     if tenant_id is None:

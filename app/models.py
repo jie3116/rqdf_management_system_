@@ -49,6 +49,7 @@ class BaseModel(db.Model):
 class UserRole(enum.Enum):
     SUPER_ADMIN = "super_admin"
     ADMIN = "admin"
+    PIMPINAN = "pimpinan"
     GURU = "teacher"
     SISWA = "student"
     WALI_MURID = "wali_murid"

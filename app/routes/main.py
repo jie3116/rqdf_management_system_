@@ -129,27 +129,31 @@ def dashboard():
     if active_role == UserRole.ADMIN:
         return redirect(url_for('admin.dashboard'))
 
-    # 3. Guru
+    # 3. Pimpinan
+    elif active_role == UserRole.PIMPINAN:
+        return redirect(url_for('admin.leadership_dashboard'))
+
+    # 4. Guru
     elif active_role == UserRole.GURU:
         return redirect(url_for('teacher.dashboard'))
 
-    # 4. Staff TU
+    # 5. Staff TU
     elif active_role == UserRole.TU:
         return redirect(url_for('staff.dashboard'))
 
-    # 5. SISWA
+    # 6. SISWA
     elif active_role == UserRole.SISWA:
         return redirect(url_for('student.dashboard'))
 
-    # 6. Wali Murid
+    # 7. Wali Murid
     elif active_role == UserRole.WALI_MURID:
         return redirect(url_for('parent.dashboard'))
 
-    # 7. Wali Asrama
+    # 8. Wali Asrama
     elif active_role == UserRole.WALI_ASRAMA:
         return redirect(url_for('boarding.dashboard'))
 
-    # 8. Peserta Majelis Ta'lim (external)
+    # 9. Peserta Majelis Ta'lim (external)
     elif active_role == UserRole.MAJLIS_PARTICIPANT:
         return redirect(url_for('main.majlis_dashboard'))
 

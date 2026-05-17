@@ -6,6 +6,7 @@ from app.models import UserRole
 ROLE_PRIORITY = [
     UserRole.SUPER_ADMIN,
     UserRole.ADMIN,
+    UserRole.PIMPINAN,
     UserRole.GURU,
     UserRole.TU,
     UserRole.WALI_ASRAMA,
@@ -17,6 +18,7 @@ ROLE_PRIORITY = [
 ROLE_LABELS = {
     UserRole.SUPER_ADMIN: 'Super Admin',
     UserRole.ADMIN: 'Admin',
+    UserRole.PIMPINAN: 'Pimpinan',
     UserRole.GURU: 'Guru',
     UserRole.TU: 'Staf TU',
     UserRole.WALI_ASRAMA: 'Wali Asrama',

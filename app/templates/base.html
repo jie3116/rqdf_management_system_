@@ -13,7 +13,24 @@
     <style>
         body { background-color: #f8f9fa; }
         .sidebar { min-height: 100vh; background: #2c3e50; color: white; transition: all 0.3s; }
-        .sidebar a { color: rgba(255,255,255,0.8); text-decoration: none; padding: 10px 15px; display: block; }
+        .sidebar a {
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            padding: 10px 15px;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            line-height: 1.35;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+        .sidebar a i {
+            flex: 0 0 1.25rem;
+            width: 1.25rem;
+            margin-right: 0 !important;
+            text-align: center;
+            line-height: 1.35;
+        }
         .sidebar a:hover, .sidebar a.active { background: #34495e; color: white; border-left: 4px solid #3498db; }
         .nav-header { font-size: 0.75rem; text-transform: uppercase; color: #95a5a6; padding: 15px 15px 5px; font-weight: bold; }
         .content { padding: 20px; }
@@ -80,6 +97,7 @@
             <hr class="mt-0 mb-3" style="border-top: 1px solid rgba(255,255,255,0.2);">
             {% set has_super_admin = current_user.has_role('super_admin') %}
             {% set has_admin = current_user.has_role('admin') %}
+            {% set has_pimpinan = current_user.has_role('pimpinan') %}
             {% set has_teacher = current_user.has_role('teacher') %}
             {% set has_student = current_user.has_role('student') %}
             {% set has_tu = current_user.has_role('tata_usaha') %}
@@ -94,7 +112,9 @@
                 {% endif %}
                 {% if has_admin %}
                     <li><a href="{{ url_for('admin.dashboard') }}" class="nav-link"><i class="fas fa-tachometer-alt me-2"></i> Dashboard Admin</a></li>
-                    <li><a href="{{ url_for('admin.leadership_dashboard') }}" class="nav-link"><i class="fas fa-chart-pie me-2"></i> Dashboard Pimpinan</a></li>
+                {% endif %}
+                {% if has_pimpinan %}
+                    <li><a href="{{ url_for('admin.leadership_dashboard') }}" class="nav-link"><i class="fas fa-chart-pie me-2"></i> Dashboard Analitik</a></li>
                 {% endif %}
                 {% if has_teacher %}
                     <li><a href="{{ url_for('teacher.dashboard') }}" class="nav-link"><i class="fas fa-chalkboard-teacher me-2"></i> Dashboard Guru</a></li>
@@ -187,8 +207,9 @@
                         <span><i class="{{ group.icon }} me-2"></i>{{ group.title }}</span>
                         <span class="badge bg-secondary">{{ group.class_count + group.subject_count }}</span>
                     </div>
-                    <li class="px-3 pb-1 small text-white-50">
-                        {{ group.class_count }} kelas, {{ group.subject_count }} assignment mapel
+                    <li class="px-3 pb-1 small text-white-50 lh-sm">
+                        <div>{{ group.class_count }} kelas perwalian</div>
+                        <div>{{ group.subject_count }} assignment mapel</div>
                     </li>
                     {% for item in group['items'] %}
                     <li>
