@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <title>Posisi Keuangan</title>
+    <style>
+        body { font-family: Arial, sans-serif; color: #111; font-size: 12px; }
+        h2, p { text-align: center; margin: 4px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+        th, td { border: 1px solid #333; padding: 6px; }
+        th { background: #f0f0f0; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 18px; }
+        .section-title { font-weight: bold; margin-top: 18px; }
+        .text-end { text-align: right; }
+        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 64px; text-align: center; }
+        .name { margin-top: 72px; font-weight: bold; text-decoration: underline; }
+        @media print { button { display: none; } }
+    </style>
+</head>
+<body onload="window.print()">
+    <button onclick="window.print()">Print</button>
+    <h2>Posisi Keuangan</h2>
+    <p>Per {{ as_of_date }}</p>
+
+    <div class="grid">
+        <div>
+            <div class="section-title">Aset</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Kode</th>
+                        <th>Akun</th>
+                        <th>Nominal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in asset_rows %}
+                    <tr>
+                        <td>{{ row.account.code }}</td>
+                        <td>{{ row.account.name }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(row.amount or 0) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th colspan="2" class="text-end">Total Aset</th>
+                        <th class="text-end">{{ "{:,.0f}".format(total_assets or 0) }}</th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div>
+            <div class="section-title">Kewajiban</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Kode</th>
+                        <th>Akun</th>
+                        <th>Nominal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in liability_rows %}
+                    <tr>
+                        <td>{{ row.account.code }}</td>
+                        <td>{{ row.account.name }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(row.amount or 0) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th colspan="2" class="text-end">Total Kewajiban</th>
+                        <th class="text-end">{{ "{:,.0f}".format(total_liabilities or 0) }}</th>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <div class="section-title">Ekuitas</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Kode</th>
+                        <th>Akun</th>
+                        <th>Nominal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in equity_rows %}
+                    <tr>
+                        <td>{% if row.account %}{{ row.account.code }}{% else %}{{ row.code }}{% endif %}</td>
+                        <td>{% if row.account %}{{ row.account.name }}{% else %}{{ row.name }}{% endif %}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(row.amount or 0) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th colspan="2" class="text-end">Total Ekuitas</th>
+                        <th class="text-end">{{ "{:,.0f}".format(total_equity or 0) }}</th>
+                    </tr>
+                    <tr>
+                        <th colspan="2" class="text-end">Total Kewajiban + Ekuitas</th>
+                        <th class="text-end">{{ "{:,.0f}".format(total_liabilities_equity or 0) }}</th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <div class="signatures">
+        {% for signer in signers %}
+        <div>
+            <div>{{ signer.title }}</div>
+            <div class="name">{{ signer.name or '&nbsp;'|safe }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>

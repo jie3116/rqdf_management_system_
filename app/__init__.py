@@ -49,7 +49,7 @@ def create_app(config_class=Config):
             tenant_package = get_tenant_package(tenant_id)
             user_roles = sorted(list(current_user.all_roles()), key=lambda role: role.value)
             user_role_labels = [role_label(role) for role in user_roles]
-            if current_user.has_role('admin') and tenant_id is not None:
+            if current_user.has_role('admin', 'tata_usaha') and tenant_id is not None:
                 finance_draft_journal_count = FinanceJournal.query.filter_by(
                     tenant_id=tenant_id,
                     status=FinanceJournalStatus.DRAFT,

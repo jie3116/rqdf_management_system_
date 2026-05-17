@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0 fw-bold text-primary"><i class="fas fa-list-alt me-2"></i>Buku Besar</h4>
+    <div class="d-flex gap-2">
+        {% if selected_account %}
+        <a href="{{ url_for('admin.finance_general_ledger_export', account_id=account_id, start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-success" title="Export CSV" aria-label="Export CSV">
+            <i class="fas fa-file-csv"></i>
+        </a>
+        <a href="{{ url_for('admin.finance_general_ledger_export_xlsx', account_id=account_id, start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-success" title="Export Excel" aria-label="Export Excel">
+            <i class="fas fa-file-excel"></i>
+        </a>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#printGeneralLedgerModal" title="Print laporan" aria-label="Print laporan">
+            <i class="fas fa-print"></i>
+        </button>
+        {% endif %}
+        <a href="{{ url_for('admin.finance_trial_balance', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-primary" title="Buka Neraca Saldo" aria-label="Buka Neraca Saldo">
+            <i class="fas fa-balance-scale"></i>
+        </a>
+        <a href="{{ url_for('admin.finance_journals') }}" class="btn btn-sm btn-outline-secondary" title="Buka Jurnal Umum" aria-label="Buka Jurnal Umum">
+            <i class="fas fa-book-open"></i>
+        </a>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-lg-5 col-md-12">
+                <label class="form-label">Akun</label>
+                <select name="account_id" class="form-select" required>
+                    <option value="">-- Pilih akun --</option>
+                    {% for account in accounts %}
+                    <option value="{{ account.id }}" {% if account_id == account.id %}selected{% endif %}>
+                        {{ account.code }} - {{ account.name }} ({{ account.category.value }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-3 col-md-5">
+                <label class="form-label">Mulai</label>
+                <input type="date" name="start_date" class="form-control" value="{{ start_date }}" required>
+            </div>
+            <div class="col-lg-3 col-md-5">
+                <label class="form-label">Selesai</label>
+                <input type="date" name="end_date" class="form-control" value="{{ end_date }}" required>
+            </div>
+            <div class="col-lg-1 col-md-2">
+                <button type="submit" class="btn btn-outline-primary w-100" title="Tampilkan buku besar" aria-label="Tampilkan buku besar">
+                    <i class="fas fa-search"></i>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if selected_account %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 fw-bold text-primary">
+            {{ selected_account.code }} - {{ selected_account.name }} | {{ start_date }} s.d {{ end_date }}
+        </h6>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <div class="border rounded p-3">
+                    <div class="text-muted small">Saldo Awal Debit</div>
+                    <div class="fw-bold">Rp {{ "{:,.0f}".format(opening_debit or 0) }}</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="border rounded p-3">
+                    <div class="text-muted small">Saldo Awal Credit</div>
+                    <div class="fw-bold">Rp {{ "{:,.0f}".format(opening_credit or 0) }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle js-row-paginate" data-default-per-page="20">
+                <thead>
+                    <tr>
+                        <th>Tanggal</th>
+                        <th>No Jurnal</th>
+                        <th>Deskripsi</th>
+                        <th class="text-end">Debit</th>
+                        <th class="text-end">Credit</th>
+                        <th class="text-end">Saldo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in ledger_rows %}
+                    <tr>
+                        <td>{{ row.line.journal.journal_date if row.line.journal else '-' }}</td>
+                        <td>
+                            {% if row.line.journal %}
+                            <a href="{{ url_for('admin.finance_journal_detail', journal_id=row.line.journal.id) }}" class="fw-bold">
+                                {{ row.line.journal.journal_no }}
+                            </a>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>{{ row.line.journal.description if row.line.journal else row.line.memo or '-' }}</td>
+                        <td class="text-end">{% if row.debit %}Rp {{ "{:,.0f}".format(row.debit) }}{% else %}-{% endif %}</td>
+                        <td class="text-end">{% if row.credit %}Rp {{ "{:,.0f}".format(row.credit) }}{% else %}-{% endif %}</td>
+                        <td class="text-end">Rp {{ "{:,.0f}".format(row.balance or 0) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center text-muted">Tidak ada mutasi POSTED pada periode ini.</td></tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold">
+                        <td colspan="3" class="text-end">Saldo Akhir</td>
+                        <td class="text-end">Rp {{ "{:,.0f}".format(closing_debit or 0) }}</td>
+                        <td class="text-end">Rp {{ "{:,.0f}".format(closing_credit or 0) }}</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% with modal_id='printGeneralLedgerModal', action_url=url_for('admin.finance_general_ledger_print'), hidden_fields={'account_id': account_id, 'start_date': start_date, 'end_date': end_date} %}
+    {% include 'admin/finance/_print_signers_modal.html' %}
+{% endwith %}
+{% else %}
+<div class="alert alert-info">Pilih akun untuk menampilkan buku besar.</div>
+{% endif %}
+{% endblock %}

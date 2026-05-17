@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0 fw-bold text-primary"><i class="fas fa-landmark me-2"></i>Posisi Keuangan</h4>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('admin.finance_financial_position_export', as_of_date=as_of_date) }}" class="btn btn-sm btn-outline-success" title="Export CSV" aria-label="Export CSV">
+            <i class="fas fa-file-csv"></i>
+        </a>
+        <a href="{{ url_for('admin.finance_financial_position_export_xlsx', as_of_date=as_of_date) }}" class="btn btn-sm btn-outline-success" title="Export Excel" aria-label="Export Excel">
+            <i class="fas fa-file-excel"></i>
+        </a>
+        <a href="{{ url_for('admin.finance_income_statement', end_date=as_of_date) }}" class="btn btn-sm btn-outline-primary" title="Buka Laba Rugi" aria-label="Buka Laba Rugi">
+            <i class="fas fa-chart-line"></i>
+        </a>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#printFinancialPositionModal" title="Print laporan" aria-label="Print laporan">
+            <i class="fas fa-print"></i>
+        </button>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-8">
+                <label class="form-label">Tanggal Posisi</label>
+                <input type="date" name="as_of_date" class="form-control" value="{{ as_of_date }}" required>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-outline-primary w-100" title="Tampilkan laporan" aria-label="Tampilkan laporan">
+                    <i class="fas fa-search"></i>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow h-100">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-success">Aset</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Kode</th>
+                                <th>Akun</th>
+                                <th class="text-end">Nominal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in asset_rows %}
+                            <tr>
+                                <td class="fw-bold">{{ row.account.code }}</td>
+                                <td>{{ row.account.name }}</td>
+                                <td class="text-end">Rp {{ "{:,.0f}".format(row.amount or 0) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="text-center text-muted">Belum ada saldo aset POSTED.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="fw-bold">
+                                <td colspan="2" class="text-end">Total Aset</td>
+                                <td class="text-end">Rp {{ "{:,.0f}".format(total_assets or 0) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-danger">Kewajiban</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Kode</th>
+                                <th>Akun</th>
+                                <th class="text-end">Nominal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in liability_rows %}
+                            <tr>
+                                <td class="fw-bold">{{ row.account.code }}</td>
+                                <td>{{ row.account.name }}</td>
+                                <td class="text-end">Rp {{ "{:,.0f}".format(row.amount or 0) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="text-center text-muted">Belum ada saldo kewajiban POSTED.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="fw-bold">
+                                <td colspan="2" class="text-end">Total Kewajiban</td>
+                                <td class="text-end">Rp {{ "{:,.0f}".format(total_liabilities or 0) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Ekuitas</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Kode</th>
+                                <th>Akun</th>
+                                <th class="text-end">Nominal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in equity_rows %}
+                            <tr>
+                                <td class="fw-bold">{% if row.account %}{{ row.account.code }}{% else %}{{ row.code }}{% endif %}</td>
+                                <td>{% if row.account %}{{ row.account.name }}{% else %}{{ row.name }}{% endif %}</td>
+                                <td class="text-end">Rp {{ "{:,.0f}".format(row.amount or 0) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="text-center text-muted">Belum ada saldo ekuitas POSTED.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="fw-bold">
+                                <td colspan="2" class="text-end">Total Ekuitas</td>
+                                <td class="text-end">Rp {{ "{:,.0f}".format(total_equity or 0) }}</td>
+                            </tr>
+                            <tr class="fw-bold">
+                                <td colspan="2" class="text-end">Total Kewajiban + Ekuitas</td>
+                                <td class="text-end">Rp {{ "{:,.0f}".format(total_liabilities_equity or 0) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow">
+    <div class="card-body d-flex justify-content-between align-items-center">
+        <span class="fw-bold">Kontrol Persamaan Akuntansi per {{ as_of_date }}</span>
+        {% if total_assets == total_liabilities_equity %}
+        <span class="badge bg-success">Balance</span>
+        {% else %}
+        <span class="badge bg-danger">Tidak Balance</span>
+        {% endif %}
+    </div>
+</div>
+
+{% with modal_id='printFinancialPositionModal', action_url=url_for('admin.finance_financial_position_print'), hidden_fields={'as_of_date': as_of_date} %}
+    {% include 'admin/finance/_print_signers_modal.html' %}
+{% endwith %}
+{% endblock %}

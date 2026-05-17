@@ -2,12 +2,12 @@ from datetime import datetime, timedelta, date
 import csv
 import re
 from urllib.parse import urlsplit
-from io import TextIOWrapper
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from io import BytesIO, StringIO, TextIOWrapper
+from flask import Blueprint, Response, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from werkzeug.security import generate_password_hash
 from sqlalchemy import func, or_, and_
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from app.extensions import db
 from app.decorators import role_required
 from app.services.majlis_enrollment_service import ensure_majlis_participant_acceptance, list_active_majlis_participants
@@ -46,9 +46,11 @@ from app.services.ppdb_fee_service import (
     save_ppdb_fee_templates,
 )
 from app.services.finance_posting_service import (
+    create_cash_bank_transaction,
     post_invoice_payment,
     post_journal,
     post_savings_transaction,
+    reverse_journal,
 )
 from app.utils.timezone import local_day_bounds_utc_naive, local_now, local_today
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
@@ -65,7 +67,8 @@ from app.models import (
     FinanceSetting, FinanceAccountingBasis,
     FinancePeriod, FinancePeriodStatus,
     FinanceCashBankAccount, FinanceCashBankAccountType,
-    FinanceJournal, FinanceJournalLine, FinanceJournalStatus, FinanceJournalSourceType,
+    FinanceCashBankTransaction, FinanceCashBankTransactionType,
+    FinanceJournal, FinanceJournalLine, FinanceJournalStatus, FinanceJournalSourceType, FinanceEntrySide,
     SavingsTransactionType, SavingsTransactionStatus, StudentSavingsTransaction,
     # Student Related
     StudentClassHistory, Attendance, BoardingAttendance, Grade, ReportCard, StudentAttitude,
@@ -1888,7 +1891,7 @@ def delete_student(id):
 
 @admin_bp.route('/keuangan/akun', methods=['GET', 'POST'])
 @login_required
-@role_required(UserRole.ADMIN)
+@role_required(UserRole.ADMIN, UserRole.TU)
 def manage_finance_accounts():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -1969,7 +1972,7 @@ def manage_finance_accounts():
 
 @admin_bp.route('/keuangan/settings', methods=['GET', 'POST'])
 @login_required
-@role_required(UserRole.ADMIN)
+@role_required(UserRole.ADMIN, UserRole.TU)
 def manage_finance_settings():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2159,6 +2162,1323 @@ def manage_finance_settings():
     )
 
 
+@admin_bp.route('/keuangan/kas-bank', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def manage_finance_cash_bank():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    if request.method == 'POST':
+        action = (request.form.get('action') or 'create_transaction').strip()
+
+        if action == 'create_account':
+            account_name = (request.form.get('account_name') or '').strip()
+            account_type_raw = (request.form.get('account_type') or '').strip().upper()
+            gl_account_id = request.form.get('gl_account_id', type=int)
+
+            if not account_name or not gl_account_id:
+                flash('Nama kas/bank dan GL account wajib diisi.', 'warning')
+                return redirect(url_for('admin.manage_finance_cash_bank'))
+            if account_type_raw not in FinanceCashBankAccountType.__members__:
+                flash('Tipe kas/bank tidak valid.', 'warning')
+                return redirect(url_for('admin.manage_finance_cash_bank'))
+
+            gl_account = FinanceAccount.query.filter_by(
+                id=gl_account_id,
+                tenant_id=tenant_id,
+                is_active=True,
+            ).first()
+            if not gl_account or gl_account.category != FinanceAccountCategory.ASSET:
+                flash('GL account kas/bank harus akun ASSET aktif pada tenant ini.', 'danger')
+                return redirect(url_for('admin.manage_finance_cash_bank'))
+
+            existing = FinanceCashBankAccount.query.filter_by(
+                tenant_id=tenant_id,
+                account_name=account_name,
+            ).first()
+            if existing:
+                flash(f'Kas/bank "{account_name}" sudah ada.', 'warning')
+                return redirect(url_for('admin.manage_finance_cash_bank'))
+
+            db.session.add(FinanceCashBankAccount(
+                tenant_id=tenant_id,
+                account_name=account_name,
+                account_type=FinanceCashBankAccountType[account_type_raw],
+                gl_account_id=gl_account.id,
+                is_active=True,
+            ))
+            db.session.commit()
+            flash(f'Kas/bank "{account_name}" berhasil ditambahkan.', 'success')
+            return redirect(url_for('admin.manage_finance_cash_bank'))
+
+        if action == 'toggle_account':
+            account_id = request.form.get('account_id', type=int)
+            cash_bank = FinanceCashBankAccount.query.filter_by(id=account_id, tenant_id=tenant_id).first_or_404()
+            cash_bank.is_active = not cash_bank.is_active
+            db.session.commit()
+            flash(
+                f'Kas/bank "{cash_bank.account_name}" {"diaktifkan" if cash_bank.is_active else "dinonaktifkan"}.',
+                'success'
+            )
+            return redirect(url_for('admin.manage_finance_cash_bank'))
+
+        trx_date = _parse_iso_date(request.form.get('trx_date'))
+        cash_bank_account_id = request.form.get('cash_bank_account_id', type=int)
+        trx_type = (request.form.get('trx_type') or '').strip().upper()
+        amount = to_rupiah_int(request.form.get('amount'), default=0)
+        counterpart_account_id = request.form.get('counterpart_account_id', type=int)
+        description = (request.form.get('description') or '').strip()
+
+        if not trx_date:
+            flash('Tanggal transaksi wajib valid.', 'warning')
+            return redirect(url_for('admin.manage_finance_cash_bank'))
+
+        try:
+            cash_bank_trx_id = create_cash_bank_transaction(
+                tenant_id=tenant_id,
+                trx_date=trx_date,
+                cash_bank_account_id=cash_bank_account_id,
+                trx_type=trx_type,
+                amount=amount,
+                counterpart_account_id=counterpart_account_id,
+                description=description,
+                actor_user_id=current_user.id,
+            )
+            flash(f'Transaksi kas/bank #{cash_bank_trx_id} berhasil dicatat.', 'success')
+        except Exception as exc:
+            db.session.rollback()
+            flash(f'Gagal mencatat transaksi kas/bank: {exc}', 'danger')
+        return redirect(url_for('admin.manage_finance_cash_bank'))
+
+    asset_accounts = FinanceAccount.query.filter_by(
+        tenant_id=tenant_id,
+        category=FinanceAccountCategory.ASSET,
+        is_active=True,
+    ).order_by(FinanceAccount.code.asc()).all()
+    accounts = FinanceAccount.query.filter_by(
+        tenant_id=tenant_id,
+        is_active=True,
+    ).order_by(FinanceAccount.code.asc()).all()
+    cash_bank_accounts = FinanceCashBankAccount.query.filter_by(
+        tenant_id=tenant_id,
+    ).order_by(FinanceCashBankAccount.is_active.desc(), FinanceCashBankAccount.account_name.asc()).all()
+    transactions = FinanceCashBankTransaction.query.filter_by(
+        tenant_id=tenant_id,
+    ).order_by(FinanceCashBankTransaction.trx_date.desc(), FinanceCashBankTransaction.id.desc()).limit(100).all()
+
+    return render_template(
+        'admin/finance/cash_bank.html',
+        today=local_today(),
+        accounts=accounts,
+        asset_accounts=asset_accounts,
+        cash_bank_accounts=cash_bank_accounts,
+        transactions=transactions,
+        account_type_options=list(FinanceCashBankAccountType),
+        trx_type_options=list(FinanceCashBankTransactionType),
+    )
+
+
+@admin_bp.route('/keuangan/jurnal')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_journals():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    status_filter = (request.args.get('status') or '').strip().upper()
+    source_filter = (request.args.get('source_type') or '').strip().upper()
+    start_date = _parse_iso_date(request.args.get('start_date'))
+    end_date = _parse_iso_date(request.args.get('end_date'))
+    query_text = (request.args.get('q') or '').strip()
+
+    journals_query = FinanceJournal.query.filter_by(tenant_id=tenant_id)
+    if status_filter and status_filter in FinanceJournalStatus.__members__:
+        journals_query = journals_query.filter(FinanceJournal.status == FinanceJournalStatus[status_filter])
+    if source_filter and source_filter in FinanceJournalSourceType.__members__:
+        journals_query = journals_query.filter(FinanceJournal.source_type == FinanceJournalSourceType[source_filter])
+    if start_date:
+        journals_query = journals_query.filter(FinanceJournal.journal_date >= start_date)
+    if end_date:
+        journals_query = journals_query.filter(FinanceJournal.journal_date <= end_date)
+    if query_text:
+        journals_query = journals_query.filter(
+            or_(
+                FinanceJournal.journal_no.ilike(f'%{query_text}%'),
+                FinanceJournal.description.ilike(f'%{query_text}%'),
+            )
+        )
+
+    journals = journals_query.order_by(
+        FinanceJournal.journal_date.desc(),
+        FinanceJournal.id.desc(),
+    ).limit(300).all()
+
+    return render_template(
+        'admin/finance/journals.html',
+        journals=journals,
+        status_filter=status_filter,
+        source_filter=source_filter,
+        start_date=start_date,
+        end_date=end_date,
+        query_text=query_text,
+        status_options=list(FinanceJournalStatus),
+        source_type_options=list(FinanceJournalSourceType),
+    )
+
+
+@admin_bp.route('/keuangan/jurnal/export')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_journals_export():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    status_filter = (request.args.get('status') or '').strip().upper()
+    source_filter = (request.args.get('source_type') or '').strip().upper()
+    start_date = _parse_iso_date(request.args.get('start_date'))
+    end_date = _parse_iso_date(request.args.get('end_date'))
+    query_text = (request.args.get('q') or '').strip()
+
+    journals_query = FinanceJournal.query.filter_by(tenant_id=tenant_id)
+    if status_filter and status_filter in FinanceJournalStatus.__members__:
+        journals_query = journals_query.filter(FinanceJournal.status == FinanceJournalStatus[status_filter])
+    if source_filter and source_filter in FinanceJournalSourceType.__members__:
+        journals_query = journals_query.filter(FinanceJournal.source_type == FinanceJournalSourceType[source_filter])
+    if start_date:
+        journals_query = journals_query.filter(FinanceJournal.journal_date >= start_date)
+    if end_date:
+        journals_query = journals_query.filter(FinanceJournal.journal_date <= end_date)
+    if query_text:
+        journals_query = journals_query.filter(
+            or_(
+                FinanceJournal.journal_no.ilike(f'%{query_text}%'),
+                FinanceJournal.description.ilike(f'%{query_text}%'),
+            )
+        )
+
+    journals = journals_query.order_by(FinanceJournal.journal_date.asc(), FinanceJournal.id.asc()).all()
+    rows = [
+        [
+            journal.journal_date,
+            journal.journal_no,
+            journal.status.value,
+            journal.source_type.value if journal.source_type else '',
+            journal.source_id or '',
+            journal.description or '',
+            journal.created_by.full_name if journal.created_by else '',
+            journal.approved_by.full_name if journal.approved_by else '',
+            journal.posted_at.strftime('%Y-%m-%d %H:%M:%S') if journal.posted_at else '',
+        ]
+        for journal in journals
+    ]
+    return _csv_response(
+        'finance_jurnal_umum.csv',
+        ['Tanggal', 'No Jurnal', 'Status', 'Source Type', 'Source ID', 'Deskripsi', 'Dibuat Oleh', 'Disetujui Oleh', 'Posted At'],
+        rows,
+    )
+
+
+@admin_bp.route('/keuangan/jurnal/export-xlsx')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_journals_export_xlsx():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    status_filter = (request.args.get('status') or '').strip().upper()
+    source_filter = (request.args.get('source_type') or '').strip().upper()
+    start_date = _parse_iso_date(request.args.get('start_date'))
+    end_date = _parse_iso_date(request.args.get('end_date'))
+    query_text = (request.args.get('q') or '').strip()
+
+    journals_query = FinanceJournal.query.filter_by(tenant_id=tenant_id)
+    if status_filter and status_filter in FinanceJournalStatus.__members__:
+        journals_query = journals_query.filter(FinanceJournal.status == FinanceJournalStatus[status_filter])
+    if source_filter and source_filter in FinanceJournalSourceType.__members__:
+        journals_query = journals_query.filter(FinanceJournal.source_type == FinanceJournalSourceType[source_filter])
+    if start_date:
+        journals_query = journals_query.filter(FinanceJournal.journal_date >= start_date)
+    if end_date:
+        journals_query = journals_query.filter(FinanceJournal.journal_date <= end_date)
+    if query_text:
+        journals_query = journals_query.filter(
+            or_(
+                FinanceJournal.journal_no.ilike(f'%{query_text}%'),
+                FinanceJournal.description.ilike(f'%{query_text}%'),
+            )
+        )
+
+    rows = [
+        [
+            journal.journal_date,
+            journal.journal_no,
+            journal.status.value,
+            journal.source_type.value if journal.source_type else '',
+            journal.source_id or '',
+            journal.description or '',
+            journal.created_by.full_name if journal.created_by else '',
+            journal.approved_by.full_name if journal.approved_by else '',
+            journal.posted_at.strftime('%Y-%m-%d %H:%M:%S') if journal.posted_at else '',
+        ]
+        for journal in journals_query.order_by(FinanceJournal.journal_date.asc(), FinanceJournal.id.asc()).all()
+    ]
+    return _xlsx_response(
+        'finance_jurnal_umum.xlsx',
+        'Jurnal Umum',
+        ['Tanggal', 'No Jurnal', 'Status', 'Source Type', 'Source ID', 'Deskripsi', 'Dibuat Oleh', 'Disetujui Oleh', 'Posted At'],
+        rows,
+    )
+
+
+@admin_bp.route('/keuangan/jurnal/<int:journal_id>')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_journal_detail(journal_id):
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    journal = FinanceJournal.query.filter_by(id=journal_id, tenant_id=tenant_id).first_or_404()
+    lines = FinanceJournalLine.query.filter_by(
+        tenant_id=tenant_id,
+        journal_id=journal.id,
+    ).order_by(FinanceJournalLine.id.asc()).all()
+    debit_total = sum(int(line.amount or 0) for line in lines if line.entry_side == FinanceEntrySide.DEBIT)
+    credit_total = sum(int(line.amount or 0) for line in lines if line.entry_side == FinanceEntrySide.CREDIT)
+
+    return render_template(
+        'admin/finance/journal_detail.html',
+        journal=journal,
+        lines=lines,
+        debit_total=debit_total,
+        credit_total=credit_total,
+    )
+
+
+@admin_bp.route('/keuangan/jurnal/<int:journal_id>/print')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_journal_detail_print(journal_id):
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    journal = FinanceJournal.query.filter_by(id=journal_id, tenant_id=tenant_id).first_or_404()
+    lines = FinanceJournalLine.query.filter_by(
+        tenant_id=tenant_id,
+        journal_id=journal.id,
+    ).order_by(FinanceJournalLine.id.asc()).all()
+    debit_total = sum(int(line.amount or 0) for line in lines if line.entry_side == FinanceEntrySide.DEBIT)
+    credit_total = sum(int(line.amount or 0) for line in lines if line.entry_side == FinanceEntrySide.CREDIT)
+    return render_template(
+        'admin/finance/print_journal_detail.html',
+        journal=journal,
+        lines=lines,
+        debit_total=debit_total,
+        credit_total=credit_total,
+        signers=_report_signers_from_request(),
+    )
+
+
+@admin_bp.route('/keuangan/jurnal/<int:journal_id>/reverse', methods=['POST'])
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_journal_reverse(journal_id):
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    reason = (request.form.get('reason') or '').strip()
+    if not reason:
+        flash('Alasan reversal wajib diisi.', 'warning')
+        return redirect(url_for('admin.finance_journal_detail', journal_id=journal_id))
+
+    try:
+        reversal_id = reverse_journal(
+            tenant_id=tenant_id,
+            journal_id=journal_id,
+            reason=reason,
+            actor_user_id=current_user.id,
+        )
+        flash(f'Jurnal berhasil direversal. Jurnal reversal: #{reversal_id}.', 'success')
+        return redirect(url_for('admin.finance_journal_detail', journal_id=reversal_id))
+    except Exception as exc:
+        db.session.rollback()
+        flash(f'Gagal reversal jurnal: {exc}', 'danger')
+        return redirect(url_for('admin.finance_journal_detail', journal_id=journal_id))
+
+
+def _default_report_dates():
+    today = local_today()
+    return date(today.year, today.month, 1), today
+
+
+def _posted_finance_lines_query(tenant_id, start_date, end_date):
+    query = (
+        FinanceJournalLine.query
+        .join(FinanceJournal, FinanceJournal.id == FinanceJournalLine.journal_id)
+        .filter(
+            FinanceJournalLine.tenant_id == tenant_id,
+            FinanceJournal.tenant_id == tenant_id,
+            FinanceJournal.status == FinanceJournalStatus.POSTED,
+        )
+    )
+    if start_date:
+        query = query.filter(FinanceJournal.journal_date >= start_date)
+    if end_date:
+        query = query.filter(FinanceJournal.journal_date <= end_date)
+    return query
+
+
+def _csv_response(filename, header, rows):
+    output = StringIO()
+    output.write('\ufeff')
+    writer = csv.writer(output)
+    writer.writerow(header)
+    writer.writerows(rows)
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv; charset=utf-8',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+    )
+
+
+def _xlsx_response(filename, sheet_title, header, rows):
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = sheet_title[:31]
+    worksheet.append(header)
+    for row in rows:
+        worksheet.append(row)
+    for column_cells in worksheet.columns:
+        max_length = max(len(str(cell.value or '')) for cell in column_cells)
+        worksheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 12), 40)
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+    )
+
+
+def _report_signers_from_request():
+    return [
+        {
+            'title': (request.args.get('signer1_title') or 'Mengetahui').strip(),
+            'name': (request.args.get('signer1_name') or '').strip(),
+        },
+        {
+            'title': (request.args.get('signer2_title') or 'Dibuat oleh').strip(),
+            'name': (request.args.get('signer2_name') or '').strip(),
+        },
+    ]
+
+
+def _trial_balance_data(tenant_id, start_date, end_date):
+    rows_by_account_id = {
+        account.id: {
+            'account': account,
+            'debit_total': 0,
+            'credit_total': 0,
+            'ending_debit': 0,
+            'ending_credit': 0,
+        }
+        for account in FinanceAccount.query.filter_by(tenant_id=tenant_id).order_by(FinanceAccount.code.asc()).all()
+    }
+    for line in _posted_finance_lines_query(tenant_id, start_date, end_date).all():
+        row = rows_by_account_id.get(line.account_id)
+        if not row:
+            continue
+        amount = int(line.amount or 0)
+        if line.entry_side == FinanceEntrySide.DEBIT:
+            row['debit_total'] += amount
+        elif line.entry_side == FinanceEntrySide.CREDIT:
+            row['credit_total'] += amount
+
+    report_rows = []
+    total_debit = 0
+    total_credit = 0
+    for row in rows_by_account_id.values():
+        balance = row['debit_total'] - row['credit_total']
+        if balance > 0:
+            row['ending_debit'] = balance
+            total_debit += balance
+        elif balance < 0:
+            row['ending_credit'] = abs(balance)
+            total_credit += abs(balance)
+        if row['debit_total'] or row['credit_total']:
+            report_rows.append(row)
+    return report_rows, total_debit, total_credit
+
+
+def _income_statement_data(tenant_id, start_date, end_date):
+    rows_by_account_id = {
+        account.id: {
+            'account': account,
+            'debit_total': 0,
+            'credit_total': 0,
+            'amount': 0,
+        }
+        for account in FinanceAccount.query.filter(
+            FinanceAccount.tenant_id == tenant_id,
+            FinanceAccount.category.in_([FinanceAccountCategory.REVENUE, FinanceAccountCategory.EXPENSE]),
+        ).order_by(FinanceAccount.code.asc()).all()
+    }
+    lines = (
+        _posted_finance_lines_query(tenant_id, start_date, end_date)
+        .join(FinanceAccount, FinanceAccount.id == FinanceJournalLine.account_id)
+        .filter(
+            FinanceAccount.tenant_id == tenant_id,
+            FinanceAccount.category.in_([FinanceAccountCategory.REVENUE, FinanceAccountCategory.EXPENSE]),
+        )
+        .all()
+    )
+    for line in lines:
+        row = rows_by_account_id.get(line.account_id)
+        if not row:
+            continue
+        amount = int(line.amount or 0)
+        if line.entry_side == FinanceEntrySide.DEBIT:
+            row['debit_total'] += amount
+        elif line.entry_side == FinanceEntrySide.CREDIT:
+            row['credit_total'] += amount
+
+    revenue_rows = []
+    expense_rows = []
+    total_revenue = 0
+    total_expense = 0
+    for row in rows_by_account_id.values():
+        account = row['account']
+        if account.category == FinanceAccountCategory.REVENUE:
+            row['amount'] = row['credit_total'] - row['debit_total']
+            if row['amount']:
+                total_revenue += row['amount']
+                revenue_rows.append(row)
+        elif account.category == FinanceAccountCategory.EXPENSE:
+            row['amount'] = row['debit_total'] - row['credit_total']
+            if row['amount']:
+                total_expense += row['amount']
+                expense_rows.append(row)
+    return revenue_rows, expense_rows, total_revenue, total_expense, total_revenue - total_expense
+
+
+def _financial_position_data(tenant_id, as_of_date):
+    balance_categories = [
+        FinanceAccountCategory.ASSET,
+        FinanceAccountCategory.LIABILITY,
+        FinanceAccountCategory.EQUITY,
+    ]
+    rows_by_account_id = {
+        account.id: {
+            'account': account,
+            'debit_total': 0,
+            'credit_total': 0,
+            'amount': 0,
+        }
+        for account in FinanceAccount.query.filter(
+            FinanceAccount.tenant_id == tenant_id,
+            FinanceAccount.category.in_(balance_categories),
+        ).order_by(FinanceAccount.code.asc()).all()
+    }
+
+    lines = (
+        _posted_finance_lines_query(tenant_id, None, as_of_date)
+        .join(FinanceAccount, FinanceAccount.id == FinanceJournalLine.account_id)
+        .filter(
+            FinanceAccount.tenant_id == tenant_id,
+            FinanceAccount.category.in_(balance_categories),
+        )
+        .all()
+    )
+    for line in lines:
+        row = rows_by_account_id.get(line.account_id)
+        if not row:
+            continue
+        amount = int(line.amount or 0)
+        if line.entry_side == FinanceEntrySide.DEBIT:
+            row['debit_total'] += amount
+        elif line.entry_side == FinanceEntrySide.CREDIT:
+            row['credit_total'] += amount
+
+    asset_rows = []
+    liability_rows = []
+    equity_rows = []
+    total_assets = 0
+    total_liabilities = 0
+    total_equity = 0
+    for row in rows_by_account_id.values():
+        account = row['account']
+        if account.category == FinanceAccountCategory.ASSET:
+            row['amount'] = row['debit_total'] - row['credit_total']
+            if row['amount']:
+                total_assets += row['amount']
+                asset_rows.append(row)
+        elif account.category == FinanceAccountCategory.LIABILITY:
+            row['amount'] = row['credit_total'] - row['debit_total']
+            if row['amount']:
+                total_liabilities += row['amount']
+                liability_rows.append(row)
+        elif account.category == FinanceAccountCategory.EQUITY:
+            row['amount'] = row['credit_total'] - row['debit_total']
+            if row['amount']:
+                total_equity += row['amount']
+                equity_rows.append(row)
+
+    _, _, _, _, net_income = _income_statement_data(tenant_id, None, as_of_date)
+    if net_income:
+        total_equity += net_income
+        equity_rows.append({
+            'account': None,
+            'code': 'LR-BERJALAN',
+            'name': 'Laba/Rugi Berjalan',
+            'amount': net_income,
+        })
+
+    return {
+        'asset_rows': asset_rows,
+        'liability_rows': liability_rows,
+        'equity_rows': equity_rows,
+        'total_assets': total_assets,
+        'total_liabilities': total_liabilities,
+        'total_equity': total_equity,
+        'net_income': net_income,
+        'total_liabilities_equity': total_liabilities + total_equity,
+    }
+
+
+def _ledger_data(tenant_id, selected_account, start_date, end_date):
+    opening_debit = 0
+    opening_credit = 0
+    for line in _posted_finance_lines_query(tenant_id, None, start_date - timedelta(days=1)).filter(
+        FinanceJournalLine.account_id == selected_account.id,
+    ).all():
+        amount = int(line.amount or 0)
+        if line.entry_side == FinanceEntrySide.DEBIT:
+            opening_debit += amount
+        elif line.entry_side == FinanceEntrySide.CREDIT:
+            opening_credit += amount
+
+    running_balance = opening_debit - opening_credit
+    ledger_rows = []
+    period_lines = (
+        _posted_finance_lines_query(tenant_id, start_date, end_date)
+        .filter(FinanceJournalLine.account_id == selected_account.id)
+        .order_by(FinanceJournal.journal_date.asc(), FinanceJournal.id.asc(), FinanceJournalLine.id.asc())
+        .all()
+    )
+    for line in period_lines:
+        debit = int(line.amount or 0) if line.entry_side == FinanceEntrySide.DEBIT else 0
+        credit = int(line.amount or 0) if line.entry_side == FinanceEntrySide.CREDIT else 0
+        running_balance += debit - credit
+        ledger_rows.append({'line': line, 'debit': debit, 'credit': credit, 'balance': running_balance})
+
+    closing_debit = running_balance if running_balance >= 0 else 0
+    closing_credit = abs(running_balance) if running_balance < 0 else 0
+    return opening_debit, opening_credit, ledger_rows, closing_debit, closing_credit
+
+
+@admin_bp.route('/keuangan/laporan/neraca-saldo')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_trial_balance():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    default_start, default_end = _default_report_dates()
+    start_date = _parse_iso_date(request.args.get('start_date')) or default_start
+    end_date = _parse_iso_date(request.args.get('end_date')) or default_end
+
+    accounts = FinanceAccount.query.filter_by(
+        tenant_id=tenant_id,
+    ).order_by(FinanceAccount.code.asc()).all()
+    rows_by_account_id = {
+        account.id: {
+            'account': account,
+            'debit_total': 0,
+            'credit_total': 0,
+            'ending_debit': 0,
+            'ending_credit': 0,
+        }
+        for account in accounts
+    }
+
+    lines = _posted_finance_lines_query(tenant_id, start_date, end_date).all()
+    for line in lines:
+        row = rows_by_account_id.get(line.account_id)
+        if not row:
+            continue
+        amount = int(line.amount or 0)
+        if line.entry_side == FinanceEntrySide.DEBIT:
+            row['debit_total'] += amount
+        elif line.entry_side == FinanceEntrySide.CREDIT:
+            row['credit_total'] += amount
+
+    report_rows = []
+    total_debit = 0
+    total_credit = 0
+    for row in rows_by_account_id.values():
+        balance = row['debit_total'] - row['credit_total']
+        if balance > 0:
+            row['ending_debit'] = balance
+            total_debit += balance
+        elif balance < 0:
+            row['ending_credit'] = abs(balance)
+            total_credit += abs(balance)
+        if row['debit_total'] or row['credit_total']:
+            report_rows.append(row)
+
+    return render_template(
+        'admin/finance/trial_balance.html',
+        rows=report_rows,
+        start_date=start_date,
+        end_date=end_date,
+        total_debit=total_debit,
+        total_credit=total_credit,
+    )
+
+
+@admin_bp.route('/keuangan/laporan/neraca-saldo/export')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_trial_balance_export():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    default_start, default_end = _default_report_dates()
+    start_date = _parse_iso_date(request.args.get('start_date')) or default_start
+    end_date = _parse_iso_date(request.args.get('end_date')) or default_end
+
+    rows_by_account_id = {
+        account.id: {
+            'account': account,
+            'debit_total': 0,
+            'credit_total': 0,
+            'ending_debit': 0,
+            'ending_credit': 0,
+        }
+        for account in FinanceAccount.query.filter_by(tenant_id=tenant_id).order_by(FinanceAccount.code.asc()).all()
+    }
+
+    for line in _posted_finance_lines_query(tenant_id, start_date, end_date).all():
+        row = rows_by_account_id.get(line.account_id)
+        if not row:
+            continue
+        amount = int(line.amount or 0)
+        if line.entry_side == FinanceEntrySide.DEBIT:
+            row['debit_total'] += amount
+        elif line.entry_side == FinanceEntrySide.CREDIT:
+            row['credit_total'] += amount
+
+    rows = []
+    for row in rows_by_account_id.values():
+        balance = row['debit_total'] - row['credit_total']
+        if balance > 0:
+            row['ending_debit'] = balance
+        elif balance < 0:
+            row['ending_credit'] = abs(balance)
+        if row['debit_total'] or row['credit_total']:
+            account = row['account']
+            rows.append([
+                start_date,
+                end_date,
+                account.code,
+                account.name,
+                account.category.value,
+                row['ending_debit'],
+                row['ending_credit'],
+            ])
+
+    return _csv_response(
+        'finance_neraca_saldo.csv',
+        ['Mulai', 'Selesai', 'Kode Akun', 'Nama Akun', 'Kategori', 'Debit', 'Credit'],
+        rows,
+    )
+
+
+@admin_bp.route('/keuangan/laporan/neraca-saldo/export-xlsx')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_trial_balance_export_xlsx():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    default_start, default_end = _default_report_dates()
+    start_date = _parse_iso_date(request.args.get('start_date')) or default_start
+    end_date = _parse_iso_date(request.args.get('end_date')) or default_end
+    report_rows, _, _ = _trial_balance_data(tenant_id, start_date, end_date)
+    rows = [
+        [start_date, end_date, row['account'].code, row['account'].name, row['account'].category.value, row['ending_debit'], row['ending_credit']]
+        for row in report_rows
+    ]
+    return _xlsx_response(
+        'finance_neraca_saldo.xlsx',
+        'Neraca Saldo',
+        ['Mulai', 'Selesai', 'Kode Akun', 'Nama Akun', 'Kategori', 'Debit', 'Credit'],
+        rows,
+    )
+
+
+@admin_bp.route('/keuangan/laporan/neraca-saldo/print')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_trial_balance_print():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    default_start, default_end = _default_report_dates()
+    start_date = _parse_iso_date(request.args.get('start_date')) or default_start
+    end_date = _parse_iso_date(request.args.get('end_date')) or default_end
+    rows, total_debit, total_credit = _trial_balance_data(tenant_id, start_date, end_date)
+    return render_template(
+        'admin/finance/print_trial_balance.html',
+        rows=rows,
+        start_date=start_date,
+        end_date=end_date,
+        total_debit=total_debit,
+        total_credit=total_credit,
+        signers=_report_signers_from_request(),
+    )
+
+
+@admin_bp.route('/keuangan/laporan/buku-besar')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_general_ledger():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    default_start, default_end = _default_report_dates()
+    start_date = _parse_iso_date(request.args.get('start_date')) or default_start
+    end_date = _parse_iso_date(request.args.get('end_date')) or default_end
+    account_id = request.args.get('account_id', type=int)
+
+    accounts = FinanceAccount.query.filter_by(
+        tenant_id=tenant_id,
+    ).order_by(FinanceAccount.code.asc()).all()
+
+    selected_account = None
+    if account_id:
+        selected_account = FinanceAccount.query.filter_by(
+            id=account_id,
+            tenant_id=tenant_id,
+        ).first()
+        if not selected_account:
+            flash('Akun buku besar tidak ditemukan untuk tenant ini.', 'warning')
+            return redirect(url_for('admin.finance_general_ledger'))
+
+    opening_debit = 0
+    opening_credit = 0
+    ledger_rows = []
+    closing_debit = 0
+    closing_credit = 0
+
+    if selected_account:
+        opening_lines = _posted_finance_lines_query(tenant_id, None, start_date - timedelta(days=1)).filter(
+            FinanceJournalLine.account_id == selected_account.id,
+        ).all()
+        for line in opening_lines:
+            amount = int(line.amount or 0)
+            if line.entry_side == FinanceEntrySide.DEBIT:
+                opening_debit += amount
+            elif line.entry_side == FinanceEntrySide.CREDIT:
+                opening_credit += amount
+
+        running_balance = opening_debit - opening_credit
+        period_lines = (
+            _posted_finance_lines_query(tenant_id, start_date, end_date)
+            .filter(FinanceJournalLine.account_id == selected_account.id)
+            .order_by(FinanceJournal.journal_date.asc(), FinanceJournal.id.asc(), FinanceJournalLine.id.asc())
+            .all()
+        )
+        for line in period_lines:
+            debit = int(line.amount or 0) if line.entry_side == FinanceEntrySide.DEBIT else 0
+            credit = int(line.amount or 0) if line.entry_side == FinanceEntrySide.CREDIT else 0
+            running_balance += debit - credit
+            ledger_rows.append({
+                'line': line,
+                'debit': debit,
+                'credit': credit,
+                'balance': running_balance,
+            })
+
+        if running_balance >= 0:
+            closing_debit = running_balance
+        else:
+            closing_credit = abs(running_balance)
+
+    return render_template(
+        'admin/finance/general_ledger.html',
+        accounts=accounts,
+        selected_account=selected_account,
+        account_id=account_id,
+        start_date=start_date,
+        end_date=end_date,
+        opening_debit=opening_debit,
+        opening_credit=opening_credit,
+        ledger_rows=ledger_rows,
+        closing_debit=closing_debit,
+        closing_credit=closing_credit,
+    )
+
+
+@admin_bp.route('/keuangan/laporan/buku-besar/export')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_general_ledger_export():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    default_start, default_end = _default_report_dates()
+    start_date = _parse_iso_date(request.args.get('start_date')) or default_start
+    end_date = _parse_iso_date(request.args.get('end_date')) or default_end
+    account_id = request.args.get('account_id', type=int)
+
+    selected_account = FinanceAccount.query.filter_by(
+        id=account_id,
+        tenant_id=tenant_id,
+    ).first() if account_id else None
+    if not selected_account:
+        flash('Pilih akun buku besar sebelum export.', 'warning')
+        return redirect(url_for('admin.finance_general_ledger', start_date=start_date, end_date=end_date))
+
+    opening_debit = 0
+    opening_credit = 0
+    for line in _posted_finance_lines_query(tenant_id, None, start_date - timedelta(days=1)).filter(
+        FinanceJournalLine.account_id == selected_account.id,
+    ).all():
+        amount = int(line.amount or 0)
+        if line.entry_side == FinanceEntrySide.DEBIT:
+            opening_debit += amount
+        elif line.entry_side == FinanceEntrySide.CREDIT:
+            opening_credit += amount
+
+    rows = [[start_date, end_date, selected_account.code, selected_account.name, 'SALDO AWAL', '', opening_debit, opening_credit, opening_debit - opening_credit, '']]
+    running_balance = opening_debit - opening_credit
+    period_lines = (
+        _posted_finance_lines_query(tenant_id, start_date, end_date)
+        .filter(FinanceJournalLine.account_id == selected_account.id)
+        .order_by(FinanceJournal.journal_date.asc(), FinanceJournal.id.asc(), FinanceJournalLine.id.asc())
+        .all()
+    )
+    for line in period_lines:
+        debit = int(line.amount or 0) if line.entry_side == FinanceEntrySide.DEBIT else 0
+        credit = int(line.amount or 0) if line.entry_side == FinanceEntrySide.CREDIT else 0
+        running_balance += debit - credit
+        journal = line.journal
+        rows.append([
+            start_date,
+            end_date,
+            selected_account.code,
+            selected_account.name,
+            journal.journal_date if journal else '',
+            journal.journal_no if journal else '',
+            debit,
+            credit,
+            running_balance,
+            journal.description if journal else line.memo or '',
+        ])
+
+    return _csv_response(
+        f'finance_buku_besar_{selected_account.code}.csv',
+        ['Mulai', 'Selesai', 'Kode Akun', 'Nama Akun', 'Tanggal', 'No Jurnal', 'Debit', 'Credit', 'Saldo', 'Deskripsi'],
+        rows,
+    )
+
+
+@admin_bp.route('/keuangan/laporan/buku-besar/export-xlsx')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_general_ledger_export_xlsx():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    default_start, default_end = _default_report_dates()
+    start_date = _parse_iso_date(request.args.get('start_date')) or default_start
+    end_date = _parse_iso_date(request.args.get('end_date')) or default_end
+    account_id = request.args.get('account_id', type=int)
+    selected_account = FinanceAccount.query.filter_by(id=account_id, tenant_id=tenant_id).first() if account_id else None
+    if not selected_account:
+        flash('Pilih akun buku besar sebelum export.', 'warning')
+        return redirect(url_for('admin.finance_general_ledger', start_date=start_date, end_date=end_date))
+
+    opening_debit, opening_credit, ledger_rows, _, _ = _ledger_data(tenant_id, selected_account, start_date, end_date)
+    rows = [[start_date, end_date, selected_account.code, selected_account.name, 'SALDO AWAL', '', opening_debit, opening_credit, opening_debit - opening_credit, '']]
+    for row in ledger_rows:
+        journal = row['line'].journal
+        rows.append([
+            start_date,
+            end_date,
+            selected_account.code,
+            selected_account.name,
+            journal.journal_date if journal else '',
+            journal.journal_no if journal else '',
+            row['debit'],
+            row['credit'],
+            row['balance'],
+            journal.description if journal else row['line'].memo or '',
+        ])
+    return _xlsx_response(
+        f'finance_buku_besar_{selected_account.code}.xlsx',
+        'Buku Besar',
+        ['Mulai', 'Selesai', 'Kode Akun', 'Nama Akun', 'Tanggal', 'No Jurnal', 'Debit', 'Credit', 'Saldo', 'Deskripsi'],
+        rows,
+    )
+
+
+@admin_bp.route('/keuangan/laporan/buku-besar/print')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_general_ledger_print():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    default_start, default_end = _default_report_dates()
+    start_date = _parse_iso_date(request.args.get('start_date')) or default_start
+    end_date = _parse_iso_date(request.args.get('end_date')) or default_end
+    account_id = request.args.get('account_id', type=int)
+    selected_account = FinanceAccount.query.filter_by(id=account_id, tenant_id=tenant_id).first() if account_id else None
+    if not selected_account:
+        flash('Pilih akun buku besar sebelum print.', 'warning')
+        return redirect(url_for('admin.finance_general_ledger', start_date=start_date, end_date=end_date))
+    opening_debit, opening_credit, ledger_rows, closing_debit, closing_credit = _ledger_data(
+        tenant_id, selected_account, start_date, end_date
+    )
+    return render_template(
+        'admin/finance/print_general_ledger.html',
+        selected_account=selected_account,
+        start_date=start_date,
+        end_date=end_date,
+        opening_debit=opening_debit,
+        opening_credit=opening_credit,
+        ledger_rows=ledger_rows,
+        closing_debit=closing_debit,
+        closing_credit=closing_credit,
+        signers=_report_signers_from_request(),
+    )
+
+
+@admin_bp.route('/keuangan/laporan/laba-rugi')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_income_statement():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    default_start, default_end = _default_report_dates()
+    start_date = _parse_iso_date(request.args.get('start_date')) or default_start
+    end_date = _parse_iso_date(request.args.get('end_date')) or default_end
+
+    accounts = FinanceAccount.query.filter(
+        FinanceAccount.tenant_id == tenant_id,
+        FinanceAccount.category.in_([FinanceAccountCategory.REVENUE, FinanceAccountCategory.EXPENSE]),
+    ).order_by(FinanceAccount.code.asc()).all()
+    rows_by_account_id = {
+        account.id: {
+            'account': account,
+            'debit_total': 0,
+            'credit_total': 0,
+            'amount': 0,
+        }
+        for account in accounts
+    }
+
+    lines = (
+        _posted_finance_lines_query(tenant_id, start_date, end_date)
+        .join(FinanceAccount, FinanceAccount.id == FinanceJournalLine.account_id)
+        .filter(
+            FinanceAccount.tenant_id == tenant_id,
+            FinanceAccount.category.in_([FinanceAccountCategory.REVENUE, FinanceAccountCategory.EXPENSE]),
+        )
+        .all()
+    )
+    for line in lines:
+        row = rows_by_account_id.get(line.account_id)
+        if not row:
+            continue
+        amount = int(line.amount or 0)
+        if line.entry_side == FinanceEntrySide.DEBIT:
+            row['debit_total'] += amount
+        elif line.entry_side == FinanceEntrySide.CREDIT:
+            row['credit_total'] += amount
+
+    revenue_rows = []
+    expense_rows = []
+    total_revenue = 0
+    total_expense = 0
+    for row in rows_by_account_id.values():
+        account = row['account']
+        if account.category == FinanceAccountCategory.REVENUE:
+            row['amount'] = row['credit_total'] - row['debit_total']
+            if row['amount']:
+                total_revenue += row['amount']
+                revenue_rows.append(row)
+        elif account.category == FinanceAccountCategory.EXPENSE:
+            row['amount'] = row['debit_total'] - row['credit_total']
+            if row['amount']:
+                total_expense += row['amount']
+                expense_rows.append(row)
+
+    return render_template(
+        'admin/finance/income_statement.html',
+        start_date=start_date,
+        end_date=end_date,
+        revenue_rows=revenue_rows,
+        expense_rows=expense_rows,
+        total_revenue=total_revenue,
+        total_expense=total_expense,
+        net_income=total_revenue - total_expense,
+    )
+
+
+@admin_bp.route('/keuangan/laporan/laba-rugi/export')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_income_statement_export():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    default_start, default_end = _default_report_dates()
+    start_date = _parse_iso_date(request.args.get('start_date')) or default_start
+    end_date = _parse_iso_date(request.args.get('end_date')) or default_end
+
+    rows_by_account_id = {
+        account.id: {
+            'account': account,
+            'debit_total': 0,
+            'credit_total': 0,
+        }
+        for account in FinanceAccount.query.filter(
+            FinanceAccount.tenant_id == tenant_id,
+            FinanceAccount.category.in_([FinanceAccountCategory.REVENUE, FinanceAccountCategory.EXPENSE]),
+        ).order_by(FinanceAccount.code.asc()).all()
+    }
+
+    lines = (
+        _posted_finance_lines_query(tenant_id, start_date, end_date)
+        .join(FinanceAccount, FinanceAccount.id == FinanceJournalLine.account_id)
+        .filter(
+            FinanceAccount.tenant_id == tenant_id,
+            FinanceAccount.category.in_([FinanceAccountCategory.REVENUE, FinanceAccountCategory.EXPENSE]),
+        )
+        .all()
+    )
+    for line in lines:
+        row = rows_by_account_id.get(line.account_id)
+        if not row:
+            continue
+        amount = int(line.amount or 0)
+        if line.entry_side == FinanceEntrySide.DEBIT:
+            row['debit_total'] += amount
+        elif line.entry_side == FinanceEntrySide.CREDIT:
+            row['credit_total'] += amount
+
+    rows = []
+    total_revenue = 0
+    total_expense = 0
+    for row in rows_by_account_id.values():
+        account = row['account']
+        if account.category == FinanceAccountCategory.REVENUE:
+            amount = row['credit_total'] - row['debit_total']
+            section = 'Pendapatan'
+            total_revenue += amount
+        else:
+            amount = row['debit_total'] - row['credit_total']
+            section = 'Beban'
+            total_expense += amount
+        if amount:
+            rows.append([start_date, end_date, section, account.code, account.name, amount])
+
+    rows.append([start_date, end_date, 'Ringkasan', '', 'Total Pendapatan', total_revenue])
+    rows.append([start_date, end_date, 'Ringkasan', '', 'Total Beban', total_expense])
+    rows.append([start_date, end_date, 'Ringkasan', '', 'Laba/Rugi Bersih', total_revenue - total_expense])
+
+    return _csv_response(
+        'finance_laba_rugi.csv',
+        ['Mulai', 'Selesai', 'Bagian', 'Kode Akun', 'Nama Akun', 'Nominal'],
+        rows,
+    )
+
+
+@admin_bp.route('/keuangan/laporan/laba-rugi/export-xlsx')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_income_statement_export_xlsx():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    default_start, default_end = _default_report_dates()
+    start_date = _parse_iso_date(request.args.get('start_date')) or default_start
+    end_date = _parse_iso_date(request.args.get('end_date')) or default_end
+    revenue_rows, expense_rows, total_revenue, total_expense, net_income = _income_statement_data(
+        tenant_id, start_date, end_date
+    )
+    rows = []
+    for row in revenue_rows:
+        rows.append([start_date, end_date, 'Pendapatan', row['account'].code, row['account'].name, row['amount']])
+    for row in expense_rows:
+        rows.append([start_date, end_date, 'Beban', row['account'].code, row['account'].name, row['amount']])
+    rows.append([start_date, end_date, 'Ringkasan', '', 'Total Pendapatan', total_revenue])
+    rows.append([start_date, end_date, 'Ringkasan', '', 'Total Beban', total_expense])
+    rows.append([start_date, end_date, 'Ringkasan', '', 'Laba/Rugi Bersih', net_income])
+    return _xlsx_response(
+        'finance_laba_rugi.xlsx',
+        'Laba Rugi',
+        ['Mulai', 'Selesai', 'Bagian', 'Kode Akun', 'Nama Akun', 'Nominal'],
+        rows,
+    )
+
+
+@admin_bp.route('/keuangan/laporan/laba-rugi/print')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_income_statement_print():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    default_start, default_end = _default_report_dates()
+    start_date = _parse_iso_date(request.args.get('start_date')) or default_start
+    end_date = _parse_iso_date(request.args.get('end_date')) or default_end
+    revenue_rows, expense_rows, total_revenue, total_expense, net_income = _income_statement_data(
+        tenant_id, start_date, end_date
+    )
+    return render_template(
+        'admin/finance/print_income_statement.html',
+        start_date=start_date,
+        end_date=end_date,
+        revenue_rows=revenue_rows,
+        expense_rows=expense_rows,
+        total_revenue=total_revenue,
+        total_expense=total_expense,
+        net_income=net_income,
+        signers=_report_signers_from_request(),
+    )
+
+
+@admin_bp.route('/keuangan/laporan/posisi-keuangan')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_financial_position():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    as_of_date = _parse_iso_date(request.args.get('as_of_date')) or local_today()
+    report = _financial_position_data(tenant_id, as_of_date)
+    return render_template(
+        'admin/finance/financial_position.html',
+        as_of_date=as_of_date,
+        **report,
+    )
+
+
+def _financial_position_export_rows(report, as_of_date):
+    rows = []
+    for row in report['asset_rows']:
+        rows.append([as_of_date, 'Aset', row['account'].code, row['account'].name, row['amount']])
+    rows.append([as_of_date, 'Ringkasan', '', 'Total Aset', report['total_assets']])
+    for row in report['liability_rows']:
+        rows.append([as_of_date, 'Kewajiban', row['account'].code, row['account'].name, row['amount']])
+    rows.append([as_of_date, 'Ringkasan', '', 'Total Kewajiban', report['total_liabilities']])
+    for row in report['equity_rows']:
+        account = row.get('account')
+        rows.append([
+            as_of_date,
+            'Ekuitas',
+            account.code if account else row.get('code', ''),
+            account.name if account else row.get('name', ''),
+            row['amount'],
+        ])
+    rows.append([as_of_date, 'Ringkasan', '', 'Total Ekuitas', report['total_equity']])
+    rows.append([as_of_date, 'Ringkasan', '', 'Total Kewajiban + Ekuitas', report['total_liabilities_equity']])
+    return rows
+
+
+@admin_bp.route('/keuangan/laporan/posisi-keuangan/export')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_financial_position_export():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    as_of_date = _parse_iso_date(request.args.get('as_of_date')) or local_today()
+    report = _financial_position_data(tenant_id, as_of_date)
+    return _csv_response(
+        'finance_posisi_keuangan.csv',
+        ['Tanggal Posisi', 'Bagian', 'Kode Akun', 'Nama Akun', 'Nominal'],
+        _financial_position_export_rows(report, as_of_date),
+    )
+
+
+@admin_bp.route('/keuangan/laporan/posisi-keuangan/export-xlsx')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_financial_position_export_xlsx():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    as_of_date = _parse_iso_date(request.args.get('as_of_date')) or local_today()
+    report = _financial_position_data(tenant_id, as_of_date)
+    return _xlsx_response(
+        'finance_posisi_keuangan.xlsx',
+        'Posisi Keuangan',
+        ['Tanggal Posisi', 'Bagian', 'Kode Akun', 'Nama Akun', 'Nominal'],
+        _financial_position_export_rows(report, as_of_date),
+    )
+
+
+@admin_bp.route('/keuangan/laporan/posisi-keuangan/print')
+@login_required
+@role_required(UserRole.ADMIN, UserRole.TU)
+def finance_financial_position_print():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    as_of_date = _parse_iso_date(request.args.get('as_of_date')) or local_today()
+    report = _financial_position_data(tenant_id, as_of_date)
+    return render_template(
+        'admin/finance/print_financial_position.html',
+        as_of_date=as_of_date,
+        signers=_report_signers_from_request(),
+        **report,
+    )
+
+
 def _unposted_invoice_payment_transactions(tenant_id):
     posted_payment_ids = db.session.query(FinanceJournal.source_id).filter(
         FinanceJournal.tenant_id == tenant_id,
@@ -2213,7 +3533,7 @@ def _unposted_savings_transactions(tenant_id):
 
 @admin_bp.route('/keuangan/rekonsiliasi')
 @login_required
-@role_required(UserRole.ADMIN)
+@role_required(UserRole.ADMIN, UserRole.TU)
 def finance_reconciliation():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2245,7 +3565,7 @@ def finance_reconciliation():
 
 @admin_bp.route('/keuangan/rekonsiliasi/retry-journal/<int:journal_id>', methods=['POST'])
 @login_required
-@role_required(UserRole.ADMIN)
+@role_required(UserRole.ADMIN, UserRole.TU)
 def finance_reconciliation_retry_journal(journal_id):
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2263,7 +3583,7 @@ def finance_reconciliation_retry_journal(journal_id):
 
 @admin_bp.route('/keuangan/rekonsiliasi/retry-draft-all', methods=['POST'])
 @login_required
-@role_required(UserRole.ADMIN)
+@role_required(UserRole.ADMIN, UserRole.TU)
 def finance_reconciliation_retry_draft_all():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2290,7 +3610,7 @@ def finance_reconciliation_retry_draft_all():
 
 @admin_bp.route('/keuangan/rekonsiliasi/retry-sources', methods=['POST'])
 @login_required
-@role_required(UserRole.ADMIN)
+@role_required(UserRole.ADMIN, UserRole.TU)
 def finance_reconciliation_retry_sources():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2333,7 +3653,7 @@ def finance_reconciliation_retry_sources():
 
 @admin_bp.route('/keuangan/master-biaya', methods=['GET', 'POST'])
 @login_required
-@role_required(UserRole.ADMIN)
+@role_required(UserRole.ADMIN, UserRole.TU)
 def manage_fee_types():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2409,7 +3729,7 @@ def manage_fee_types():
 
 @admin_bp.route('/keuangan/biaya/edit/<int:fee_id>', methods=['GET', 'POST'])
 @login_required
-@role_required(UserRole.ADMIN)
+@role_required(UserRole.ADMIN, UserRole.TU)
 def edit_fee_type(fee_id):
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2444,7 +3764,7 @@ def edit_fee_type(fee_id):
 
 @admin_bp.route('/keuangan/generate/<int:fee_id>', methods=['POST'])
 @login_required
-@role_required(UserRole.ADMIN)
+@role_required(UserRole.ADMIN, UserRole.TU)
 def generate_invoices(fee_id):
     """
     Admin berhak menerbitkan tagihan untuk seluruh siswa berdasarkan FeeType.

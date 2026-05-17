@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0 fw-bold text-primary"><i class="fas fa-chart-line me-2"></i>Laba Rugi</h4>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('admin.finance_income_statement_export', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-success" title="Export CSV" aria-label="Export CSV">
+            <i class="fas fa-file-csv"></i>
+        </a>
+        <a href="{{ url_for('admin.finance_income_statement_export_xlsx', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-success" title="Export Excel" aria-label="Export Excel">
+            <i class="fas fa-file-excel"></i>
+        </a>
+        <a href="{{ url_for('admin.finance_trial_balance', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-primary" title="Buka Neraca Saldo" aria-label="Buka Neraca Saldo">
+            <i class="fas fa-balance-scale"></i>
+        </a>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#printIncomeStatementModal" title="Print laporan" aria-label="Print laporan">
+            <i class="fas fa-print"></i>
+        </button>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">Mulai</label>
+                <input type="date" name="start_date" class="form-control" value="{{ start_date }}" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Selesai</label>
+                <input type="date" name="end_date" class="form-control" value="{{ end_date }}" required>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-outline-primary w-100" title="Tampilkan laporan" aria-label="Tampilkan laporan">
+                    <i class="fas fa-search"></i>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-7 mb-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-success">Pendapatan</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Kode</th>
+                                <th>Akun</th>
+                                <th class="text-end">Nominal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in revenue_rows %}
+                            <tr>
+                                <td class="fw-bold">{{ row.account.code }}</td>
+                                <td>{{ row.account.name }}</td>
+                                <td class="text-end">Rp {{ "{:,.0f}".format(row.amount or 0) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="text-center text-muted">Belum ada pendapatan POSTED.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="fw-bold">
+                                <td colspan="2" class="text-end">Total Pendapatan</td>
+                                <td class="text-end">Rp {{ "{:,.0f}".format(total_revenue or 0) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-danger">Beban</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Kode</th>
+                                <th>Akun</th>
+                                <th class="text-end">Nominal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in expense_rows %}
+                            <tr>
+                                <td class="fw-bold">{{ row.account.code }}</td>
+                                <td>{{ row.account.name }}</td>
+                                <td class="text-end">Rp {{ "{:,.0f}".format(row.amount or 0) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="text-center text-muted">Belum ada beban POSTED.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="fw-bold">
+                                <td colspan="2" class="text-end">Total Beban</td>
+                                <td class="text-end">Rp {{ "{:,.0f}".format(total_expense or 0) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5 mb-4">
+        <div class="card shadow">
+            <div class="card-header py-3 bg-primary text-white">
+                <h6 class="m-0 fw-bold">Ringkasan {{ start_date }} s.d {{ end_date }}</h6>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between border-bottom py-2">
+                    <span>Total Pendapatan</span>
+                    <strong>Rp {{ "{:,.0f}".format(total_revenue or 0) }}</strong>
+                </div>
+                <div class="d-flex justify-content-between border-bottom py-2">
+                    <span>Total Beban</span>
+                    <strong>Rp {{ "{:,.0f}".format(total_expense or 0) }}</strong>
+                </div>
+                <div class="d-flex justify-content-between py-3">
+                    <span class="fw-bold">Laba/Rugi Bersih</span>
+                    <strong class="{% if net_income >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        Rp {{ "{:,.0f}".format(net_income or 0) }}
+                    </strong>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% with modal_id='printIncomeStatementModal', action_url=url_for('admin.finance_income_statement_print'), hidden_fields={'start_date': start_date, 'end_date': end_date} %}
+    {% include 'admin/finance/_print_signers_modal.html' %}
+{% endwith %}
+{% endblock %}

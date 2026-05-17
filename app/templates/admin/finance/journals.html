@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0 fw-bold text-primary"><i class="fas fa-book-open me-2"></i>Jurnal Umum</h4>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('admin.finance_journals_export', q=query_text, status=status_filter, source_type=source_filter, start_date=start_date or '', end_date=end_date or '') }}" class="btn btn-sm btn-outline-success" title="Export CSV" aria-label="Export CSV">
+            <i class="fas fa-file-csv"></i>
+        </a>
+        <a href="{{ url_for('admin.finance_journals_export_xlsx', q=query_text, status=status_filter, source_type=source_filter, start_date=start_date or '', end_date=end_date or '') }}" class="btn btn-sm btn-outline-success" title="Export Excel" aria-label="Export Excel">
+            <i class="fas fa-file-excel"></i>
+        </a>
+        <a href="{{ url_for('admin.manage_finance_cash_bank') }}" class="btn btn-sm btn-outline-primary" title="Buka Kas/Bank" aria-label="Buka Kas/Bank">
+            <i class="fas fa-wallet"></i>
+        </a>
+        <a href="{{ url_for('admin.finance_reconciliation') }}" class="btn btn-sm btn-outline-warning" title="Buka Rekonsiliasi Posting" aria-label="Buka Rekonsiliasi Posting">
+            <i class="fas fa-sync-alt"></i>
+        </a>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-lg-3 col-md-6">
+                <label class="form-label">Cari</label>
+                <input type="text" name="q" class="form-control" value="{{ query_text or '' }}" placeholder="No jurnal/deskripsi">
+            </div>
+            <div class="col-lg-2 col-md-6">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    <option value="">Semua</option>
+                    {% for status in status_options %}
+                    <option value="{{ status.name }}" {% if status_filter == status.name %}selected{% endif %}>{{ status.value }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-6">
+                <label class="form-label">Source</label>
+                <select name="source_type" class="form-select">
+                    <option value="">Semua</option>
+                    {% for source_type in source_type_options %}
+                    <option value="{{ source_type.name }}" {% if source_filter == source_type.name %}selected{% endif %}>{{ source_type.value }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-6">
+                <label class="form-label">Mulai</label>
+                <input type="date" name="start_date" class="form-control" value="{{ start_date or '' }}">
+            </div>
+            <div class="col-lg-2 col-md-6">
+                <label class="form-label">Selesai</label>
+                <input type="date" name="end_date" class="form-control" value="{{ end_date or '' }}">
+            </div>
+            <div class="col-lg-1 col-md-6">
+                <button type="submit" class="btn btn-outline-primary w-100" title="Filter jurnal" aria-label="Filter jurnal">
+                    <i class="fas fa-search"></i>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow">
+    <div class="card-header py-3">
+        <h6 class="m-0 fw-bold text-primary">Daftar Jurnal</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle js-row-paginate" data-default-per-page="20">
+                <thead>
+                    <tr>
+                        <th>Tanggal</th>
+                        <th>No Jurnal</th>
+                        <th>Status</th>
+                        <th>Source</th>
+                        <th>Deskripsi</th>
+                        <th>Dibuat</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for journal in journals %}
+                    <tr>
+                        <td>{{ journal.journal_date }}</td>
+                        <td class="fw-bold">{{ journal.journal_no }}</td>
+                        <td>
+                            {% if journal.status.value == 'POSTED' %}
+                            <span class="badge bg-success">POSTED</span>
+                            {% elif journal.status.value == 'VOID' %}
+                            <span class="badge bg-secondary">VOID</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">DRAFT</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ journal.source_type.value if journal.source_type else '-' }} #{{ journal.source_id or '-' }}</td>
+                        <td>{{ journal.description or '-' }}</td>
+                        <td>{{ journal.created_by.full_name if journal.created_by else '-' }}</td>
+                        <td>
+                            <a href="{{ url_for('admin.finance_journal_detail', journal_id=journal.id) }}" class="btn btn-sm btn-outline-primary" title="Detail jurnal" aria-label="Detail jurnal">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-muted">Belum ada jurnal.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

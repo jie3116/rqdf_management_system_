@@ -54,6 +54,7 @@ def role_allowed_for_package(role, package):
     if package == PACKAGE_SEKOLAH:
         return role in {
             UserRole.ADMIN,
+            UserRole.TU,
             UserRole.GURU,
             UserRole.SISWA,
             UserRole.WALI_MURID,

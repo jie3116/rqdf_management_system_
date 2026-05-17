@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0 fw-bold text-primary"><i class="fas fa-wallet me-2"></i>Kas/Bank Finance</h4>
+    <a href="{{ url_for('admin.finance_reconciliation') }}" class="btn btn-sm btn-outline-primary">
+        <i class="fas fa-sync-alt me-1"></i>Rekonsiliasi
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-primary text-white">
+                <h6 class="m-0 fw-bold"><i class="fas fa-plus-circle me-2"></i>Input Transaksi</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="action" value="create_transaction"/>
+
+                    <div class="mb-3">
+                        <label class="form-label">Tanggal</label>
+                        <input type="date" name="trx_date" class="form-control" value="{{ today }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Kas/Bank</label>
+                        <select name="cash_bank_account_id" class="form-select" required>
+                            <option value="">-- Pilih --</option>
+                            {% for cb in cash_bank_accounts if cb.is_active %}
+                            <option value="{{ cb.id }}">{{ cb.account_name }} ({{ cb.account_type.value }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Jenis</label>
+                        <select name="trx_type" class="form-select" required>
+                            {% for trx_type in trx_type_options %}
+                            <option value="{{ trx_type.name }}">{{ trx_type.value }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">TRANSFER berarti keluar dari kas/bank terpilih ke akun lawan.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Akun Lawan</label>
+                        <select name="counterpart_account_id" class="form-select" required>
+                            <option value="">-- Pilih --</option>
+                            {% for acc in accounts %}
+                            <option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }} ({{ acc.category.value }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nominal</label>
+                        <input type="number" min="1" step="1" name="amount" class="form-control" placeholder="Contoh: 500000" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Deskripsi</label>
+                        <textarea name="description" class="form-control" rows="3" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Simpan & Posting</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Tambah Kas/Bank</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="action" value="create_account"/>
+                    <div class="mb-3">
+                        <label class="form-label">Nama</label>
+                        <input type="text" name="account_name" class="form-control" placeholder="Contoh: BCA Operasional" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tipe</label>
+                        <select name="account_type" class="form-select" required>
+                            {% for account_type in account_type_options %}
+                            <option value="{{ account_type.name }}">{{ account_type.value }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">GL Account</label>
+                        <select name="gl_account_id" class="form-select" required>
+                            <option value="">-- Pilih akun ASSET --</option>
+                            {% for acc in asset_accounts %}
+                            <option value="{{ acc.id }}">{{ acc.code }} - {{ acc.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary w-100">Tambah Kas/Bank</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Daftar Kas/Bank</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Nama</th>
+                                <th>Tipe</th>
+                                <th>GL Account</th>
+                                <th>Status</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cb in cash_bank_accounts %}
+                            <tr>
+                                <td class="fw-bold">{{ cb.account_name }}</td>
+                                <td>{{ cb.account_type.value }}</td>
+                                <td>{% if cb.gl_account %}{{ cb.gl_account.code }} - {{ cb.gl_account.name }}{% else %}-{% endif %}</td>
+                                <td>
+                                    {% if cb.is_active %}
+                                    <span class="badge bg-success">Aktif</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Nonaktif</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <form method="POST">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                        <input type="hidden" name="action" value="toggle_account"/>
+                                        <input type="hidden" name="account_id" value="{{ cb.id }}"/>
+                                        <button type="submit" class="btn btn-sm btn-outline-warning">
+                                            {% if cb.is_active %}Nonaktifkan{% else %}Aktifkan{% endif %}
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="5" class="text-center text-muted">Belum ada kas/bank.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Histori Transaksi Kas/Bank</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle js-row-paginate" data-default-per-page="15">
+                        <thead>
+                            <tr>
+                                <th>Tanggal</th>
+                                <th>Kas/Bank</th>
+                                <th>Jenis</th>
+                                <th>Akun Lawan</th>
+                                <th>Nominal</th>
+                                <th>Status</th>
+                                <th>Jurnal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for trx in transactions %}
+                            <tr>
+                                <td>{{ trx.trx_date }}</td>
+                                <td>{{ trx.cash_bank_account.account_name if trx.cash_bank_account else '-' }}</td>
+                                <td>{{ trx.trx_type.value }}</td>
+                                <td>{% if trx.counterpart_account %}{{ trx.counterpart_account.code }} - {{ trx.counterpart_account.name }}{% else %}-{% endif %}</td>
+                                <td>Rp {{ "{:,.0f}".format(trx.amount or 0) }}</td>
+                                <td>
+                                    {% if trx.status.value == 'POSTED' %}
+                                    <span class="badge bg-success">POSTED</span>
+                                    {% elif trx.status.value == 'VOID' %}
+                                    <span class="badge bg-secondary">VOID</span>
+                                    {% else %}
+                                    <span class="badge bg-warning text-dark">DRAFT</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if trx.journal %}
+                                    <span class="fw-bold">{{ trx.journal.journal_no }}</span>
+                                    <div class="small text-muted">{{ trx.journal.status.value }}</div>
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="7" class="text-center text-muted">Belum ada transaksi kas/bank.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

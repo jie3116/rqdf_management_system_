@@ -1,0 +1,41 @@
+<div class="modal fade" id="{{ modal_id }}" tabindex="-1" aria-labelledby="{{ modal_id }}Label" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="GET" action="{{ action_url }}">
+                {% for name, value in hidden_fields.items() %}
+                <input type="hidden" name="{{ name }}" value="{{ value }}">
+                {% endfor %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="{{ modal_id }}Label">Penandatangan</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Jabatan Pejabat 1</label>
+                        <input type="text" name="signer1_title" class="form-control" value="Mengetahui">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nama Pejabat 1</label>
+                        <input type="text" name="signer1_name" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Jabatan Pejabat 2</label>
+                        <input type="text" name="signer2_title" class="form-control" value="Dibuat oleh">
+                    </div>
+                    <div>
+                        <label class="form-label">Nama Pejabat 2</label>
+                        <input type="text" name="signer2_name" class="form-control">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" title="Batal" aria-label="Batal">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    <button type="submit" class="btn btn-primary" title="Lanjut print" aria-label="Lanjut print">
+                        <i class="fas fa-print"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

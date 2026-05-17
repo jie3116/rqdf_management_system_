@@ -152,12 +152,6 @@
                     <li><a href="{{ url_for('boarding.manage_guardians') }}"><i class="fas fa-user-shield me-2"></i> Wali Asrama</a></li>
                     {% endif %}
 
-                    <div class="nav-header">Keuangan</div>
-                    <li><a href="{{ url_for('admin.manage_fee_types') }}"><i class="fas fa-money-check-alt me-2"></i> Master Biaya</a></li>
-                    <li><a href="{{ url_for('admin.manage_finance_accounts') }}"><i class="fas fa-book me-2"></i> Master Akun</a></li>
-                    <li><a href="{{ url_for('admin.manage_finance_settings') }}"><i class="fas fa-sliders-h me-2"></i> Finance Settings</a></li>
-                    <li><a href="{{ url_for('admin.finance_reconciliation') }}"><i class="fas fa-sync-alt me-2"></i> Rekonsiliasi Posting</a></li>
-
                     <div class="nav-header">Keamanan</div>
                     <li><a href="{{ url_for('admin.manage_users') }}"><i class="fas fa-users-cog me-2"></i> Manajemen User</a></li>
                     <li><a href="{{ url_for('admin.manage_user_roles') }}"><i class="fas fa-user-tag me-2"></i> Assign Role</a></li>
@@ -165,6 +159,20 @@
                     <div class="nav-header">Sistem</div>
                     <li><a href="{{ url_for('admin.manage_app_config') }}"><i class="fas fa-cogs me-2"></i> Konfigurasi</a></li>
 
+                {% endif %}
+
+                {% if has_admin or has_tu %}
+                    <div class="nav-header">Keuangan</div>
+                    <li><a href="{{ url_for('admin.manage_fee_types') }}"><i class="fas fa-money-check-alt me-2"></i> Master Biaya</a></li>
+                    <li><a href="{{ url_for('admin.manage_finance_accounts') }}"><i class="fas fa-book me-2"></i> Master Akun</a></li>
+                    <li><a href="{{ url_for('admin.manage_finance_cash_bank') }}"><i class="fas fa-wallet me-2"></i> Kas/Bank</a></li>
+                    <li><a href="{{ url_for('admin.finance_journals') }}"><i class="fas fa-book-open me-2"></i> Jurnal Umum</a></li>
+                    <li><a href="{{ url_for('admin.finance_general_ledger') }}"><i class="fas fa-list-alt me-2"></i> Buku Besar</a></li>
+                    <li><a href="{{ url_for('admin.finance_trial_balance') }}"><i class="fas fa-balance-scale me-2"></i> Neraca Saldo</a></li>
+                    <li><a href="{{ url_for('admin.finance_income_statement') }}"><i class="fas fa-chart-line me-2"></i> Laba Rugi</a></li>
+                    <li><a href="{{ url_for('admin.finance_financial_position') }}"><i class="fas fa-landmark me-2"></i> Posisi Keuangan</a></li>
+                    <li><a href="{{ url_for('admin.manage_finance_settings') }}"><i class="fas fa-sliders-h me-2"></i> Finance Settings</a></li>
+                    <li><a href="{{ url_for('admin.finance_reconciliation') }}"><i class="fas fa-sync-alt me-2"></i> Rekonsiliasi Posting</a></li>
                 {% endif %}
 
                 {% if has_super_admin %}
@@ -307,7 +315,7 @@
                 {% endif %}
             {% endwith %}
 
-            {% if current_user.is_authenticated and current_user.has_role('admin') %}
+            {% if current_user.is_authenticated and current_user.has_role('admin', 'tata_usaha') %}
                 {% if finance_draft_journal_count and finance_draft_journal_count > 0 %}
                 <div class="alert alert-warning d-flex justify-content-between align-items-center shadow-sm" role="alert">
                     <span>

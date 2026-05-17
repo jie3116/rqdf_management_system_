@@ -9,6 +9,9 @@ from app.models import (
     FinanceAccount,
     FinanceAccountCategory,
     FinanceCashBankAccount,
+    FinanceCashBankTransaction,
+    FinanceCashBankTransactionStatus,
+    FinanceCashBankTransactionType,
     FinanceEntrySide,
     FinanceJournal,
     FinanceJournalLine,
@@ -188,6 +191,107 @@ def post_savings_transaction(*, tenant_id: int, savings_transaction_id: int, act
     return journal.id
 
 
+def create_cash_bank_transaction(
+    *,
+    tenant_id: int,
+    trx_date,
+    cash_bank_account_id: int,
+    trx_type: str,
+    amount: int,
+    counterpart_account_id: int,
+    description: str,
+    actor_user_id: int,
+) -> int:
+    cash_bank_account = FinanceCashBankAccount.query.filter_by(
+        id=cash_bank_account_id,
+        tenant_id=tenant_id,
+        is_active=True,
+    ).first()
+    if not cash_bank_account:
+        raise ValueError("Kas/bank account tidak ditemukan atau nonaktif.")
+
+    cash_gl_account = FinanceAccount.query.filter_by(
+        id=cash_bank_account.gl_account_id,
+        tenant_id=tenant_id,
+        is_active=True,
+    ).first()
+    if not cash_gl_account or cash_gl_account.category != FinanceAccountCategory.ASSET:
+        raise ValueError("GL account kas/bank harus akun ASSET aktif.")
+
+    counterpart_account = FinanceAccount.query.filter_by(
+        id=counterpart_account_id,
+        tenant_id=tenant_id,
+        is_active=True,
+    ).first()
+    if not counterpart_account:
+        raise ValueError("Akun lawan transaksi tidak ditemukan atau nonaktif.")
+    if counterpart_account.id == cash_gl_account.id:
+        raise ValueError("Akun lawan tidak boleh sama dengan akun GL kas/bank.")
+
+    try:
+        trx_type_enum = FinanceCashBankTransactionType[trx_type.strip().upper()]
+    except (AttributeError, KeyError):
+        raise ValueError("Jenis transaksi kas/bank tidak valid.")
+    if (
+        trx_type_enum == FinanceCashBankTransactionType.TRANSFER
+        and counterpart_account.category != FinanceAccountCategory.ASSET
+    ):
+        raise ValueError("Akun lawan TRANSFER harus akun ASSET.")
+
+    amount = int(amount or 0)
+    if amount <= 0:
+        raise ValueError("Nominal transaksi kas/bank harus lebih dari 0.")
+
+    journal_date = _resolve_journal_date(trx_date)
+    description = (description or '').strip()
+    if not description:
+        raise ValueError("Deskripsi transaksi kas/bank wajib diisi.")
+
+    cash_bank_trx = FinanceCashBankTransaction(
+        tenant_id=tenant_id,
+        cash_bank_account_id=cash_bank_account.id,
+        trx_date=journal_date,
+        trx_type=trx_type_enum,
+        amount=amount,
+        counterpart_account_id=counterpart_account.id,
+        description=description,
+        status=FinanceCashBankTransactionStatus.DRAFT,
+        created_by_user_id=actor_user_id,
+    )
+    db.session.add(cash_bank_trx)
+    db.session.flush()
+
+    if trx_type_enum == FinanceCashBankTransactionType.IN:
+        line_specs = (
+            (cash_gl_account.id, FinanceEntrySide.DEBIT, amount, cash_bank_account.account_name),
+            (counterpart_account.id, FinanceEntrySide.CREDIT, amount, description),
+        )
+    else:
+        line_specs = (
+            (counterpart_account.id, FinanceEntrySide.DEBIT, amount, description),
+            (cash_gl_account.id, FinanceEntrySide.CREDIT, amount, cash_bank_account.account_name),
+        )
+
+    journal = _create_journal_with_lines(
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        journal_date=journal_date,
+        description=f"Kas/Bank {trx_type_enum.value}: {description}",
+        source_type=FinanceJournalSourceType.CASH_BANK_TRANSACTION,
+        source_id=cash_bank_trx.id,
+        line_specs=line_specs,
+        reference_type='finance_cash_bank_transaction',
+        reference_id=cash_bank_trx.id,
+    )
+    cash_bank_trx.journal_id = journal.id
+    if journal.status == FinanceJournalStatus.POSTED:
+        cash_bank_trx.status = FinanceCashBankTransactionStatus.POSTED
+        cash_bank_trx.approved_by_user_id = actor_user_id
+
+    db.session.commit()
+    return cash_bank_trx.id
+
+
 def post_journal(*, tenant_id: int, journal_id: int, actor_user_id: int) -> None:
     journal = (
         FinanceJournal.query
@@ -207,6 +311,14 @@ def post_journal(*, tenant_id: int, journal_id: int, actor_user_id: int) -> None
     journal.status = FinanceJournalStatus.POSTED
     journal.posted_at = utc_now_naive()
     journal.approved_by_user_id = actor_user_id
+    if journal.source_type == FinanceJournalSourceType.CASH_BANK_TRANSACTION and journal.source_id:
+        cash_bank_trx = FinanceCashBankTransaction.query.filter_by(
+            id=journal.source_id,
+            tenant_id=tenant_id,
+        ).first()
+        if cash_bank_trx:
+            cash_bank_trx.status = FinanceCashBankTransactionStatus.POSTED
+            cash_bank_trx.approved_by_user_id = actor_user_id
     db.session.flush()
 
 
@@ -258,6 +370,13 @@ def reverse_journal(*, tenant_id: int, journal_id: int, reason: str, actor_user_
     original.status = FinanceJournalStatus.VOID
     original.voided_at = utc_now_naive()
     original.void_reason = reason
+    if original.source_type == FinanceJournalSourceType.CASH_BANK_TRANSACTION and original.source_id:
+        cash_bank_trx = FinanceCashBankTransaction.query.filter_by(
+            id=original.source_id,
+            tenant_id=tenant_id,
+        ).first()
+        if cash_bank_trx:
+            cash_bank_trx.status = FinanceCashBankTransactionStatus.VOID
     db.session.commit()
     return reversal_journal.id
 
@@ -298,6 +417,8 @@ def _resolve_cash_bank_gl_account_id(tenant_id: int, settings: Optional[FinanceS
 def _resolve_journal_date(raw_value: Optional[datetime]) -> date:
     if isinstance(raw_value, datetime):
         return raw_value.date()
+    if isinstance(raw_value, date):
+        return raw_value
     return date.today()
 
 

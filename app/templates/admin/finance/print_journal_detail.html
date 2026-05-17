@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <title>Detail Jurnal {{ journal.journal_no }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; color: #111; font-size: 12px; }
+        h2, p { text-align: center; margin: 4px 0; }
+        .meta { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+        .meta div { border: 1px solid #333; padding: 6px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+        th, td { border: 1px solid #333; padding: 6px; }
+        th { background: #f0f0f0; }
+        .text-end { text-align: right; }
+        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 64px; text-align: center; }
+        .name { margin-top: 72px; font-weight: bold; text-decoration: underline; }
+        @media print { button { display: none; } }
+    </style>
+</head>
+<body onload="window.print()">
+    <button onclick="window.print()">Print</button>
+    <h2>Detail Jurnal</h2>
+    <p>{{ journal.journal_no }}</p>
+    <div class="meta">
+        <div><strong>Tanggal</strong><br>{{ journal.journal_date }}</div>
+        <div><strong>Status</strong><br>{{ journal.status.value }}</div>
+        <div><strong>Source</strong><br>{{ journal.source_type.value if journal.source_type else '-' }} #{{ journal.source_id or '-' }}</div>
+    </div>
+    <p style="text-align:left; margin-top:16px;"><strong>Deskripsi:</strong> {{ journal.description or '-' }}</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Akun</th>
+                <th>Memo</th>
+                <th>Debit</th>
+                <th>Credit</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for line in lines %}
+            <tr>
+                <td>{% if line.account %}{{ line.account.code }} - {{ line.account.name }}{% else %}-{% endif %}</td>
+                <td>{{ line.memo or '-' }}</td>
+                <td class="text-end">{% if line.entry_side.value == 'DEBIT' %}{{ "{:,.0f}".format(line.amount or 0) }}{% else %}-{% endif %}</td>
+                <td class="text-end">{% if line.entry_side.value == 'CREDIT' %}{{ "{:,.0f}".format(line.amount or 0) }}{% else %}-{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <th colspan="2" class="text-end">Total</th>
+                <th class="text-end">{{ "{:,.0f}".format(debit_total or 0) }}</th>
+                <th class="text-end">{{ "{:,.0f}".format(credit_total or 0) }}</th>
+            </tr>
+        </tfoot>
+    </table>
+    <div class="signatures">
+        {% for signer in signers %}
+        <div>
+            <div>{{ signer.title }}</div>
+            <div class="name">{{ signer.name or '&nbsp;'|safe }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>

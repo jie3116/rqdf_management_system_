@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0 fw-bold text-primary"><i class="fas fa-book-open me-2"></i>Detail Jurnal</h4>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#printJournalDetailModal" title="Print jurnal" aria-label="Print jurnal">
+            <i class="fas fa-print"></i>
+        </button>
+        <a href="{{ url_for('admin.finance_journals') }}" class="btn btn-sm btn-outline-secondary" title="Kembali ke Jurnal Umum" aria-label="Kembali ke Jurnal Umum">
+            <i class="fas fa-arrow-left"></i>
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8 mb-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 fw-bold text-primary">{{ journal.journal_no }}</h6>
+                {% if journal.status.value == 'POSTED' %}
+                <span class="badge bg-success">POSTED</span>
+                {% elif journal.status.value == 'VOID' %}
+                <span class="badge bg-secondary">VOID</span>
+                {% else %}
+                <span class="badge bg-warning text-dark">DRAFT</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="text-muted small">Tanggal</div>
+                        <div class="fw-bold">{{ journal.journal_date }}</div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-muted small">Source</div>
+                        <div class="fw-bold">{{ journal.source_type.value if journal.source_type else '-' }} #{{ journal.source_id or '-' }}</div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-muted small">Posted At</div>
+                        <div class="fw-bold">{{ journal.posted_at.strftime('%Y-%m-%d %H:%M') if journal.posted_at else '-' }}</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="text-muted small">Deskripsi</div>
+                    <div>{{ journal.description or '-' }}</div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Akun</th>
+                                <th>Memo</th>
+                                <th class="text-end">Debit</th>
+                                <th class="text-end">Credit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for line in lines %}
+                            <tr>
+                                <td>{% if line.account %}{{ line.account.code }} - {{ line.account.name }}{% else %}-{% endif %}</td>
+                                <td>{{ line.memo or '-' }}</td>
+                                <td class="text-end">
+                                    {% if line.entry_side.value == 'DEBIT' %}Rp {{ "{:,.0f}".format(line.amount or 0) }}{% else %}-{% endif %}
+                                </td>
+                                <td class="text-end">
+                                    {% if line.entry_side.value == 'CREDIT' %}Rp {{ "{:,.0f}".format(line.amount or 0) }}{% else %}-{% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="4" class="text-center text-muted">Belum ada baris jurnal.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="fw-bold">
+                                <td colspan="2" class="text-end">Total</td>
+                                <td class="text-end">Rp {{ "{:,.0f}".format(debit_total or 0) }}</td>
+                                <td class="text-end">Rp {{ "{:,.0f}".format(credit_total or 0) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Audit</h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="text-muted small">Dibuat Oleh</div>
+                    <div>{{ journal.created_by.full_name if journal.created_by else '-' }}</div>
+                </div>
+                <div class="mb-3">
+                    <div class="text-muted small">Disetujui Oleh</div>
+                    <div>{{ journal.approved_by.full_name if journal.approved_by else '-' }}</div>
+                </div>
+                <div class="mb-3">
+                    <div class="text-muted small">Voided At</div>
+                    <div>{{ journal.voided_at.strftime('%Y-%m-%d %H:%M') if journal.voided_at else '-' }}</div>
+                </div>
+                <div>
+                    <div class="text-muted small">Alasan Void</div>
+                    <div>{{ journal.void_reason or '-' }}</div>
+                </div>
+            </div>
+        </div>
+
+        {% if journal.status.value == 'POSTED' %}
+        <div class="card shadow border-danger">
+            <div class="card-header py-3 bg-danger text-white">
+                <h6 class="m-0 fw-bold">Reversal</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin.finance_journal_reverse', journal_id=journal.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <div class="mb-3">
+                        <label class="form-label">Alasan</label>
+                        <textarea name="reason" class="form-control" rows="3" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-danger w-100">Reverse Jurnal</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% with modal_id='printJournalDetailModal', action_url=url_for('admin.finance_journal_detail_print', journal_id=journal.id), hidden_fields={} %}
+    {% include 'admin/finance/_print_signers_modal.html' %}
+{% endwith %}
+{% endblock %}

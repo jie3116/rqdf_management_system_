@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <title>Laba Rugi</title>
+    <style>
+        body { font-family: Arial, sans-serif; color: #111; font-size: 12px; }
+        h2, p { text-align: center; margin: 4px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+        th, td { border: 1px solid #333; padding: 6px; }
+        th { background: #f0f0f0; }
+        .text-end { text-align: right; }
+        .section { margin-top: 22px; font-weight: bold; }
+        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 64px; text-align: center; }
+        .name { margin-top: 72px; font-weight: bold; text-decoration: underline; }
+        @media print { button { display: none; } }
+    </style>
+</head>
+<body onload="window.print()">
+    <button onclick="window.print()">Print</button>
+    <h2>Laba Rugi</h2>
+    <p>Periode {{ start_date }} s.d {{ end_date }}</p>
+
+    <div class="section">Pendapatan</div>
+    <table>
+        <thead><tr><th>Kode</th><th>Akun</th><th>Nominal</th></tr></thead>
+        <tbody>
+            {% for row in revenue_rows %}
+            <tr><td>{{ row.account.code }}</td><td>{{ row.account.name }}</td><td class="text-end">{{ "{:,.0f}".format(row.amount or 0) }}</td></tr>
+            {% endfor %}
+        </tbody>
+        <tfoot><tr><th colspan="2" class="text-end">Total Pendapatan</th><th class="text-end">{{ "{:,.0f}".format(total_revenue or 0) }}</th></tr></tfoot>
+    </table>
+
+    <div class="section">Beban</div>
+    <table>
+        <thead><tr><th>Kode</th><th>Akun</th><th>Nominal</th></tr></thead>
+        <tbody>
+            {% for row in expense_rows %}
+            <tr><td>{{ row.account.code }}</td><td>{{ row.account.name }}</td><td class="text-end">{{ "{:,.0f}".format(row.amount or 0) }}</td></tr>
+            {% endfor %}
+        </tbody>
+        <tfoot><tr><th colspan="2" class="text-end">Total Beban</th><th class="text-end">{{ "{:,.0f}".format(total_expense or 0) }}</th></tr></tfoot>
+    </table>
+
+    <table>
+        <tr><th class="text-end">Laba/Rugi Bersih</th><th class="text-end">{{ "{:,.0f}".format(net_income or 0) }}</th></tr>
+    </table>
+
+    <div class="signatures">
+        {% for signer in signers %}
+        <div>
+            <div>{{ signer.title }}</div>
+            <div class="name">{{ signer.name or '&nbsp;'|safe }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>
