@@ -2333,7 +2333,7 @@ def delete_student(id):
 
 @admin_bp.route('/keuangan/akun', methods=['GET', 'POST'])
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def manage_finance_accounts():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2414,7 +2414,7 @@ def manage_finance_accounts():
 
 @admin_bp.route('/keuangan/settings', methods=['GET', 'POST'])
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def manage_finance_settings():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2606,7 +2606,7 @@ def manage_finance_settings():
 
 @admin_bp.route('/keuangan/kas-bank', methods=['GET', 'POST'])
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def manage_finance_cash_bank():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2725,7 +2725,7 @@ def manage_finance_cash_bank():
 
 @admin_bp.route('/keuangan/jurnal')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_journals():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2775,7 +2775,7 @@ def finance_journals():
 
 @admin_bp.route('/keuangan/jurnal/export')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_journals_export():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2829,7 +2829,7 @@ def finance_journals_export():
 
 @admin_bp.route('/keuangan/jurnal/export-xlsx')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_journals_export_xlsx():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2883,7 +2883,7 @@ def finance_journals_export_xlsx():
 
 @admin_bp.route('/keuangan/jurnal/<int:journal_id>')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_journal_detail(journal_id):
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2909,7 +2909,7 @@ def finance_journal_detail(journal_id):
 
 @admin_bp.route('/keuangan/jurnal/<int:journal_id>/print')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_journal_detail_print(journal_id):
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -2935,7 +2935,7 @@ def finance_journal_detail_print(journal_id):
 
 @admin_bp.route('/keuangan/jurnal/<int:journal_id>/reverse', methods=['POST'])
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_journal_reverse(journal_id):
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3236,7 +3236,7 @@ def _ledger_data(tenant_id, selected_account, start_date, end_date):
 
 @admin_bp.route('/keuangan/laporan/neraca-saldo')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_trial_balance():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3298,7 +3298,7 @@ def finance_trial_balance():
 
 @admin_bp.route('/keuangan/laporan/neraca-saldo/export')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_trial_balance_export():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3358,7 +3358,7 @@ def finance_trial_balance_export():
 
 @admin_bp.route('/keuangan/laporan/neraca-saldo/export-xlsx')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_trial_balance_export_xlsx():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3382,7 +3382,7 @@ def finance_trial_balance_export_xlsx():
 
 @admin_bp.route('/keuangan/laporan/neraca-saldo/print')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_trial_balance_print():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3405,7 +3405,7 @@ def finance_trial_balance_print():
 
 @admin_bp.route('/keuangan/laporan/buku-besar')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_general_ledger():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3488,7 +3488,7 @@ def finance_general_ledger():
 
 @admin_bp.route('/keuangan/laporan/buku-besar/export')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_general_ledger_export():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3554,7 +3554,7 @@ def finance_general_ledger_export():
 
 @admin_bp.route('/keuangan/laporan/buku-besar/export-xlsx')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_general_ledger_export_xlsx():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3595,7 +3595,7 @@ def finance_general_ledger_export_xlsx():
 
 @admin_bp.route('/keuangan/laporan/buku-besar/print')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_general_ledger_print():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3628,7 +3628,7 @@ def finance_general_ledger_print():
 
 @admin_bp.route('/keuangan/laporan/laba-rugi')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_income_statement():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3703,7 +3703,7 @@ def finance_income_statement():
 
 @admin_bp.route('/keuangan/laporan/laba-rugi/export')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_income_statement_export():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3774,7 +3774,7 @@ def finance_income_statement_export():
 
 @admin_bp.route('/keuangan/laporan/laba-rugi/export-xlsx')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_income_statement_export_xlsx():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3804,7 +3804,7 @@ def finance_income_statement_export_xlsx():
 
 @admin_bp.route('/keuangan/laporan/laba-rugi/print')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_income_statement_print():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3831,7 +3831,7 @@ def finance_income_statement_print():
 
 @admin_bp.route('/keuangan/laporan/posisi-keuangan')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_financial_position():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3870,7 +3870,7 @@ def _financial_position_export_rows(report, as_of_date):
 
 @admin_bp.route('/keuangan/laporan/posisi-keuangan/export')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_financial_position_export():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3887,7 +3887,7 @@ def finance_financial_position_export():
 
 @admin_bp.route('/keuangan/laporan/posisi-keuangan/export-xlsx')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_financial_position_export_xlsx():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3905,7 +3905,7 @@ def finance_financial_position_export_xlsx():
 
 @admin_bp.route('/keuangan/laporan/posisi-keuangan/print')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_financial_position_print():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -3975,7 +3975,7 @@ def _unposted_savings_transactions(tenant_id):
 
 @admin_bp.route('/keuangan/rekonsiliasi')
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_reconciliation():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -4007,7 +4007,7 @@ def finance_reconciliation():
 
 @admin_bp.route('/keuangan/rekonsiliasi/retry-journal/<int:journal_id>', methods=['POST'])
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_reconciliation_retry_journal(journal_id):
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -4025,7 +4025,7 @@ def finance_reconciliation_retry_journal(journal_id):
 
 @admin_bp.route('/keuangan/rekonsiliasi/retry-draft-all', methods=['POST'])
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_reconciliation_retry_draft_all():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -4052,7 +4052,7 @@ def finance_reconciliation_retry_draft_all():
 
 @admin_bp.route('/keuangan/rekonsiliasi/retry-sources', methods=['POST'])
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def finance_reconciliation_retry_sources():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -4095,7 +4095,7 @@ def finance_reconciliation_retry_sources():
 
 @admin_bp.route('/keuangan/master-biaya', methods=['GET', 'POST'])
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def manage_fee_types():
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -4171,7 +4171,7 @@ def manage_fee_types():
 
 @admin_bp.route('/keuangan/biaya/edit/<int:fee_id>', methods=['GET', 'POST'])
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def edit_fee_type(fee_id):
     tenant_id = _current_tenant_id()
     if tenant_id is None:
@@ -4206,7 +4206,7 @@ def edit_fee_type(fee_id):
 
 @admin_bp.route('/keuangan/generate/<int:fee_id>', methods=['POST'])
 @login_required
-@role_required(UserRole.ADMIN, UserRole.TU)
+@role_required(UserRole.TU)
 def generate_invoices(fee_id):
     """
     Admin berhak menerbitkan tagihan untuk seluruh siswa berdasarkan FeeType.
@@ -5095,3 +5095,4 @@ def reset_student_pin():
         flash(f'Gagal reset PIN santri: {str(e)}', 'danger')
 
     return redirect(url_for('admin.manage_users'))
+

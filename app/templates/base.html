@@ -162,7 +162,7 @@
 
                 {% endif %}
 
-                {% if has_admin or has_tu %}
+                {% if has_tu %}
                     <div class="nav-header">Keuangan</div>
                     <li><a href="{{ url_for('admin.manage_fee_types') }}"><i class="fas fa-money-check-alt me-2"></i> Master Biaya</a></li>
                     <li><a href="{{ url_for('admin.manage_finance_accounts') }}"><i class="fas fa-book me-2"></i> Master Akun</a></li>
@@ -316,7 +316,7 @@
                 {% endif %}
             {% endwith %}
 
-            {% if current_user.is_authenticated and current_user.has_role('admin', 'tata_usaha') %}
+            {% if current_user.is_authenticated and current_user.has_role('tata_usaha') %}
                 {% if finance_draft_journal_count and finance_draft_journal_count > 0 %}
                 <div class="alert alert-warning d-flex justify-content-between align-items-center shadow-sm" role="alert">
                     <span>
