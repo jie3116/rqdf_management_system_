@@ -390,6 +390,55 @@ class SchoolDocument(BaseModel):
     vector_id = db.Column(db.String(100), nullable=True)
 
 
+class AiAssistantDocument(BaseModel):
+    __tablename__ = 'ai_assistant_documents'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False, index=True)
+    title = db.Column(db.String(150), nullable=False)
+    original_filename = db.Column(db.String(255), nullable=False)
+    stored_filename = db.Column(db.String(255), nullable=False)
+    file_path = db.Column(db.String(255), nullable=False)
+    file_type = db.Column(db.String(20), nullable=False)
+    file_size = db.Column(db.Integer, nullable=False, default=0)
+    extracted_text = db.Column(db.Text, nullable=True)
+    extraction_status = db.Column(db.String(20), nullable=False, default='PENDING')
+    extraction_error = db.Column(db.Text, nullable=True)
+
+    tenant = db.relationship('Tenant', backref=db.backref('ai_assistant_documents', lazy='dynamic'))
+    teacher = db.relationship('Teacher', backref=db.backref('ai_assistant_documents', lazy='dynamic'))
+
+    __table_args__ = (
+        db.Index('idx_ai_document_teacher_created', 'teacher_id', 'created_at'),
+    )
+
+
+class AiAssistantRequest(BaseModel):
+    __tablename__ = 'ai_assistant_requests'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False, index=True)
+    document_id = db.Column(db.Integer, db.ForeignKey('ai_assistant_documents.id'), nullable=False, index=True)
+    request_type = db.Column(db.String(30), nullable=False)
+    prompt = db.Column(db.Text, nullable=False)
+    parameters_json = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(20), nullable=False, default='COMPLETED')
+
+    tenant = db.relationship('Tenant', backref=db.backref('ai_assistant_requests', lazy='dynamic'))
+    teacher = db.relationship('Teacher', backref=db.backref('ai_assistant_requests', lazy='dynamic'))
+    document = db.relationship('AiAssistantDocument', backref=db.backref('ai_requests', lazy='dynamic'))
+
+
+class AiAssistantOutput(BaseModel):
+    __tablename__ = 'ai_assistant_outputs'
+    id = db.Column(db.Integer, primary_key=True)
+    request_id = db.Column(db.Integer, db.ForeignKey('ai_assistant_requests.id'), nullable=False, index=True)
+    output_text = db.Column(db.Text, nullable=False)
+    output_format = db.Column(db.String(20), nullable=False, default='markdown')
+
+    request = db.relationship('AiAssistantRequest', backref=db.backref('outputs', lazy='dynamic'))
+
+
 class Tenant(BaseModel):
     __tablename__ = 'tenants'
     id = db.Column(db.Integer, primary_key=True)

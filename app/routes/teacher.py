@@ -3,13 +3,17 @@ from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 from collections import defaultdict
 import json
+import os
+import uuid
+from werkzeug.utils import secure_filename
 from app.models import (
     Teacher, Student, ClassRoom, TahfidzRecord, TahfidzSummary, RecitationRecord,
     TahfidzEvaluation, TahfidzType, RecitationSource, ParticipantType, Grade,
     EvaluationPeriod,
     GradeType, Subject, MajlisSubject, Attendance, AttendanceStatus, AcademicYear, Schedule, db, UserRole, MajlisParticipant,
     BehaviorReport, BehaviorReportType, Announcement, BoardingAttendance, ProgramType,
-    OnlineClassSession, LearningMaterial, LearningAssignment, LearningAssignmentSubmission
+    OnlineClassSession, LearningMaterial, LearningAssignment, LearningAssignmentSubmission,
+    AiAssistantDocument, AiAssistantRequest, AiAssistantOutput
 )
 from app.decorators import role_required
 from app.services.rumah_quran_service import is_rumah_quran_classroom, list_rumah_quran_students_for_class
@@ -25,6 +29,13 @@ from app.services.online_meeting_service import (
     MEETING_PROVIDER_LIVEKIT,
     resolve_provider_and_url,
     build_join_payload,
+)
+from app.services.ai_assistant_service import (
+    ai_provider_status,
+    allowed_document,
+    build_ai_prompt,
+    extract_document_text,
+    generate_ai_assistant_output,
 )
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
 from app.utils.push_notifications import notify_announcement_created
@@ -200,6 +211,7 @@ def build_teacher_sidebar_groups(teacher):
             {'endpoint': 'teacher.input_behavior_report', 'label': 'Laporan Perilaku', 'icon': 'fas fa-user-shield'},
             {'endpoint': 'teacher.class_announcements', 'label': 'Pengumuman Kelas', 'icon': 'fas fa-bullhorn'},
             {'endpoint': 'teacher.online_classroom', 'label': 'Kelas Online', 'icon': 'fas fa-video'},
+            {'endpoint': 'teacher.ai_assistant', 'label': 'AI Assistant', 'icon': 'fas fa-wand-magic-sparkles'},
         ],
         'rumah_quran': [
             {'endpoint': 'teacher.input_tahfidz', 'label': 'Input Tahfidz', 'icon': 'fas fa-quran'},
@@ -209,6 +221,7 @@ def build_teacher_sidebar_groups(teacher):
             {'endpoint': 'teacher.input_behavior_report', 'label': 'Laporan Perilaku', 'icon': 'fas fa-user-shield'},
             {'endpoint': 'teacher.class_announcements', 'label': 'Pengumuman Kelas', 'icon': 'fas fa-bullhorn'},
             {'endpoint': 'teacher.online_classroom', 'label': 'Kelas Online', 'icon': 'fas fa-video'},
+            {'endpoint': 'teacher.ai_assistant', 'label': 'AI Assistant', 'icon': 'fas fa-wand-magic-sparkles'},
         ],
         'bahasa': [
             {'endpoint': 'teacher.input_grades', 'label': 'Input Nilai', 'icon': 'fas fa-pen-alt'},
@@ -216,6 +229,7 @@ def build_teacher_sidebar_groups(teacher):
             {'endpoint': 'teacher.input_behavior_report', 'label': 'Laporan Perilaku', 'icon': 'fas fa-user-shield'},
             {'endpoint': 'teacher.class_announcements', 'label': 'Pengumuman Kelas', 'icon': 'fas fa-bullhorn'},
             {'endpoint': 'teacher.online_classroom', 'label': 'Kelas Online', 'icon': 'fas fa-video'},
+            {'endpoint': 'teacher.ai_assistant', 'label': 'AI Assistant', 'icon': 'fas fa-wand-magic-sparkles'},
         ],
         'majlis': [
             {'endpoint': 'teacher.input_tahfidz', 'label': 'Input Tahfidz', 'icon': 'fas fa-quran'},
@@ -225,6 +239,7 @@ def build_teacher_sidebar_groups(teacher):
             {'endpoint': 'teacher.input_behavior_report', 'label': 'Laporan Perilaku', 'icon': 'fas fa-user-shield'},
             {'endpoint': 'teacher.class_announcements', 'label': 'Pengumuman Kelas', 'icon': 'fas fa-bullhorn'},
             {'endpoint': 'teacher.online_classroom', 'label': 'Kelas Online', 'icon': 'fas fa-video'},
+            {'endpoint': 'teacher.ai_assistant', 'label': 'AI Assistant', 'icon': 'fas fa-wand-magic-sparkles'},
         ],
     }
 
@@ -272,6 +287,156 @@ def _get_teacher_classes(teacher):
             classes_by_id[target_class.id] = target_class
     
     return list(classes_by_id.values())
+
+
+def _ai_upload_directory():
+    upload_dir = os.path.join(current_app.root_path, "static", "uploads", "ai_assistant")
+    os.makedirs(upload_dir, exist_ok=True)
+    return upload_dir
+
+
+def _teacher_ai_document_query(teacher):
+    return AiAssistantDocument.query.filter_by(
+        teacher_id=teacher.id,
+        tenant_id=_teacher_tenant_id(teacher),
+        is_deleted=False,
+    )
+
+
+@teacher_bp.route('/ai-assistant', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.GURU)
+def ai_assistant():
+    teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
+    tenant_id = _teacher_tenant_id(teacher)
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+
+        if action == 'upload_document':
+            uploaded_file = request.files.get('document_file')
+            title = (request.form.get('title') or '').strip()
+
+            if not uploaded_file or not uploaded_file.filename:
+                flash('Pilih dokumen terlebih dahulu.', 'warning')
+                return redirect(url_for('teacher.ai_assistant'))
+
+            if not allowed_document(uploaded_file.filename):
+                flash('Format dokumen belum didukung. Gunakan TXT, MD, PDF, atau DOCX.', 'danger')
+                return redirect(url_for('teacher.ai_assistant'))
+
+            original_filename = secure_filename(uploaded_file.filename)
+            extension = original_filename.rsplit('.', 1)[-1].lower()
+            stored_filename = f"{uuid.uuid4().hex}.{extension}"
+            upload_dir = _ai_upload_directory()
+            file_path = os.path.join(upload_dir, stored_filename)
+            uploaded_file.save(file_path)
+
+            document = AiAssistantDocument(
+                tenant_id=tenant_id,
+                teacher_id=teacher.id,
+                title=title or os.path.splitext(original_filename)[0],
+                original_filename=original_filename,
+                stored_filename=stored_filename,
+                file_path=f"uploads/ai_assistant/{stored_filename}",
+                file_type=extension,
+                file_size=os.path.getsize(file_path),
+                extraction_status='PENDING',
+            )
+
+            try:
+                document.extracted_text = extract_document_text(file_path)
+                document.extraction_status = 'COMPLETED'
+                if not (document.extracted_text or '').strip():
+                    document.extraction_status = 'FAILED'
+                    document.extraction_error = 'Dokumen tidak berisi teks yang bisa diekstrak.'
+            except Exception as exc:
+                document.extraction_status = 'FAILED'
+                document.extraction_error = str(exc)
+
+            db.session.add(document)
+            db.session.commit()
+
+            if document.extraction_status == 'COMPLETED':
+                flash('Dokumen berhasil diupload dan teks berhasil diekstrak.', 'success')
+            else:
+                flash(f'Dokumen tersimpan, tetapi ekstraksi teks gagal: {document.extraction_error}', 'warning')
+            return redirect(url_for('teacher.ai_assistant', document_id=document.id))
+
+        if action == 'generate_output':
+            document_id = request.form.get('document_id', type=int)
+            document = _teacher_ai_document_query(teacher).filter_by(id=document_id).first_or_404()
+            if document.extraction_status != 'COMPLETED':
+                flash('Dokumen ini belum memiliki teks yang siap diproses.', 'warning')
+                return redirect(url_for('teacher.ai_assistant', document_id=document.id))
+
+            request_type = request.form.get('request_type') or 'summary'
+            parameters = {
+                'subject': (request.form.get('subject') or '').strip(),
+                'grade': (request.form.get('grade') or '').strip(),
+                'difficulty': (request.form.get('difficulty') or '').strip(),
+                'question_count': request.form.get('question_count', type=int),
+            }
+            prompt = build_ai_prompt(request_type, document, parameters)
+            output_text, provider_used, provider_error = generate_ai_assistant_output(request_type, document, parameters)
+            if provider_error:
+                parameters['provider_error'] = provider_error
+
+            ai_request = AiAssistantRequest(
+                tenant_id=tenant_id,
+                teacher_id=teacher.id,
+                document_id=document.id,
+                request_type=request_type,
+                prompt=prompt,
+                parameters_json=json.dumps(parameters),
+                status=provider_used,
+            )
+            db.session.add(ai_request)
+            db.session.flush()
+            db.session.add(AiAssistantOutput(
+                request_id=ai_request.id,
+                output_text=output_text,
+                output_format='markdown',
+            ))
+            db.session.commit()
+            flash('Draft berhasil dibuat.', 'success')
+            return redirect(url_for('teacher.ai_assistant', document_id=document.id, output_id=ai_request.id))
+
+        flash('Aksi tidak dikenali.', 'warning')
+        return redirect(url_for('teacher.ai_assistant'))
+
+    documents = _teacher_ai_document_query(teacher).order_by(AiAssistantDocument.created_at.desc()).limit(20).all()
+    selected_document_id = request.args.get('document_id', type=int)
+    selected_document = None
+    if selected_document_id:
+        selected_document = _teacher_ai_document_query(teacher).filter_by(id=selected_document_id).first()
+    if selected_document is None and documents:
+        selected_document = documents[0]
+
+    outputs = []
+    if selected_document:
+        outputs = (
+            AiAssistantOutput.query
+            .join(AiAssistantRequest)
+            .filter(
+                AiAssistantRequest.document_id == selected_document.id,
+                AiAssistantRequest.teacher_id == teacher.id,
+                AiAssistantRequest.is_deleted == False,
+                AiAssistantOutput.is_deleted == False,
+            )
+            .order_by(AiAssistantOutput.created_at.desc())
+            .limit(10)
+            .all()
+        )
+
+    return render_template(
+        'teacher/ai_assistant.html',
+        teacher=teacher,
+        documents=documents,
+        selected_document=selected_document,
+        outputs=outputs,
+        provider_status=ai_provider_status(),
+    )
 
 
 def _get_teacher_attendance_classes(teacher):

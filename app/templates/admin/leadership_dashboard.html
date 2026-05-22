@@ -8,6 +8,16 @@
         border-radius: 8px;
         box-shadow: 0 0.4rem 1rem rgba(15, 23, 42, 0.08);
     }
+    .analytics-link {
+        color: inherit;
+        text-decoration: none;
+        transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .analytics-link:hover {
+        color: inherit;
+        transform: translateY(-1px);
+        box-shadow: 0 0.6rem 1.2rem rgba(15, 23, 42, 0.12);
+    }
     .metric-label {
         font-size: 0.72rem;
         color: #64748b;
@@ -79,58 +89,58 @@
 
 <div class="row g-3 mb-4">
     <div class="col-xl-2 col-md-4 col-sm-6">
-        <div class="card analytics-card h-100">
+        <a class="card analytics-card analytics-link h-100" data-detail-link="students" href="{{ url_for('admin.leadership_detail', section='students', start_date=analytics.period.start_date, end_date=analytics.period.end_date) }}">
             <div class="card-body">
                 <div class="metric-label">Santri</div>
                 <div class="metric-value" data-analytics="cards.students">{{ analytics.cards.students }}</div>
                 <div class="metric-sub">aktif terdaftar</div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-xl-2 col-md-4 col-sm-6">
-        <div class="card analytics-card h-100">
+        <a class="card analytics-card analytics-link h-100" data-detail-link="operations" href="{{ url_for('admin.leadership_detail', section='operations', start_date=analytics.period.start_date, end_date=analytics.period.end_date) }}">
             <div class="card-body">
                 <div class="metric-label">Guru & Staff</div>
                 <div class="metric-value" data-analytics="cards.teachers_staff">{{ analytics.cards.teachers_staff }}</div>
                 <div class="metric-sub">tenaga lembaga</div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-xl-2 col-md-4 col-sm-6">
-        <div class="card analytics-card h-100">
+        <a class="card analytics-card analytics-link h-100" data-detail-link="attendance" href="{{ url_for('admin.leadership_detail', section='attendance', start_date=analytics.period.start_date, end_date=analytics.period.end_date) }}">
             <div class="card-body">
                 <div class="metric-label">Kehadiran</div>
                 <div class="metric-value"><span data-analytics="cards.attendance_rate">{{ analytics.cards.attendance_rate }}</span>%</div>
                 <div class="metric-sub">hari ini</div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-xl-2 col-md-4 col-sm-6">
-        <div class="card analytics-card h-100">
+        <a class="card analytics-card analytics-link h-100" data-detail-link="finance" href="{{ url_for('admin.leadership_detail', section='finance', start_date=analytics.period.start_date, end_date=analytics.period.end_date) }}">
             <div class="card-body">
                 <div class="metric-label">Kas Masuk</div>
                 <div class="metric-value" data-money="cards.income_today">Rp {{ "{:,.0f}".format(analytics.cards.income_today or 0) }}</div>
                 <div class="metric-sub">hari ini</div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-xl-2 col-md-4 col-sm-6">
-        <div class="card analytics-card h-100">
+        <a class="card analytics-card analytics-link h-100" data-detail-link="finance" href="{{ url_for('admin.leadership_detail', section='finance', start_date=analytics.period.start_date, end_date=analytics.period.end_date) }}">
             <div class="card-body">
                 <div class="metric-label">Piutang</div>
                 <div class="metric-value" data-money="cards.receivable_total">Rp {{ "{:,.0f}".format(analytics.cards.receivable_total or 0) }}</div>
                 <div class="metric-sub">belum tertagih</div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-xl-2 col-md-4 col-sm-6">
-        <div class="card analytics-card h-100">
+        <a class="card analytics-card analytics-link h-100" data-detail-link="finance" href="{{ url_for('admin.leadership_detail', section='finance', start_date=analytics.period.start_date, end_date=analytics.period.end_date) }}">
             <div class="card-body">
                 <div class="metric-label">Surplus</div>
                 <div class="metric-value" data-money="cards.monthly_surplus">Rp {{ "{:,.0f}".format(analytics.cards.monthly_surplus or 0) }}</div>
                 <div class="metric-sub">periode terpilih</div>
             </div>
-        </div>
+        </a>
     </div>
 </div>
 
@@ -255,6 +265,13 @@
 <script>
     const analyticsEndpoint = "{{ url_for('admin.leadership_dashboard_data') }}";
     const initialAnalytics = {{ analytics|tojson }};
+    let currentAnalytics = initialAnalytics;
+    const detailBaseUrls = {
+        students: "{{ url_for('admin.leadership_detail', section='students') }}",
+        attendance: "{{ url_for('admin.leadership_detail', section='attendance') }}",
+        finance: "{{ url_for('admin.leadership_detail', section='finance') }}",
+        operations: "{{ url_for('admin.leadership_detail', section='operations') }}"
+    };
     const charts = {};
     const chartColors = {
         blue: '#2563eb',
@@ -272,6 +289,21 @@
 
     function formatMoney(value) {
         return `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
+    }
+
+    function detailUrl(section, data) {
+        const period = data?.period || currentAnalytics.period || {};
+        const params = new URLSearchParams({
+            start_date: period.start_date || '',
+            end_date: period.end_date || ''
+        });
+        return `${detailBaseUrls[section]}?${params.toString()}`;
+    }
+
+    function updateDetailLinks(data) {
+        document.querySelectorAll('[data-detail-link]').forEach((node) => {
+            node.href = detailUrl(node.dataset.detailLink, data);
+        });
     }
 
     function createOrUpdateChart(key, config) {
@@ -368,10 +400,10 @@
 
         const host = document.getElementById('attendanceBreakdown');
         host.innerHTML = entries.map(([label, count], index) => `
-            <div class="d-flex justify-content-between align-items-center">
+            <a class="analytics-link d-flex justify-content-between align-items-center" href="${detailUrl('attendance')}">
                 <span><span class="status-dot me-2" style="background:${[chartColors.green, chartColors.amber, chartColors.blue, chartColors.red][index % 4]}"></span>${label}</span>
                 <strong>${count}</strong>
-            </div>
+            </a>
         `).join('') || '<div class="text-muted">Belum ada absensi hari ini.</div>';
     }
 
@@ -389,10 +421,10 @@
             }
         });
         document.getElementById('invoiceStatusList').innerHTML = rows.map(row => `
-            <div class="d-flex justify-content-between border-bottom py-2">
+            <a class="analytics-link d-flex justify-content-between border-bottom py-2" href="${detailUrl('finance')}">
                 <span>${row.label} <span class="text-muted small">(${row.count})</span></span>
                 <strong>${formatMoney(row.outstanding_amount)}</strong>
-            </div>
+            </a>
         `).join('') || '<div class="text-muted">Belum ada tagihan.</div>';
     }
 
@@ -408,11 +440,12 @@
     }
 
     function renderSimpleList(hostId, rows, emptyText) {
+        const section = hostId === 'ppdbSummary' || hostId === 'behaviorSummary' ? 'operations' : 'finance';
         document.getElementById(hostId).innerHTML = rows.map(row => `
-            <div class="d-flex justify-content-between border-bottom py-2">
+            <a class="analytics-link d-flex justify-content-between border-bottom py-2" href="${detailUrl(section)}">
                 <span>${row.label}</span>
                 <strong>${row.count}</strong>
-            </div>
+            </a>
         `).join('') || `<div class="text-muted">${emptyText}</div>`;
     }
 
@@ -431,7 +464,7 @@
         host.innerHTML = rows.map(row => {
             const percent = row.student_count ? Math.min(100, Math.round((row.attendance_count / row.student_count) * 100)) : 0;
             return `
-                <div class="leaderboard-row">
+                <a class="analytics-link leaderboard-row" href="${detailUrl('attendance')}">
                     <div>
                         <div class="fw-bold">${row.name}</div>
                         <div class="progress progress-thin mt-1">
@@ -440,7 +473,7 @@
                     </div>
                     <div class="text-end">${row.student_count}</div>
                     <div class="text-end fw-bold">${row.attendance_count}</div>
-                </div>
+                </a>
             `;
         }).join('') || '<div class="text-center text-muted py-3">Belum ada kelas aktif.</div>';
     }
@@ -448,27 +481,28 @@
     function renderAlerts(alerts) {
         const statusClass = alerts.period_status === 'OPEN' ? 'success' : 'danger';
         document.getElementById('alertSummary').innerHTML = `
-            <div class="d-flex justify-content-between border-bottom py-2"><span>PPDB pending</span><strong>${alerts.ppdb_pending || 0}</strong></div>
-            <div class="d-flex justify-content-between border-bottom py-2"><span>Catatan terbuka</span><strong>${alerts.behavior_open || 0}</strong></div>
-            <div class="d-flex justify-content-between border-bottom py-2"><span>Jurnal draft</span><strong>${alerts.draft_journals || 0}</strong></div>
-            <div class="d-flex justify-content-between py-2"><span>Periode finance</span><span class="badge bg-${statusClass}">${alerts.period_status || '-'}</span></div>
+            <a class="analytics-link d-flex justify-content-between border-bottom py-2" href="${detailUrl('operations')}"><span>PPDB pending</span><strong>${alerts.ppdb_pending || 0}</strong></a>
+            <a class="analytics-link d-flex justify-content-between border-bottom py-2" href="${detailUrl('operations')}"><span>Catatan terbuka</span><strong>${alerts.behavior_open || 0}</strong></a>
+            <a class="analytics-link d-flex justify-content-between border-bottom py-2" href="${detailUrl('operations')}"><span>Jurnal draft</span><strong>${alerts.draft_journals || 0}</strong></a>
+            <a class="analytics-link d-flex justify-content-between py-2" href="${detailUrl('finance')}"><span>Periode finance</span><span class="badge bg-${statusClass}">${alerts.period_status || '-'}</span></a>
         `;
     }
 
     function renderRecentPayments(rows) {
         const host = document.getElementById('recentPayments');
         host.innerHTML = rows.map(row => `
-            <div>
+            <a class="analytics-link d-block" href="${detailUrl('finance')}">
                 <div class="d-flex justify-content-between gap-2">
                     <strong>${row.student}</strong>
                     <span>${formatMoney(row.amount)}</span>
                 </div>
                 <div class="small text-muted">${row.date} - ${row.method}</div>
-            </div>
+            </a>
         `).join('') || '<div class="text-muted">Belum ada pembayaran.</div>';
     }
 
     function renderAnalytics(data) {
+        currentAnalytics = data;
         if (data.period && data.period.key) {
             document.getElementById('periodSelect').value = data.period.key;
         }
@@ -479,6 +513,7 @@
         document.querySelectorAll('[data-money]').forEach((node) => {
             node.textContent = formatMoney(getValue(data, node.dataset.money));
         });
+        updateDetailLinks(data);
         renderPaymentAttendanceChart(data);
         renderFinanceTrendChart(data.finance_trend || []);
         renderAttendance(data.attendance || {});

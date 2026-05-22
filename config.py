@@ -29,3 +29,9 @@ class Config:
     JITSI_JAAS_PRIVATE_KEY = os.environ.get('JITSI_JAAS_PRIVATE_KEY', '')
     JITSI_JAAS_TOKEN_TTL_SECONDS = int(os.environ.get('JITSI_JAAS_TOKEN_TTL_SECONDS', '7200'))
     JITSI_JAAS_ROOM_CLAIM_MODE = os.environ.get('JITSI_JAAS_ROOM_CLAIM_MODE', 'wildcard')
+
+    # AI Assistant
+    AI_ASSISTANT_PROVIDER = os.environ.get('AI_ASSISTANT_PROVIDER', 'local').strip().lower()
+    OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+    OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-5.2')
+    OPENAI_MAX_OUTPUT_TOKENS = int(os.environ.get('OPENAI_MAX_OUTPUT_TOKENS', '2500'))

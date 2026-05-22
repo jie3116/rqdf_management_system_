@@ -75,7 +75,7 @@ from app.models import (
     Violation, BehaviorReport, TahfidzRecord, TahfidzSummary, RecitationRecord, TahfidzEvaluation,
     student_extracurriculars, StudentSavingsAccount,
     # User/System Related
-    Announcement, AnnouncementRead, NotificationQueue, AuditLog, BoardingDormitory,
+    Announcement, AnnouncementRead, NotificationQueue, AuditLog, BoardingDormitory, BoardingActivitySchedule,
     # Activities
     Extracurricular,
     # PPDB
@@ -747,6 +747,285 @@ def leadership_dashboard_data():
     if tenant_id is None:
         return jsonify({'error': 'Tenant default tidak ditemukan.'}), 404
     return jsonify(_leadership_analytics_payload(tenant_id, request.args.get('period')))
+
+
+def _leadership_detail_dates():
+    start_date = _parse_iso_date(request.args.get('start_date'))
+    end_date = _parse_iso_date(request.args.get('end_date'))
+    if start_date and end_date:
+        return start_date, end_date
+    _, _, period_start, period_end, _ = _leadership_period(request.args.get('period'))
+    return start_date or period_start, end_date or period_end
+
+
+def _leadership_attendance_detail(tenant_id, start_date, end_date):
+    class_rows = (
+        db.session.query(ClassRoom.id, ClassRoom.name, Attendance.status, func.count(Attendance.id))
+        .join(Attendance, Attendance.class_id == ClassRoom.id)
+        .join(Student, Student.id == Attendance.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            Attendance.date >= start_date,
+            Attendance.date <= end_date,
+            Attendance.student_id.isnot(None),
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .group_by(ClassRoom.id, ClassRoom.name, Attendance.status)
+        .order_by(ClassRoom.name.asc(), Attendance.status.asc())
+        .all()
+    )
+    class_map = {}
+    for class_id, class_name, status, count in class_rows:
+        row = class_map.setdefault(class_id, {
+            'class_id': class_id,
+            'name': class_name,
+            'counts': {item.value: 0 for item in AttendanceStatus},
+            'total': 0,
+        })
+        status_label = status.value if status else '-'
+        row['counts'][status_label] = int(count or 0)
+        row['total'] += int(count or 0)
+
+    boarding_rows = (
+        db.session.query(
+            BoardingDormitory.name,
+            BoardingActivitySchedule.activity_name,
+            BoardingAttendance.status,
+            func.count(BoardingAttendance.id),
+        )
+        .join(BoardingDormitory, BoardingDormitory.id == BoardingAttendance.dormitory_id)
+        .join(BoardingActivitySchedule, BoardingActivitySchedule.id == BoardingAttendance.schedule_id)
+        .join(Student, Student.id == BoardingAttendance.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            BoardingAttendance.date >= start_date,
+            BoardingAttendance.date <= end_date,
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .group_by(BoardingDormitory.name, BoardingActivitySchedule.activity_name, BoardingAttendance.status)
+        .order_by(BoardingDormitory.name.asc(), BoardingActivitySchedule.activity_name.asc())
+        .all()
+    )
+    boarding_map = {}
+    for dormitory_name, activity_name, status, count in boarding_rows:
+        key = (dormitory_name, activity_name)
+        row = boarding_map.setdefault(key, {
+            'dormitory': dormitory_name,
+            'activity': activity_name,
+            'counts': {item.value: 0 for item in AttendanceStatus},
+            'total': 0,
+        })
+        status_label = status.value if status else '-'
+        row['counts'][status_label] = int(count or 0)
+        row['total'] += int(count or 0)
+
+    recent_records = (
+        Attendance.query.join(Student, Student.id == Attendance.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            Attendance.date >= start_date,
+            Attendance.date <= end_date,
+            Attendance.student_id.isnot(None),
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .order_by(Attendance.date.desc(), Attendance.id.desc())
+        .limit(100)
+        .all()
+    )
+    return {
+        'class_rows': list(class_map.values()),
+        'boarding_rows': list(boarding_map.values()),
+        'recent_records': recent_records,
+    }
+
+
+def _leadership_finance_detail(tenant_id, start_date, end_date):
+    revenue_rows, expense_rows, total_revenue, total_expense, net_income = _income_statement_data(
+        tenant_id, start_date, end_date
+    )
+    payment_start = datetime.combine(start_date, datetime.min.time())
+    payment_end = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+    transactions = (
+        Transaction.query.join(Invoice, Invoice.id == Transaction.invoice_id)
+        .join(Student, Student.id == Invoice.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            Transaction.date >= payment_start,
+            Transaction.date < payment_end,
+            Invoice.is_deleted.is_(False),
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+        .limit(100)
+        .all()
+    )
+    invoice_rows = (
+        db.session.query(
+            Invoice.status,
+            func.count(Invoice.id),
+            func.sum(Invoice.total_amount),
+            func.sum(Invoice.paid_amount),
+        )
+        .join(Student, Student.id == Invoice.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            Invoice.is_deleted.is_(False),
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .group_by(Invoice.status)
+        .all()
+    )
+    journals = (
+        FinanceJournal.query.filter(
+            FinanceJournal.tenant_id == tenant_id,
+            FinanceJournal.journal_date >= start_date,
+            FinanceJournal.journal_date <= end_date,
+        )
+        .order_by(FinanceJournal.journal_date.desc(), FinanceJournal.id.desc())
+        .limit(100)
+        .all()
+    )
+    return {
+        'revenue_rows': revenue_rows,
+        'expense_rows': expense_rows,
+        'total_revenue': total_revenue,
+        'total_expense': total_expense,
+        'net_income': net_income,
+        'transactions': transactions,
+        'invoice_rows': invoice_rows,
+        'journals': journals,
+    }
+
+
+def _leadership_operations_detail(tenant_id, start_date, end_date):
+    teachers = (
+        Teacher.query.join(User, Teacher.user_id == User.id)
+        .filter(Teacher.is_deleted.is_(False), User.tenant_id == tenant_id)
+        .order_by(Teacher.full_name.asc())
+        .limit(100)
+        .all()
+    )
+    staff_members = (
+        Staff.query.join(User, Staff.user_id == User.id)
+        .filter(Staff.is_deleted.is_(False), User.tenant_id == tenant_id)
+        .order_by(Staff.full_name.asc())
+        .limit(100)
+        .all()
+    )
+    candidates = (
+        StudentCandidate.query.filter(
+            StudentCandidate.tenant_id == tenant_id,
+            StudentCandidate.created_at >= datetime.combine(start_date, datetime.min.time()),
+            StudentCandidate.created_at < datetime.combine(end_date + timedelta(days=1), datetime.min.time()),
+        )
+        .order_by(StudentCandidate.created_at.desc(), StudentCandidate.id.desc())
+        .limit(100)
+        .all()
+    )
+    behavior_reports = (
+        BehaviorReport.query.join(Student, Student.id == BehaviorReport.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            BehaviorReport.report_date >= start_date,
+            BehaviorReport.report_date <= end_date,
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .order_by(BehaviorReport.report_date.desc(), BehaviorReport.id.desc())
+        .limit(100)
+        .all()
+    )
+    draft_journals = (
+        FinanceJournal.query.filter_by(tenant_id=tenant_id, status=FinanceJournalStatus.DRAFT)
+        .order_by(FinanceJournal.journal_date.desc(), FinanceJournal.id.desc())
+        .limit(100)
+        .all()
+    )
+    return {
+        'teachers': teachers,
+        'staff_members': staff_members,
+        'candidates': candidates,
+        'behavior_reports': behavior_reports,
+        'draft_journals': draft_journals,
+    }
+
+
+def _leadership_students_detail(tenant_id):
+    class_rows = (
+        db.session.query(ClassRoom.name, func.count(Student.id))
+        .join(Student, Student.current_class_id == ClassRoom.id)
+        .join(User, User.id == Student.user_id)
+        .filter(Student.is_deleted.is_(False), User.tenant_id == tenant_id)
+        .group_by(ClassRoom.name)
+        .order_by(ClassRoom.name.asc())
+        .all()
+    )
+    dormitory_rows = (
+        db.session.query(BoardingDormitory.name, func.count(Student.id))
+        .join(Student, Student.boarding_dormitory_id == BoardingDormitory.id)
+        .join(User, User.id == Student.user_id)
+        .filter(Student.is_deleted.is_(False), User.tenant_id == tenant_id)
+        .group_by(BoardingDormitory.name)
+        .order_by(BoardingDormitory.name.asc())
+        .all()
+    )
+    students = (
+        Student.query.join(User, Student.user_id == User.id)
+        .filter(Student.is_deleted.is_(False), User.tenant_id == tenant_id)
+        .order_by(Student.full_name.asc())
+        .limit(150)
+        .all()
+    )
+    return {
+        'class_rows': class_rows,
+        'dormitory_rows': dormitory_rows,
+        'students': students,
+    }
+
+
+@admin_bp.route('/dashboard/pimpinan/detail/<section>')
+@login_required
+@role_required(UserRole.PIMPINAN)
+def leadership_detail(section):
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    allowed_sections = {
+        'students': 'Detail Santri',
+        'attendance': 'Detail Absensi',
+        'finance': 'Detail Keuangan',
+        'operations': 'Detail Operasional',
+    }
+    if section not in allowed_sections:
+        flash('Detail laporan tidak ditemukan.', 'warning')
+        return redirect(url_for('admin.leadership_dashboard'))
+
+    start_date, end_date = _leadership_detail_dates()
+    detail_data = {}
+    if section == 'students':
+        detail_data = _leadership_students_detail(tenant_id)
+    elif section == 'attendance':
+        detail_data = _leadership_attendance_detail(tenant_id, start_date, end_date)
+    elif section == 'finance':
+        detail_data = _leadership_finance_detail(tenant_id, start_date, end_date)
+    elif section == 'operations':
+        detail_data = _leadership_operations_detail(tenant_id, start_date, end_date)
+
+    return render_template(
+        'admin/leadership_detail.html',
+        section=section,
+        section_title=allowed_sections[section],
+        start_date=start_date,
+        end_date=end_date,
+        detail=detail_data,
+    )
 
 
 @admin_bp.route('/pengaturan/sistem', methods=['GET', 'POST'])

@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h4 class="mb-1 fw-bold text-primary"><i class="fas fa-table-list me-2"></i>{{ section_title }}</h4>
+        <div class="text-muted small">Periode {{ start_date }} s.d {{ end_date }}</div>
+    </div>
+    <a href="{{ url_for('admin.leadership_dashboard', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Dashboard
+    </a>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">Mulai</label>
+                <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Selesai</label>
+                <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+            </div>
+            <div class="col-md-2 d-grid">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-search me-1"></i>Tampilkan</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if section == 'students' %}
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card shadow h-100">
+            <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Santri per Kelas</h6></div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-bordered mb-0">
+                    <thead class="table-light"><tr><th>Kelas</th><th class="text-end">Jumlah</th></tr></thead>
+                    <tbody>
+                    {% for name, count in detail.class_rows %}
+                    <tr><td>{{ name or '-' }}</td><td class="text-end fw-bold">{{ count }}</td></tr>
+                    {% else %}
+                    <tr><td colspan="2" class="text-muted text-center">Belum ada data kelas.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow h-100">
+            <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Santri per Asrama</h6></div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-bordered mb-0">
+                    <thead class="table-light"><tr><th>Asrama</th><th class="text-end">Jumlah</th></tr></thead>
+                    <tbody>
+                    {% for name, count in detail.dormitory_rows %}
+                    <tr><td>{{ name or '-' }}</td><td class="text-end fw-bold">{{ count }}</td></tr>
+                    {% else %}
+                    <tr><td colspan="2" class="text-muted text-center">Belum ada data asrama.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="card shadow mt-4">
+    <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Daftar Santri Aktif</h6></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate" data-default-per-page="25">
+                <thead class="table-light"><tr><th>NIS</th><th>Nama</th><th>Kelas</th><th>Asrama</th></tr></thead>
+                <tbody>
+                {% for student in detail.students %}
+                <tr>
+                    <td>{{ student.nis }}</td>
+                    <td>{{ student.full_name }}</td>
+                    <td>{{ student.current_class.name if student.current_class else '-' }}</td>
+                    <td>{{ student.boarding_dormitory.name if student.boarding_dormitory else '-' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-muted text-center">Belum ada santri aktif.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% elif section == 'attendance' %}
+<div class="card shadow mb-4">
+    <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Absensi Formal per Kelas</h6></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate">
+                <thead class="table-light"><tr><th>Kelas</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpa</th><th>Total</th></tr></thead>
+                <tbody>
+                {% for row in detail.class_rows %}
+                <tr>
+                    <td class="fw-bold">{{ row.name }}</td>
+                    <td>{{ row.counts.get('Hadir', 0) }}</td>
+                    <td>{{ row.counts.get('Sakit', 0) }}</td>
+                    <td>{{ row.counts.get('Izin', 0) }}</td>
+                    <td>{{ row.counts.get('Alpa', 0) }}</td>
+                    <td class="fw-bold">{{ row.total }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-muted text-center">Belum ada absensi formal pada periode ini.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<div class="card shadow mb-4">
+    <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Absensi Asrama per Kegiatan</h6></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate">
+                <thead class="table-light"><tr><th>Asrama</th><th>Kegiatan</th><th>Hadir</th><th>Sakit</th><th>Izin</th><th>Alpa</th><th>Total</th></tr></thead>
+                <tbody>
+                {% for row in detail.boarding_rows %}
+                <tr>
+                    <td>{{ row.dormitory }}</td>
+                    <td class="fw-bold">{{ row.activity }}</td>
+                    <td>{{ row.counts.get('Hadir', 0) }}</td>
+                    <td>{{ row.counts.get('Sakit', 0) }}</td>
+                    <td>{{ row.counts.get('Izin', 0) }}</td>
+                    <td>{{ row.counts.get('Alpa', 0) }}</td>
+                    <td class="fw-bold">{{ row.total }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-muted text-center">Belum ada absensi asrama pada periode ini.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<div class="card shadow">
+    <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Riwayat Absensi Terbaru</h6></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate" data-default-per-page="25">
+                <thead class="table-light"><tr><th>Tanggal</th><th>Santri</th><th>Kelas</th><th>Status</th><th>Penginput</th><th>Catatan</th></tr></thead>
+                <tbody>
+                {% for row in detail.recent_records %}
+                <tr>
+                    <td>{{ row.date.strftime('%d/%m/%Y') if row.date else '-' }}</td>
+                    <td>{{ row.student.full_name if row.student else '-' }}</td>
+                    <td>{{ row.class_room.name if row.class_room else '-' }}</td>
+                    <td>{{ row.status.value if row.status else '-' }}</td>
+                    <td>{{ row.teacher.full_name if row.teacher else '-' }}</td>
+                    <td>{{ row.notes or '-' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-muted text-center">Belum ada riwayat absensi.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% elif section == 'finance' %}
+<div class="row g-4 mb-4">
+    <div class="col-lg-6">
+        <div class="card shadow h-100">
+            <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-success">Pendapatan</h6></div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-bordered mb-0">
+                    <tbody>
+                    {% for row in detail.revenue_rows %}
+                    <tr><td>{{ row.account.code }} - {{ row.account.name }}</td><td class="text-end">Rp {{ "{:,.0f}".format(row.amount or 0) }}</td></tr>
+                    {% else %}
+                    <tr><td colspan="2" class="text-muted text-center">Belum ada pendapatan.</td></tr>
+                    {% endfor %}
+                    <tr class="table-light"><th>Total</th><th class="text-end">Rp {{ "{:,.0f}".format(detail.total_revenue or 0) }}</th></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow h-100">
+            <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-danger">Beban</h6></div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-bordered mb-0">
+                    <tbody>
+                    {% for row in detail.expense_rows %}
+                    <tr><td>{{ row.account.code }} - {{ row.account.name }}</td><td class="text-end">Rp {{ "{:,.0f}".format(row.amount or 0) }}</td></tr>
+                    {% else %}
+                    <tr><td colspan="2" class="text-muted text-center">Belum ada beban.</td></tr>
+                    {% endfor %}
+                    <tr class="table-light"><th>Total</th><th class="text-end">Rp {{ "{:,.0f}".format(detail.total_expense or 0) }}</th></tr>
+                    <tr><th>Surplus/Defisit</th><th class="text-end">Rp {{ "{:,.0f}".format(detail.net_income or 0) }}</th></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="card shadow mb-4">
+    <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Transaksi Pembayaran</h6></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate" data-default-per-page="25">
+                <thead class="table-light"><tr><th>Tanggal</th><th>Santri</th><th>Tagihan</th><th>Metode</th><th class="text-end">Nominal</th></tr></thead>
+                <tbody>
+                {% for trx in detail.transactions %}
+                <tr>
+                    <td>{{ trx.date.strftime('%d/%m/%Y %H:%M') if trx.date else '-' }}</td>
+                    <td>{{ trx.invoice.student.full_name if trx.invoice and trx.invoice.student else '-' }}</td>
+                    <td>{{ trx.invoice.invoice_number if trx.invoice else '-' }}</td>
+                    <td>{{ trx.method or '-' }}</td>
+                    <td class="text-end fw-bold">Rp {{ "{:,.0f}".format(trx.amount or 0) }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="text-muted text-center">Belum ada transaksi pada periode ini.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<div class="card shadow">
+    <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Jurnal Periode</h6></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate" data-default-per-page="25">
+                <thead class="table-light"><tr><th>Tanggal</th><th>No Jurnal</th><th>Status</th><th>Source</th><th>Deskripsi</th></tr></thead>
+                <tbody>
+                {% for journal in detail.journals %}
+                <tr>
+                    <td>{{ journal.journal_date }}</td>
+                    <td class="fw-bold">{{ journal.journal_no }}</td>
+                    <td>{{ journal.status.value if journal.status else '-' }}</td>
+                    <td>{{ journal.source_type.value if journal.source_type else '-' }}</td>
+                    <td>{{ journal.description or '-' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="text-muted text-center">Belum ada jurnal pada periode ini.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% elif section == 'operations' %}
+<div class="row g-4 mb-4">
+    <div class="col-lg-6">
+        <div class="card shadow h-100">
+            <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Guru</h6></div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-bordered mb-0">
+                    <thead class="table-light"><tr><th>Nama</th><th>NIP</th><th>Spesialisasi</th></tr></thead>
+                    <tbody>
+                    {% for teacher in detail.teachers %}
+                    <tr><td class="fw-bold">{{ teacher.full_name }}</td><td>{{ teacher.nip or '-' }}</td><td>{{ teacher.specialty or '-' }}</td></tr>
+                    {% else %}
+                    <tr><td colspan="3" class="text-muted text-center">Belum ada data guru.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow h-100">
+            <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Staff</h6></div>
+            <div class="card-body p-0">
+                <table class="table table-sm table-bordered mb-0">
+                    <thead class="table-light"><tr><th>Nama</th><th>Jabatan</th></tr></thead>
+                    <tbody>
+                    {% for staff in detail.staff_members %}
+                    <tr><td class="fw-bold">{{ staff.full_name }}</td><td>{{ staff.position or '-' }}</td></tr>
+                    {% else %}
+                    <tr><td colspan="2" class="text-muted text-center">Belum ada data staff.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="card shadow mb-4">
+    <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Pendaftar PPDB</h6></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate" data-default-per-page="25">
+                <thead class="table-light"><tr><th>Tanggal</th><th>No Reg</th><th>Nama</th><th>Program</th><th>Status</th><th>Kontak</th></tr></thead>
+                <tbody>
+                {% for candidate in detail.candidates %}
+                <tr>
+                    <td>{{ candidate.created_at.strftime('%d/%m/%Y') if candidate.created_at else '-' }}</td>
+                    <td>{{ candidate.registration_no or '-' }}</td>
+                    <td class="fw-bold">{{ candidate.full_name }}</td>
+                    <td>{{ candidate.program_type.value if candidate.program_type else '-' }}</td>
+                    <td>{{ candidate.status.value if candidate.status else '-' }}</td>
+                    <td>{{ candidate.parent_phone or candidate.personal_phone or '-' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-muted text-center">Belum ada data PPDB pada periode ini.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<div class="card shadow mb-4">
+    <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Laporan Pembinaan</h6></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate" data-default-per-page="25">
+                <thead class="table-light"><tr><th>Tanggal</th><th>Santri</th><th>Kelas</th><th>Tipe</th><th>Judul</th><th>Status</th></tr></thead>
+                <tbody>
+                {% for report in detail.behavior_reports %}
+                <tr>
+                    <td>{{ report.report_date.strftime('%d/%m/%Y') if report.report_date else '-' }}</td>
+                    <td>{{ report.student.full_name if report.student else '-' }}</td>
+                    <td>{{ report.class_room.name if report.class_room else '-' }}</td>
+                    <td>{{ report.report_type.value if report.report_type else '-' }}</td>
+                    <td>{{ report.title }}</td>
+                    <td>{{ 'Selesai' if report.is_resolved else 'Terbuka' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-muted text-center">Belum ada laporan pembinaan pada periode ini.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<div class="card shadow">
+    <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Jurnal Draft</h6></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate">
+                <thead class="table-light"><tr><th>Tanggal</th><th>No Jurnal</th><th>Source</th><th>Deskripsi</th></tr></thead>
+                <tbody>
+                {% for journal in detail.draft_journals %}
+                <tr><td>{{ journal.journal_date }}</td><td>{{ journal.journal_no }}</td><td>{{ journal.source_type.value if journal.source_type else '-' }}</td><td>{{ journal.description or '-' }}</td></tr>
+                {% else %}
+                <tr><td colspan="4" class="text-muted text-center">Tidak ada jurnal draft.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

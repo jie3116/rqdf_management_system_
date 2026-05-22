@@ -118,6 +118,7 @@
                 {% endif %}
                 {% if has_teacher %}
                     <li><a href="{{ url_for('teacher.dashboard') }}" class="nav-link"><i class="fas fa-chalkboard-teacher me-2"></i> Dashboard Guru</a></li>
+                    <li><a href="{{ url_for('teacher.ai_assistant') }}" class="nav-link {% if request.endpoint == 'teacher.ai_assistant' %}active{% endif %}"><i class="fas fa-wand-magic-sparkles me-2"></i> AI Assistant</a></li>
                 {% endif %}
                 {% if has_tu %}
                     <li><a href="{{ url_for('staff.dashboard') }}" class="nav-link"><i class="fas fa-briefcase me-2"></i> Dashboard TU</a></li>
