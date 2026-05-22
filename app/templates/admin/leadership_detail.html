@@ -174,16 +174,10 @@
                 {% for row in detail.drilldown.rows %}
                 <tr>
                     <td>{{ row.date.strftime('%d/%m/%Y') if row.date else '-' }}</td>
-                    <td>{{ row.student.full_name if row.student else '-' }}</td>
-                    <td>
-                        {% if detail.drilldown.type == 'attendance_boarding' %}
-                            {{ row.dormitory.name if row.dormitory else '-' }}
-                        {% else %}
-                            {{ row.class_room.name if row.class_room else '-' }}
-                        {% endif %}
-                    </td>
-                    <td>{{ row.schedule.activity_name if detail.drilldown.type == 'attendance_boarding' and row.schedule else '-' }}</td>
-                    <td>{{ row.status.value if row.status else '-' }}</td>
+                    <td>{{ row.student_name or '-' }}</td>
+                    <td>{{ row.group_name or '-' }}</td>
+                    <td>{{ row.activity_name or '-' }}</td>
+                    <td>{{ row.status or '-' }}</td>
                     <td>{{ row.notes or '-' }}</td>
                 </tr>
                 {% else %}

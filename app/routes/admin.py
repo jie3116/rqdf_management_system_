@@ -865,8 +865,16 @@ def _leadership_attendance_detail(tenant_id, start_date, end_date):
         class_id = request.args.get('class_id', type=int)
         selected_class = ClassRoom.query.filter_by(id=class_id).first() if class_id else None
         query = (
-            Attendance.query.join(Student, Student.id == Attendance.student_id)
+            db.session.query(
+                Attendance.date,
+                Student.full_name.label('student_name'),
+                ClassRoom.name.label('group_name'),
+                Attendance.status,
+                Attendance.notes,
+            )
+            .join(Student, Student.id == Attendance.student_id)
             .join(User, User.id == Student.user_id)
+            .join(ClassRoom, ClassRoom.id == Attendance.class_id)
             .filter(
                 Attendance.date >= start_date,
                 Attendance.date <= end_date,
@@ -881,13 +889,31 @@ def _leadership_attendance_detail(tenant_id, start_date, end_date):
         drilldown = {
             'type': 'attendance_formal',
             'title': f"Absensi Formal {status_filter.value}" + (f" - {selected_class.name}" if selected_class else ''),
-            'rows': query.order_by(Attendance.date.desc(), Student.full_name.asc()).limit(300).all(),
+            'rows': [
+                {
+                    'date': row.date,
+                    'student_name': row.student_name,
+                    'group_name': row.group_name,
+                    'activity_name': '-',
+                    'status': row.status.value if row.status else '-',
+                    'notes': row.notes or '-',
+                }
+                for row in query.order_by(Attendance.date.desc(), Student.full_name.asc()).limit(300).all()
+            ],
         }
     elif status_filter and source_filter == 'boarding':
         dormitory_id = request.args.get('dormitory_id', type=int)
         schedule_id = request.args.get('schedule_id', type=int)
         query = (
-            BoardingAttendance.query.join(Student, Student.id == BoardingAttendance.student_id)
+            db.session.query(
+                BoardingAttendance.date,
+                Student.full_name.label('student_name'),
+                BoardingDormitory.name.label('group_name'),
+                BoardingActivitySchedule.activity_name.label('activity_name'),
+                BoardingAttendance.status,
+                BoardingAttendance.notes,
+            )
+            .join(Student, Student.id == BoardingAttendance.student_id)
             .join(User, User.id == Student.user_id)
             .join(BoardingDormitory, BoardingDormitory.id == BoardingAttendance.dormitory_id)
             .join(BoardingActivitySchedule, BoardingActivitySchedule.id == BoardingAttendance.schedule_id)
@@ -913,7 +939,17 @@ def _leadership_attendance_detail(tenant_id, start_date, end_date):
         drilldown = {
             'type': 'attendance_boarding',
             'title': f"Absensi Asrama {status_filter.value}" + (f" - {' / '.join(suffix)}" if suffix else ''),
-            'rows': query.order_by(BoardingAttendance.date.desc(), Student.full_name.asc()).limit(300).all(),
+            'rows': [
+                {
+                    'date': row.date,
+                    'student_name': row.student_name,
+                    'group_name': row.group_name,
+                    'activity_name': row.activity_name,
+                    'status': row.status.value if row.status else '-',
+                    'notes': row.notes or '-',
+                }
+                for row in query.order_by(BoardingAttendance.date.desc(), Student.full_name.asc()).limit(300).all()
+            ],
         }
     return {
         'class_rows': list(class_map.values()),
