@@ -291,11 +291,16 @@
         return `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
     }
 
-    function detailUrl(section, data) {
+    function detailUrl(section, data, extraParams = {}) {
         const period = data?.period || currentAnalytics.period || {};
         const params = new URLSearchParams({
             start_date: period.start_date || '',
             end_date: period.end_date || ''
+        });
+        Object.entries(extraParams).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                params.set(key, value);
+            }
         });
         return `${detailBaseUrls[section]}?${params.toString()}`;
     }
@@ -400,7 +405,7 @@
 
         const host = document.getElementById('attendanceBreakdown');
         host.innerHTML = entries.map(([label, count], index) => `
-            <a class="analytics-link d-flex justify-content-between align-items-center" href="${detailUrl('attendance')}">
+            <a class="analytics-link d-flex justify-content-between align-items-center" href="${detailUrl('attendance', null, { source: 'formal', status: label })}">
                 <span><span class="status-dot me-2" style="background:${[chartColors.green, chartColors.amber, chartColors.blue, chartColors.red][index % 4]}"></span>${label}</span>
                 <strong>${count}</strong>
             </a>
@@ -421,7 +426,7 @@
             }
         });
         document.getElementById('invoiceStatusList').innerHTML = rows.map(row => `
-            <a class="analytics-link d-flex justify-content-between border-bottom py-2" href="${detailUrl('finance')}">
+            <a class="analytics-link d-flex justify-content-between border-bottom py-2" href="${detailUrl('finance', null, { drill: 'invoice_status', status: row.label })}">
                 <span>${row.label} <span class="text-muted small">(${row.count})</span></span>
                 <strong>${formatMoney(row.outstanding_amount)}</strong>
             </a>
@@ -441,8 +446,9 @@
 
     function renderSimpleList(hostId, rows, emptyText) {
         const section = hostId === 'ppdbSummary' || hostId === 'behaviorSummary' ? 'operations' : 'finance';
+        const drill = hostId === 'ppdbSummary' ? 'ppdb_status' : (hostId === 'behaviorSummary' ? 'behavior_type' : '');
         document.getElementById(hostId).innerHTML = rows.map(row => `
-            <a class="analytics-link d-flex justify-content-between border-bottom py-2" href="${detailUrl(section)}">
+            <a class="analytics-link d-flex justify-content-between border-bottom py-2" href="${detailUrl(section, null, drill === 'behavior_type' ? { drill, report_type: row.label } : (drill ? { drill, status: row.label } : {}))}">
                 <span>${row.label}</span>
                 <strong>${row.count}</strong>
             </a>

@@ -38,8 +38,13 @@
                 <table class="table table-sm table-bordered mb-0">
                     <thead class="table-light"><tr><th>Kelas</th><th class="text-end">Jumlah</th></tr></thead>
                     <tbody>
-                    {% for name, count in detail.class_rows %}
-                    <tr><td>{{ name or '-' }}</td><td class="text-end fw-bold">{{ count }}</td></tr>
+                    {% for class_id, name, count in detail.class_rows %}
+                    <tr>
+                        <td>{{ name or '-' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('admin.leadership_detail', section='students', start_date=start_date, end_date=end_date, class_id=class_id) }}" class="fw-bold">{{ count }}</a>
+                        </td>
+                    </tr>
                     {% else %}
                     <tr><td colspan="2" class="text-muted text-center">Belum ada data kelas.</td></tr>
                     {% endfor %}
@@ -55,8 +60,13 @@
                 <table class="table table-sm table-bordered mb-0">
                     <thead class="table-light"><tr><th>Asrama</th><th class="text-end">Jumlah</th></tr></thead>
                     <tbody>
-                    {% for name, count in detail.dormitory_rows %}
-                    <tr><td>{{ name or '-' }}</td><td class="text-end fw-bold">{{ count }}</td></tr>
+                    {% for dormitory_id, name, count in detail.dormitory_rows %}
+                    <tr>
+                        <td>{{ name or '-' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('admin.leadership_detail', section='students', start_date=start_date, end_date=end_date, dormitory_id=dormitory_id) }}" class="fw-bold">{{ count }}</a>
+                        </td>
+                    </tr>
                     {% else %}
                     <tr><td colspan="2" class="text-muted text-center">Belum ada data asrama.</td></tr>
                     {% endfor %}
@@ -67,7 +77,12 @@
     </div>
 </div>
 <div class="card shadow mt-4">
-    <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Daftar Santri Aktif</h6></div>
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-bold text-primary">{{ detail.drill_title or 'Daftar Santri Aktif' }}</h6>
+        {% if detail.drill_title %}
+        <a href="{{ url_for('admin.leadership_detail', section='students', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-secondary">Reset</a>
+        {% endif %}
+    </div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate" data-default-per-page="25">
@@ -89,6 +104,7 @@
     </div>
 </div>
 {% elif section == 'attendance' %}
+{% set status_labels = ['Hadir', 'Sakit', 'Izin', 'Alpa'] %}
 <div class="card shadow mb-4">
     <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Absensi Formal per Kelas</h6></div>
     <div class="card-body p-0">
@@ -99,10 +115,13 @@
                 {% for row in detail.class_rows %}
                 <tr>
                     <td class="fw-bold">{{ row.name }}</td>
-                    <td>{{ row.counts.get('Hadir', 0) }}</td>
-                    <td>{{ row.counts.get('Sakit', 0) }}</td>
-                    <td>{{ row.counts.get('Izin', 0) }}</td>
-                    <td>{{ row.counts.get('Alpa', 0) }}</td>
+                    {% for label in status_labels %}
+                    <td>
+                        <a href="{{ url_for('admin.leadership_detail', section='attendance', start_date=start_date, end_date=end_date, source='formal', class_id=row.class_id, status=label) }}" class="fw-bold">
+                            {{ row.counts.get(label, 0) }}
+                        </a>
+                    </td>
+                    {% endfor %}
                     <td class="fw-bold">{{ row.total }}</td>
                 </tr>
                 {% else %}
@@ -124,10 +143,13 @@
                 <tr>
                     <td>{{ row.dormitory }}</td>
                     <td class="fw-bold">{{ row.activity }}</td>
-                    <td>{{ row.counts.get('Hadir', 0) }}</td>
-                    <td>{{ row.counts.get('Sakit', 0) }}</td>
-                    <td>{{ row.counts.get('Izin', 0) }}</td>
-                    <td>{{ row.counts.get('Alpa', 0) }}</td>
+                    {% for label in status_labels %}
+                    <td>
+                        <a href="{{ url_for('admin.leadership_detail', section='attendance', start_date=start_date, end_date=end_date, source='boarding', dormitory_id=row.dormitory_id, schedule_id=row.schedule_id, status=label) }}" class="fw-bold">
+                            {{ row.counts.get(label, 0) }}
+                        </a>
+                    </td>
+                    {% endfor %}
                     <td class="fw-bold">{{ row.total }}</td>
                 </tr>
                 {% else %}
@@ -138,6 +160,41 @@
         </div>
     </div>
 </div>
+{% if detail.drilldown %}
+<div class="card shadow mb-4 border-start border-primary border-4">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-bold text-primary">Rincian Klik: {{ detail.drilldown.title }}</h6>
+        <a href="{{ url_for('admin.leadership_detail', section='attendance', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-secondary">Reset</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate" data-default-per-page="25">
+                <thead class="table-light"><tr><th>Tanggal</th><th>Santri</th><th>Kelas/Asrama</th><th>Kegiatan</th><th>Status</th><th>Catatan</th></tr></thead>
+                <tbody>
+                {% for row in detail.drilldown.rows %}
+                <tr>
+                    <td>{{ row.date.strftime('%d/%m/%Y') if row.date else '-' }}</td>
+                    <td>{{ row.student.full_name if row.student else '-' }}</td>
+                    <td>
+                        {% if detail.drilldown.type == 'attendance_boarding' %}
+                            {{ row.dormitory.name if row.dormitory else '-' }}
+                        {% else %}
+                            {{ row.class_room.name if row.class_room else '-' }}
+                        {% endif %}
+                    </td>
+                    <td>{{ row.schedule.activity_name if detail.drilldown.type == 'attendance_boarding' and row.schedule else '-' }}</td>
+                    <td>{{ row.status.value if row.status else '-' }}</td>
+                    <td>{{ row.notes or '-' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-muted text-center">Tidak ada orang pada filter ini.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
 <div class="card shadow">
     <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Riwayat Absensi Terbaru</h6></div>
     <div class="card-body p-0">
@@ -171,7 +228,14 @@
                 <table class="table table-sm table-bordered mb-0">
                     <tbody>
                     {% for row in detail.revenue_rows %}
-                    <tr><td>{{ row.account.code }} - {{ row.account.name }}</td><td class="text-end">Rp {{ "{:,.0f}".format(row.amount or 0) }}</td></tr>
+                    <tr>
+                        <td>{{ row.account.code }} - {{ row.account.name }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('admin.leadership_detail', section='finance', start_date=start_date, end_date=end_date, drill='finance_account', account_id=row.account.id) }}" class="fw-bold">
+                                Rp {{ "{:,.0f}".format(row.amount or 0) }}
+                            </a>
+                        </td>
+                    </tr>
                     {% else %}
                     <tr><td colspan="2" class="text-muted text-center">Belum ada pendapatan.</td></tr>
                     {% endfor %}
@@ -188,7 +252,14 @@
                 <table class="table table-sm table-bordered mb-0">
                     <tbody>
                     {% for row in detail.expense_rows %}
-                    <tr><td>{{ row.account.code }} - {{ row.account.name }}</td><td class="text-end">Rp {{ "{:,.0f}".format(row.amount or 0) }}</td></tr>
+                    <tr>
+                        <td>{{ row.account.code }} - {{ row.account.name }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('admin.leadership_detail', section='finance', start_date=start_date, end_date=end_date, drill='finance_account', account_id=row.account.id) }}" class="fw-bold">
+                                Rp {{ "{:,.0f}".format(row.amount or 0) }}
+                            </a>
+                        </td>
+                    </tr>
                     {% else %}
                     <tr><td colspan="2" class="text-muted text-center">Belum ada beban.</td></tr>
                     {% endfor %}
@@ -200,6 +271,82 @@
         </div>
     </div>
 </div>
+<div class="card shadow mb-4">
+    <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Status Tagihan</h6></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light"><tr><th>Status</th><th class="text-end">Jumlah</th><th class="text-end">Total</th><th class="text-end">Terbayar</th><th class="text-end">Sisa</th></tr></thead>
+                <tbody>
+                {% for status, count, total_amount, paid_amount in detail.invoice_rows %}
+                {% set outstanding = (total_amount or 0) - (paid_amount or 0) %}
+                <tr>
+                    <td>{{ status.value if status else '-' }}</td>
+                    <td class="text-end">
+                        <a href="{{ url_for('admin.leadership_detail', section='finance', start_date=start_date, end_date=end_date, drill='invoice_status', status=status.value if status else '') }}" class="fw-bold">{{ count }}</a>
+                    </td>
+                    <td class="text-end">Rp {{ "{:,.0f}".format(total_amount or 0) }}</td>
+                    <td class="text-end">Rp {{ "{:,.0f}".format(paid_amount or 0) }}</td>
+                    <td class="text-end fw-bold">Rp {{ "{:,.0f}".format(outstanding if outstanding > 0 else 0) }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="text-muted text-center">Belum ada tagihan.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% if detail.drilldown %}
+<div class="card shadow mb-4 border-start border-primary border-4">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-bold text-primary">Rincian Klik: {{ detail.drilldown.title }}</h6>
+        <a href="{{ url_for('admin.leadership_detail', section='finance', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-secondary">Reset</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            {% if detail.drilldown.type == 'invoice_status' %}
+            <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate" data-default-per-page="25">
+                <thead class="table-light"><tr><th>Santri</th><th>No Tagihan</th><th>Jenis</th><th>Jatuh Tempo</th><th class="text-end">Total</th><th class="text-end">Terbayar</th><th class="text-end">Sisa</th></tr></thead>
+                <tbody>
+                {% for invoice in detail.drilldown.rows %}
+                {% set remaining = (invoice.total_amount or 0) - (invoice.paid_amount or 0) %}
+                <tr>
+                    <td>{{ invoice.student.full_name if invoice.student else '-' }}</td>
+                    <td>{{ invoice.invoice_number or '-' }}</td>
+                    <td>{{ invoice.fee_type.name if invoice.fee_type else '-' }}</td>
+                    <td>{{ invoice.due_date or '-' }}</td>
+                    <td class="text-end">Rp {{ "{:,.0f}".format(invoice.total_amount or 0) }}</td>
+                    <td class="text-end">Rp {{ "{:,.0f}".format(invoice.paid_amount or 0) }}</td>
+                    <td class="text-end fw-bold">Rp {{ "{:,.0f}".format(remaining if remaining > 0 else 0) }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-muted text-center">Tidak ada tagihan pada filter ini.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate" data-default-per-page="25">
+                <thead class="table-light"><tr><th>Tanggal</th><th>No Jurnal</th><th>Memo</th><th>Sisi</th><th class="text-end">Nominal</th></tr></thead>
+                <tbody>
+                {% for line in detail.drilldown.rows %}
+                <tr>
+                    <td>{{ line.journal.journal_date if line.journal else '-' }}</td>
+                    <td>{{ line.journal.journal_no if line.journal else '-' }}</td>
+                    <td>{{ line.memo or (line.journal.description if line.journal else '-') }}</td>
+                    <td>{{ line.entry_side.value if line.entry_side else '-' }}</td>
+                    <td class="text-end fw-bold">Rp {{ "{:,.0f}".format(line.amount or 0) }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="text-muted text-center">Tidak ada jurnal pada akun ini.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
 <div class="card shadow mb-4">
     <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Transaksi Pembayaran</h6></div>
     <div class="card-body p-0">
@@ -284,6 +431,28 @@
     </div>
 </div>
 <div class="card shadow mb-4">
+    <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Status PPDB</h6></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light"><tr><th>Status</th><th class="text-end">Jumlah</th></tr></thead>
+                <tbody>
+                {% for status, count in detail.candidate_status_rows %}
+                <tr>
+                    <td>{{ status.value if status else '-' }}</td>
+                    <td class="text-end">
+                        <a href="{{ url_for('admin.leadership_detail', section='operations', start_date=start_date, end_date=end_date, drill='ppdb_status', status=status.value if status else '') }}" class="fw-bold">{{ count }}</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="2" class="text-muted text-center">Belum ada ringkasan PPDB.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<div class="card shadow mb-4">
     <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Pendaftar PPDB</h6></div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -307,6 +476,77 @@
         </div>
     </div>
 </div>
+<div class="card shadow mb-4">
+    <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Ringkasan Tipe Pembinaan</h6></div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light"><tr><th>Tipe</th><th class="text-end">Jumlah</th></tr></thead>
+                <tbody>
+                {% for report_type, count in detail.behavior_type_rows %}
+                <tr>
+                    <td>{{ report_type.value if report_type else '-' }}</td>
+                    <td class="text-end">
+                        <a href="{{ url_for('admin.leadership_detail', section='operations', start_date=start_date, end_date=end_date, drill='behavior_type', report_type=report_type.value if report_type else '') }}" class="fw-bold">{{ count }}</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="2" class="text-muted text-center">Belum ada ringkasan pembinaan.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% if detail.drilldown %}
+<div class="card shadow mb-4 border-start border-primary border-4">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-bold text-primary">Rincian Klik: {{ detail.drilldown.title }}</h6>
+        <a href="{{ url_for('admin.leadership_detail', section='operations', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-secondary">Reset</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            {% if detail.drilldown.type == 'ppdb_status' %}
+            <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate" data-default-per-page="25">
+                <thead class="table-light"><tr><th>Tanggal</th><th>No Reg</th><th>Nama</th><th>Program</th><th>Status</th><th>Kontak</th></tr></thead>
+                <tbody>
+                {% for candidate in detail.drilldown.rows %}
+                <tr>
+                    <td>{{ candidate.created_at.strftime('%d/%m/%Y') if candidate.created_at else '-' }}</td>
+                    <td>{{ candidate.registration_no or '-' }}</td>
+                    <td class="fw-bold">{{ candidate.full_name }}</td>
+                    <td>{{ candidate.program_type.value if candidate.program_type else '-' }}</td>
+                    <td>{{ candidate.status.value if candidate.status else '-' }}</td>
+                    <td>{{ candidate.parent_phone or candidate.personal_phone or '-' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-muted text-center">Tidak ada pendaftar pada filter ini.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <table class="table table-sm table-bordered table-hover align-middle mb-0 js-row-paginate" data-default-per-page="25">
+                <thead class="table-light"><tr><th>Tanggal</th><th>Santri</th><th>Kelas</th><th>Tipe</th><th>Judul</th><th>Status</th></tr></thead>
+                <tbody>
+                {% for report in detail.drilldown.rows %}
+                <tr>
+                    <td>{{ report.report_date.strftime('%d/%m/%Y') if report.report_date else '-' }}</td>
+                    <td>{{ report.student.full_name if report.student else '-' }}</td>
+                    <td>{{ report.class_room.name if report.class_room else '-' }}</td>
+                    <td>{{ report.report_type.value if report.report_type else '-' }}</td>
+                    <td>{{ report.title }}</td>
+                    <td>{{ 'Selesai' if report.is_resolved else 'Terbuka' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-muted text-center">Tidak ada laporan pada filter ini.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
 <div class="card shadow mb-4">
     <div class="card-header bg-white"><h6 class="mb-0 fw-bold text-primary">Laporan Pembinaan</h6></div>
     <div class="card-body p-0">

@@ -56,7 +56,7 @@ from app.utils.timezone import local_day_bounds_utc_naive, local_now, local_toda
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
     # Base & Enums
-    UserRole, Gender, AttendanceStatus, PaymentStatus, RegistrationStatus, ProgramType, EducationLevel, AssignmentRole, TenantStatus,
+    UserRole, Gender, AttendanceStatus, PaymentStatus, RegistrationStatus, ProgramType, EducationLevel, AssignmentRole, TenantStatus, BehaviorReportType,
     # Users
     User, UserRoleAssignment, Student, Parent, Teacher, Staff, MajlisParticipant, BoardingGuardian, Tenant,
     # Academic
@@ -758,6 +758,18 @@ def _leadership_detail_dates():
     return start_date or period_start, end_date or period_end
 
 
+def _enum_from_request(enum_class, raw_value):
+    raw_value = (raw_value or '').strip()
+    if not raw_value:
+        return None
+    if raw_value in enum_class.__members__:
+        return enum_class[raw_value]
+    for item in enum_class:
+        if raw_value == item.value:
+            return item
+    return None
+
+
 def _leadership_attendance_detail(tenant_id, start_date, end_date):
     class_rows = (
         db.session.query(ClassRoom.id, ClassRoom.name, Attendance.status, func.count(Attendance.id))
@@ -789,7 +801,9 @@ def _leadership_attendance_detail(tenant_id, start_date, end_date):
 
     boarding_rows = (
         db.session.query(
+            BoardingDormitory.id,
             BoardingDormitory.name,
+            BoardingActivitySchedule.id,
             BoardingActivitySchedule.activity_name,
             BoardingAttendance.status,
             func.count(BoardingAttendance.id),
@@ -804,15 +818,23 @@ def _leadership_attendance_detail(tenant_id, start_date, end_date):
             Student.is_deleted.is_(False),
             User.tenant_id == tenant_id,
         )
-        .group_by(BoardingDormitory.name, BoardingActivitySchedule.activity_name, BoardingAttendance.status)
+        .group_by(
+            BoardingDormitory.id,
+            BoardingDormitory.name,
+            BoardingActivitySchedule.id,
+            BoardingActivitySchedule.activity_name,
+            BoardingAttendance.status,
+        )
         .order_by(BoardingDormitory.name.asc(), BoardingActivitySchedule.activity_name.asc())
         .all()
     )
     boarding_map = {}
-    for dormitory_name, activity_name, status, count in boarding_rows:
-        key = (dormitory_name, activity_name)
+    for dormitory_id, dormitory_name, schedule_id, activity_name, status, count in boarding_rows:
+        key = (dormitory_id, schedule_id)
         row = boarding_map.setdefault(key, {
+            'dormitory_id': dormitory_id,
             'dormitory': dormitory_name,
+            'schedule_id': schedule_id,
             'activity': activity_name,
             'counts': {item.value: 0 for item in AttendanceStatus},
             'total': 0,
@@ -835,10 +857,69 @@ def _leadership_attendance_detail(tenant_id, start_date, end_date):
         .limit(100)
         .all()
     )
+
+    drilldown = None
+    status_filter = _enum_from_request(AttendanceStatus, request.args.get('status'))
+    source_filter = (request.args.get('source') or '').strip()
+    if status_filter and source_filter == 'formal':
+        class_id = request.args.get('class_id', type=int)
+        selected_class = ClassRoom.query.filter_by(id=class_id).first() if class_id else None
+        query = (
+            Attendance.query.join(Student, Student.id == Attendance.student_id)
+            .join(User, User.id == Student.user_id)
+            .filter(
+                Attendance.date >= start_date,
+                Attendance.date <= end_date,
+                Attendance.status == status_filter,
+                Attendance.student_id.isnot(None),
+                Student.is_deleted.is_(False),
+                User.tenant_id == tenant_id,
+            )
+        )
+        if selected_class:
+            query = query.filter(Attendance.class_id == selected_class.id)
+        drilldown = {
+            'type': 'attendance_formal',
+            'title': f"Absensi Formal {status_filter.value}" + (f" - {selected_class.name}" if selected_class else ''),
+            'rows': query.order_by(Attendance.date.desc(), Student.full_name.asc()).limit(300).all(),
+        }
+    elif status_filter and source_filter == 'boarding':
+        dormitory_id = request.args.get('dormitory_id', type=int)
+        schedule_id = request.args.get('schedule_id', type=int)
+        query = (
+            BoardingAttendance.query.join(Student, Student.id == BoardingAttendance.student_id)
+            .join(User, User.id == Student.user_id)
+            .join(BoardingDormitory, BoardingDormitory.id == BoardingAttendance.dormitory_id)
+            .join(BoardingActivitySchedule, BoardingActivitySchedule.id == BoardingAttendance.schedule_id)
+            .filter(
+                BoardingAttendance.date >= start_date,
+                BoardingAttendance.date <= end_date,
+                BoardingAttendance.status == status_filter,
+                Student.is_deleted.is_(False),
+                User.tenant_id == tenant_id,
+            )
+        )
+        selected_dormitory = BoardingDormitory.query.filter_by(id=dormitory_id).first() if dormitory_id else None
+        selected_schedule = BoardingActivitySchedule.query.filter_by(id=schedule_id).first() if schedule_id else None
+        if selected_dormitory:
+            query = query.filter(BoardingAttendance.dormitory_id == selected_dormitory.id)
+        if selected_schedule:
+            query = query.filter(BoardingAttendance.schedule_id == selected_schedule.id)
+        suffix = []
+        if selected_dormitory:
+            suffix.append(selected_dormitory.name)
+        if selected_schedule:
+            suffix.append(selected_schedule.activity_name)
+        drilldown = {
+            'type': 'attendance_boarding',
+            'title': f"Absensi Asrama {status_filter.value}" + (f" - {' / '.join(suffix)}" if suffix else ''),
+            'rows': query.order_by(BoardingAttendance.date.desc(), Student.full_name.asc()).limit(300).all(),
+        }
     return {
         'class_rows': list(class_map.values()),
         'boarding_rows': list(boarding_map.values()),
         'recent_records': recent_records,
+        'drilldown': drilldown,
     }
 
 
@@ -890,6 +971,42 @@ def _leadership_finance_detail(tenant_id, start_date, end_date):
         .limit(100)
         .all()
     )
+    drilldown = None
+    drill_type = (request.args.get('drill') or '').strip()
+    if drill_type == 'invoice_status':
+        status_filter = _enum_from_request(PaymentStatus, request.args.get('status'))
+        query = (
+            Invoice.query.join(Student, Student.id == Invoice.student_id)
+            .join(User, User.id == Student.user_id)
+            .filter(
+                Invoice.is_deleted.is_(False),
+                Student.is_deleted.is_(False),
+                User.tenant_id == tenant_id,
+            )
+        )
+        if status_filter:
+            query = query.filter(Invoice.status == status_filter)
+        drilldown = {
+            'type': 'invoice_status',
+            'title': f"Tagihan {status_filter.value if status_filter else 'Semua Status'}",
+            'rows': query.order_by(Invoice.due_date.asc(), Student.full_name.asc()).limit(300).all(),
+        }
+    elif drill_type == 'finance_account':
+        account_id = request.args.get('account_id', type=int)
+        account = FinanceAccount.query.filter_by(id=account_id, tenant_id=tenant_id).first() if account_id else None
+        if account:
+            rows = (
+                _posted_finance_lines_query(tenant_id, start_date, end_date)
+                .filter(FinanceJournalLine.account_id == account.id)
+                .order_by(FinanceJournal.journal_date.desc(), FinanceJournalLine.id.desc())
+                .limit(300)
+                .all()
+            )
+            drilldown = {
+                'type': 'finance_account',
+                'title': f"{account.code} - {account.name}",
+                'rows': rows,
+            }
     return {
         'revenue_rows': revenue_rows,
         'expense_rows': expense_rows,
@@ -899,6 +1016,7 @@ def _leadership_finance_detail(tenant_id, start_date, end_date):
         'transactions': transactions,
         'invoice_rows': invoice_rows,
         'journals': journals,
+        'drilldown': drilldown,
     }
 
 
@@ -927,6 +1045,16 @@ def _leadership_operations_detail(tenant_id, start_date, end_date):
         .limit(100)
         .all()
     )
+    candidate_status_rows = (
+        db.session.query(StudentCandidate.status, func.count(StudentCandidate.id))
+        .filter(
+            StudentCandidate.tenant_id == tenant_id,
+            StudentCandidate.created_at >= datetime.combine(start_date, datetime.min.time()),
+            StudentCandidate.created_at < datetime.combine(end_date + timedelta(days=1), datetime.min.time()),
+        )
+        .group_by(StudentCandidate.status)
+        .all()
+    )
     behavior_reports = (
         BehaviorReport.query.join(Student, Student.id == BehaviorReport.student_id)
         .join(User, User.id == Student.user_id)
@@ -940,51 +1068,114 @@ def _leadership_operations_detail(tenant_id, start_date, end_date):
         .limit(100)
         .all()
     )
+    behavior_type_rows = (
+        db.session.query(BehaviorReport.report_type, func.count(BehaviorReport.id))
+        .join(Student, Student.id == BehaviorReport.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            BehaviorReport.report_date >= start_date,
+            BehaviorReport.report_date <= end_date,
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .group_by(BehaviorReport.report_type)
+        .all()
+    )
     draft_journals = (
         FinanceJournal.query.filter_by(tenant_id=tenant_id, status=FinanceJournalStatus.DRAFT)
         .order_by(FinanceJournal.journal_date.desc(), FinanceJournal.id.desc())
         .limit(100)
         .all()
     )
+    drilldown = None
+    drill_type = (request.args.get('drill') or '').strip()
+    if drill_type == 'ppdb_status':
+        status_filter = _enum_from_request(RegistrationStatus, request.args.get('status'))
+        query = StudentCandidate.query.filter(
+            StudentCandidate.tenant_id == tenant_id,
+            StudentCandidate.created_at >= datetime.combine(start_date, datetime.min.time()),
+            StudentCandidate.created_at < datetime.combine(end_date + timedelta(days=1), datetime.min.time()),
+        )
+        if status_filter:
+            query = query.filter(StudentCandidate.status == status_filter)
+        drilldown = {
+            'type': 'ppdb_status',
+            'title': f"PPDB {status_filter.value if status_filter else 'Semua Status'}",
+            'rows': query.order_by(StudentCandidate.created_at.desc(), StudentCandidate.full_name.asc()).limit(300).all(),
+        }
+    elif drill_type == 'behavior_type':
+        type_filter = _enum_from_request(BehaviorReportType, request.args.get('report_type'))
+        query = (
+            BehaviorReport.query.join(Student, Student.id == BehaviorReport.student_id)
+            .join(User, User.id == Student.user_id)
+            .filter(
+                BehaviorReport.report_date >= start_date,
+                BehaviorReport.report_date <= end_date,
+                Student.is_deleted.is_(False),
+                User.tenant_id == tenant_id,
+            )
+        )
+        if type_filter:
+            query = query.filter(BehaviorReport.report_type == type_filter)
+        drilldown = {
+            'type': 'behavior_type',
+            'title': f"Laporan Pembinaan {type_filter.value if type_filter else 'Semua Tipe'}",
+            'rows': query.order_by(BehaviorReport.report_date.desc(), Student.full_name.asc()).limit(300).all(),
+        }
     return {
         'teachers': teachers,
         'staff_members': staff_members,
         'candidates': candidates,
+        'candidate_status_rows': candidate_status_rows,
         'behavior_reports': behavior_reports,
+        'behavior_type_rows': behavior_type_rows,
         'draft_journals': draft_journals,
+        'drilldown': drilldown,
     }
 
 
 def _leadership_students_detail(tenant_id):
     class_rows = (
-        db.session.query(ClassRoom.name, func.count(Student.id))
+        db.session.query(ClassRoom.id, ClassRoom.name, func.count(Student.id))
         .join(Student, Student.current_class_id == ClassRoom.id)
         .join(User, User.id == Student.user_id)
         .filter(Student.is_deleted.is_(False), User.tenant_id == tenant_id)
-        .group_by(ClassRoom.name)
+        .group_by(ClassRoom.id, ClassRoom.name)
         .order_by(ClassRoom.name.asc())
         .all()
     )
     dormitory_rows = (
-        db.session.query(BoardingDormitory.name, func.count(Student.id))
+        db.session.query(BoardingDormitory.id, BoardingDormitory.name, func.count(Student.id))
         .join(Student, Student.boarding_dormitory_id == BoardingDormitory.id)
         .join(User, User.id == Student.user_id)
         .filter(Student.is_deleted.is_(False), User.tenant_id == tenant_id)
-        .group_by(BoardingDormitory.name)
+        .group_by(BoardingDormitory.id, BoardingDormitory.name)
         .order_by(BoardingDormitory.name.asc())
         .all()
     )
-    students = (
-        Student.query.join(User, Student.user_id == User.id)
-        .filter(Student.is_deleted.is_(False), User.tenant_id == tenant_id)
-        .order_by(Student.full_name.asc())
-        .limit(150)
-        .all()
+    students_query = Student.query.join(User, Student.user_id == User.id).filter(
+        Student.is_deleted.is_(False),
+        User.tenant_id == tenant_id,
     )
+    drill_title = None
+    class_id = request.args.get('class_id', type=int)
+    dormitory_id = request.args.get('dormitory_id', type=int)
+    if class_id:
+        selected_class = ClassRoom.query.filter_by(id=class_id).first()
+        if selected_class:
+            students_query = students_query.filter(Student.current_class_id == selected_class.id)
+            drill_title = f"Santri Kelas {selected_class.name}"
+    if dormitory_id:
+        selected_dormitory = BoardingDormitory.query.filter_by(id=dormitory_id).first()
+        if selected_dormitory:
+            students_query = students_query.filter(Student.boarding_dormitory_id == selected_dormitory.id)
+            drill_title = f"Santri Asrama {selected_dormitory.name}"
+    students = students_query.order_by(Student.full_name.asc()).limit(300).all()
     return {
         'class_rows': class_rows,
         'dormitory_rows': dormitory_rows,
         'students': students,
+        'drill_title': drill_title,
     }
 
 
