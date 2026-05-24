@@ -50,6 +50,16 @@
                         <button class="nav-link" id="rqdf-tab" data-bs-toggle="tab" data-bs-target="#rqdf" type="button">Detail RQDF</button>
                     </li>
                     {% endif %}
+                    {% if custom_fields or extra_answers %}
+                    <li class="nav-item">
+                        <button class="nav-link" id="tambahan-tab" data-bs-toggle="tab" data-bs-target="#tambahan" type="button">Data Tambahan</button>
+                    </li>
+                    {% endif %}
+                    {% if document_requirements or document_status %}
+                    <li class="nav-item">
+                        <button class="nav-link" id="dokumen-tab" data-bs-toggle="tab" data-bs-target="#dokumen" type="button">Dokumen</button>
+                    </li>
+                    {% endif %}
                 </ul>
 
                 <div class="tab-content p-3" id="myTabContent">
@@ -91,6 +101,73 @@
                             <tr><td class="text-muted">Infaq Pembangunan</td><td class="fw-bold text-success">Rp {{ "{:,.0f}".format(candidate.initial_pledge_amount) }}</td></tr>
                         </table>
                     </div>
+
+                    {% if custom_fields or extra_answers %}
+                    <div class="tab-pane fade" id="tambahan">
+                        <table class="table table-borderless">
+                            {% for field in custom_fields %}
+                            {% set answer = extra_answers.get(field.field_key, {}) %}
+                            <tr>
+                                <td width="35%" class="text-muted">{{ field.label }}</td>
+                                <td class="fw-bold">{{ answer.get('value') or '-' }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% for key, answer in extra_answers.items() %}
+                                {% if not custom_fields|selectattr('field_key', 'equalto', key)|list %}
+                                <tr>
+                                    <td width="35%" class="text-muted">{{ answer.get('label') or key }}</td>
+                                    <td class="fw-bold">{{ answer.get('value') or '-' }}</td>
+                                </tr>
+                                {% endif %}
+                            {% endfor %}
+                        </table>
+                    </div>
+                    {% endif %}
+
+                    {% if document_requirements or document_status %}
+                    <div class="tab-pane fade" id="dokumen">
+                        <table class="table table-sm table-bordered align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Dokumen</th>
+                                    <th>Status</th>
+                                    <th>Keterangan</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for requirement in document_requirements %}
+                                {% set doc = document_status.get(requirement.code, {}) %}
+                                <tr>
+                                    <td class="fw-bold">
+                                        {{ requirement.name }}
+                                        {% if requirement.is_required %}<span class="text-danger">*</span>{% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-warning text-dark">{{ doc.get('status') or 'PENDING' }}</span>
+                                    </td>
+                                    <td class="small text-muted">
+                                        {% if requirement.allowed_file_types %}{{ requirement.allowed_file_types }}{% endif %}
+                                        {% if requirement.max_file_size_kb %}
+                                            {% if requirement.allowed_file_types %} | {% endif %}
+                                            max {{ requirement.max_file_size_kb }} KB
+                                        {% endif %}
+                                        {% if not requirement.allowed_file_types and not requirement.max_file_size_kb %}-{% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                {% for code, doc in document_status.items() %}
+                                    {% if not document_requirements|selectattr('code', 'equalto', code)|list %}
+                                    <tr>
+                                        <td class="fw-bold">{{ doc.get('name') or code }}</td>
+                                        <td><span class="badge bg-warning text-dark">{{ doc.get('status') or 'PENDING' }}</span></td>
+                                        <td class="small text-muted">Konfigurasi dokumen sudah berubah.</td>
+                                    </tr>
+                                    {% endif %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
                 </div>
 
                 {% if candidate.status and candidate.status.name == 'PENDING' %}

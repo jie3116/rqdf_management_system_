@@ -79,6 +79,8 @@ class FeeTypeForm(FlaskForm):
 
 
 class PPDBForm(FlaskForm):
+    ppdb_path_id = SelectField('Jenis Program', choices=[], coerce=int, validators=[Optional()])
+
     # === LANGKAH 1: PILIH PROGRAM ===
     program_type = SelectField('Pilihan Program', choices=[
         ('SEKOLAH_FULLDAY', 'Sekolah Bina Qur\'an'),

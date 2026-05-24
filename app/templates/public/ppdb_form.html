@@ -21,8 +21,14 @@
                 </div>
                 <div class="card-body p-4">
                     <div class="mb-3">
+                        {% if active_ppdb_paths %}
+                        <label class="form-label fw-bold">{{ form.ppdb_path_id.label.text }} <span class="text-danger">*</span></label>
+                        {{ form.ppdb_path_id(class="form-select form-select-lg bg-light border-primary", id="pathSelector") }}
+                        {{ form.program_type(class="d-none", id="programSelector") }}
+                        {% else %}
                         <label class="form-label fw-bold">{{ form.program_type.label.text }} <span class="text-danger">*</span></label>
                         {{ form.program_type(class="form-select form-select-lg bg-light border-primary", id="programSelector") }}
+                        {% endif %}
 
                         <div id="majlis_info" class="alert alert-success mt-3" style="display: none;">
                             <h6><i class="fas fa-mosque me-2"></i>Majelis Ta'lim IQRA WATTAQI</h6>
@@ -33,7 +39,7 @@
                         </div>
                     </div>
 
-                    <div id="group_formal_options">
+                    <div id="group_formal_options" {% if active_ppdb_paths %}style="display:none;"{% endif %}>
                         <div class="row">
                             <div class="col-md-6 mb-3" id="div_jenjang">
                                 <label class="form-label fw-bold">{{ form.education_level.label.text }}</label>
@@ -225,6 +231,86 @@
                 </div>
             </div>
 
+            {% if custom_fields %}
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="m-0 fw-bold text-primary">Data Tambahan</h5>
+                </div>
+                <div class="card-body p-4">
+                    {% for field in custom_fields %}
+                    {% set input_name = 'extra_field_' ~ field.field_key %}
+                    {% set options = custom_field_options.get(field.id, []) %}
+                    <div class="mb-3 ppdb-extra-field" data-path-id="{{ field.path_id or '' }}">
+                        <label class="form-label fw-bold" for="{{ input_name }}">
+                            {{ field.label }}
+                            {% if field.is_required %}<span class="text-danger">*</span>{% endif %}
+                        </label>
+                        {% if field.field_type.name == 'TEXTAREA' %}
+                            <textarea class="form-control" id="{{ input_name }}" name="{{ input_name }}" rows="3" {% if field.is_required %}required{% endif %}>{{ request.form.get(input_name, '') }}</textarea>
+                        {% elif field.field_type.name == 'NUMBER' %}
+                            <input type="number" class="form-control" id="{{ input_name }}" name="{{ input_name }}" value="{{ request.form.get(input_name, '') }}" {% if field.is_required %}required{% endif %}>
+                        {% elif field.field_type.name == 'DATE' %}
+                            <input type="date" class="form-control" id="{{ input_name }}" name="{{ input_name }}" value="{{ request.form.get(input_name, '') }}" {% if field.is_required %}required{% endif %}>
+                        {% elif field.field_type.name == 'SELECT' %}
+                            <select class="form-select" id="{{ input_name }}" name="{{ input_name }}" {% if field.is_required %}required{% endif %}>
+                                <option value="">Pilih</option>
+                                {% for option in options %}
+                                <option value="{{ option }}" {% if request.form.get(input_name) == option %}selected{% endif %}>{{ option }}</option>
+                                {% endfor %}
+                            </select>
+                        {% elif field.field_type.name == 'BOOLEAN' %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="{{ input_name }}" name="{{ input_name }}" {% if request.form.get(input_name) == 'on' %}checked{% endif %}>
+                                <label class="form-check-label" for="{{ input_name }}">Ya</label>
+                            </div>
+                        {% else %}
+                            <input type="text" class="form-control" id="{{ input_name }}" name="{{ input_name }}" value="{{ request.form.get(input_name, '') }}" {% if field.is_required %}required{% endif %}>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if document_requirements %}
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="m-0 fw-bold text-primary">Dokumen Persyaratan</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Dokumen</th>
+                                    <th>Keterangan</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for requirement in document_requirements %}
+                                <tr class="ppdb-document-row" data-path-id="{{ requirement.path_id or '' }}">
+                                    <td class="fw-bold">
+                                        {{ requirement.name }}
+                                        {% if requirement.is_required %}<span class="text-danger">*</span>{% endif %}
+                                    </td>
+                                    <td class="small text-muted">
+                                        {% if requirement.allowed_file_types %}Format: {{ requirement.allowed_file_types }}{% endif %}
+                                        {% if requirement.max_file_size_kb %}
+                                            {% if requirement.allowed_file_types %} | {% endif %}
+                                            Maks {{ requirement.max_file_size_kb }} KB
+                                        {% endif %}
+                                        {% if not requirement.allowed_file_types and not requirement.max_file_size_kb %}-{% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted">Dokumen akan diverifikasi oleh petugas setelah pendaftaran masuk.</div>
+                </div>
+            </div>
+            {% endif %}
+
             <div class="card shadow-sm border-0 mb-4" id="payment_details">
                 <div class="card-header bg-warning text-dark py-3">
                     <h5 class="m-0 fw-bold">Rincian Pembiayaan</h5>
@@ -268,7 +354,10 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const feePreviewData = {{ (ppdb_fee_preview or {}) | tojson }};
+    const pathFeePreviewData = {{ (ppdb_path_fee_preview or {}) | tojson }};
+    const pathConfigData = {{ (ppdb_path_config or {}) | tojson }};
     const programSelect = document.getElementById('programSelector');
+    const pathSelect = document.getElementById('pathSelector');
     const educationSelect = document.getElementById('educationSelector');
     const scholarshipSelect = document.getElementById('scholarshipSelector');
     const uniformSelect = document.getElementById('uniformSelector');
@@ -293,6 +382,48 @@ document.addEventListener('DOMContentLoaded', function() {
     const paymentTableBody = document.getElementById('payment_table_body');
     const paymentTotal = document.getElementById('payment_total');
     const ppdbForm = document.querySelector('form[method="POST"]');
+    const extraFieldRows = Array.from(document.querySelectorAll('.ppdb-extra-field'));
+    const documentRows = Array.from(document.querySelectorAll('.ppdb-document-row'));
+
+    function selectedPathId() {
+        return pathSelect ? String(pathSelect.value || '') : '';
+    }
+
+    function selectedProgram() {
+        const pathId = selectedPathId();
+        if (pathId && pathConfigData[pathId]) {
+            return pathConfigData[pathId].program_type || '';
+        }
+        return programSelect ? programSelect.value : '';
+    }
+
+    function syncPathBackedFields() {
+        const pathId = selectedPathId();
+        const config = pathId ? pathConfigData[pathId] : null;
+        if (!config) return;
+        if (programSelect && config.program_type) programSelect.value = config.program_type;
+        if (educationSelect && config.education_level) educationSelect.value = config.education_level;
+        if (scholarshipSelect && config.scholarship_category) scholarshipSelect.value = config.scholarship_category;
+    }
+
+    function syncScopedConfigVisibility() {
+        const pathId = selectedPathId();
+        extraFieldRows.forEach((row) => {
+            const scope = row.dataset.pathId || '';
+            const visible = !scope || !pathId || scope === pathId;
+            row.style.display = visible ? '' : 'none';
+            row.querySelectorAll('input, textarea, select').forEach((input) => {
+                if (input.dataset.originalRequired === undefined) {
+                    input.dataset.originalRequired = input.required ? '1' : '0';
+                }
+                input.required = visible && input.dataset.originalRequired === '1';
+            });
+        });
+        documentRows.forEach((row) => {
+            const scope = row.dataset.pathId || '';
+            row.style.display = (!scope || !pathId || scope === pathId) ? '' : 'none';
+        });
+    }
 
     function formatRupiah(amount) {
         return new Intl.NumberFormat('id-ID', {
@@ -399,11 +530,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateForm() {
-        if (!programSelect) {
+        if (!programSelect && !pathSelect) {
             return;
         }
+        syncPathBackedFields();
+        syncScopedConfigVisibility();
 
-        const program = programSelect.value;
+        const program = selectedProgram();
         const isMajlis = program === 'MAJLIS_TALIM';
         const isRqdf = program === 'RQDF_SORE';
         const isTakhosus = program === 'TAKHOSUS_TAHFIDZ';
@@ -428,6 +561,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (isMajlis) {
             renderTabel([]);
+            return;
+        }
+
+        const pathId = selectedPathId();
+        if (pathId) {
+            if (paymentCaption) paymentCaption.textContent = 'Rincian Biaya Pendaftaran';
+            renderTabel(cloneFeeRows(pathFeePreviewData[pathId] || []));
             return;
         }
 
@@ -457,8 +597,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function syncRqdfCustomValidity() {
-        if (!programSelect) return;
-        const isRqdf = programSelect.value === 'RQDF_SORE';
+        if (!programSelect && !pathSelect) return;
+        const isRqdf = selectedProgram() === 'RQDF_SORE';
         if (infaqSelect) {
             const infaqValue = parseInt(infaqSelect.value || '0', 10) || 0;
             infaqSelect.setCustomValidity(
@@ -474,6 +614,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     if (programSelect) programSelect.addEventListener('change', updateForm);
+    if (pathSelect) pathSelect.addEventListener('change', updateForm);
     if (educationSelect) educationSelect.addEventListener('change', updateForm);
     if (scholarshipSelect) scholarshipSelect.addEventListener('change', updateForm);
     if (uniformSelect) uniformSelect.addEventListener('change', updateForm);

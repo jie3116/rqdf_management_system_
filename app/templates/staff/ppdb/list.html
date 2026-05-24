@@ -3,9 +3,14 @@
 {% block content %}
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
     <h1 class="h3 mb-0 text-gray-800">Data Pendaftar Baru (PPDB)</h1>
-    <a href="{{ url_for('main.ppdb_register') }}" target="_blank" class="d-none d-sm-inline-block btn btn-sm btn-primary shadow-sm">
-        <i class="fas fa-plus fa-sm text-white-50"></i> Input Manual
-    </a>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('staff.ppdb_settings') }}" class="d-none d-sm-inline-block btn btn-sm btn-outline-secondary shadow-sm">
+            <i class="fas fa-sliders-h fa-sm"></i> Pengaturan
+        </a>
+        <a href="{{ url_for('main.ppdb_register') }}" target="_blank" class="d-none d-sm-inline-block btn btn-sm btn-primary shadow-sm">
+            <i class="fas fa-plus fa-sm text-white-50"></i> Input Manual
+        </a>
+    </div>
 </div>
 
 <div class="card shadow mb-4">

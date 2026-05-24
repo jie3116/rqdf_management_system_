@@ -2,6 +2,7 @@ import json
 
 from app.extensions import db
 from app.models import AppConfig, FeeType, ProgramType, ScholarshipCategory
+from app.services.ppdb_config_service import list_active_ppdb_fee_items
 from app.utils.money import to_rupiah_int
 from app.utils.tenant import get_default_tenant_id
 
@@ -204,6 +205,17 @@ def build_candidate_fee_drafts(candidate, tenant_id=None):
         return []
 
     resolved_tenant_id = _resolve_tenant_id(tenant_id or getattr(candidate, "tenant_id", None))
+    configured_fee_items = list_active_ppdb_fee_items(
+        resolved_tenant_id,
+        getattr(candidate, "ppdb_period", None),
+        getattr(candidate, "ppdb_path", None),
+    )
+    if getattr(candidate, "ppdb_path", None) is not None:
+        return [
+            {"nama": item.name, "nominal": to_rupiah_int(item.amount)}
+            for item in configured_fee_items
+        ]
+
     template_key = _program_template_key(candidate.program_type, candidate.scholarship_category)
     if template_key is None:
         return []

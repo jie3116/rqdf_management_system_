@@ -42,8 +42,6 @@ from app.services.staff_assignment_service import (
 )
 from app.services.ppdb_fee_service import (
     build_candidate_fee_drafts,
-    get_ppdb_fee_template_admin_fields,
-    save_ppdb_fee_templates,
 )
 from app.services.finance_posting_service import (
     create_cash_bank_transaction,
@@ -4611,19 +4609,6 @@ def manage_fee_types():
     if request.method == 'POST':
         form_type = (request.form.get('form_type') or 'master_fee').strip()
 
-        if form_type == 'ppdb_template':
-            try:
-                changed = save_ppdb_fee_templates(request.form, tenant_id=tenant_id)
-                db.session.commit()
-                if changed > 0:
-                    flash(f'Template komponen biaya PPDB berhasil disimpan ({changed} perubahan).', 'success')
-                else:
-                    flash('Tidak ada perubahan pada template komponen biaya PPDB.', 'info')
-            except Exception as e:
-                db.session.rollback()
-                flash(f'Gagal menyimpan template biaya PPDB: {e}', 'danger')
-            return redirect(url_for('admin.manage_fee_types'))
-
         name = request.form.get('name')
         amount = request.form.get('amount')
         academic_year_id = request.form.get('academic_year_id', type=int)
@@ -4665,13 +4650,11 @@ def manage_fee_types():
 
     fees = fees_query.order_by(FeeType.id.desc()).all()
     years = AcademicYear.query.filter_by(is_active=True).all()
-    ppdb_fee_template_fields = get_ppdb_fee_template_admin_fields(tenant_id=tenant_id)
     return render_template(
         'admin/finance/fee_types.html',
         fees=fees,
         years=years,
         query=query,
-        ppdb_fee_template_fields=ppdb_fee_template_fields,
     )
 
 

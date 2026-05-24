@@ -1,0 +1,495 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h1 class="h3 mb-0 text-gray-800">Pengaturan PPDB</h1>
+        <div class="text-muted small">Konfigurasi dasar periode dan jalur pendaftaran untuk tenant aktif.</div>
+    </div>
+    <a href="{{ url_for('staff.ppdb_list') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i> Kembali
+    </a>
+</div>
+
+{% if not selected_period %}
+<div class="card shadow mb-4">
+    <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+        <div>
+            <h5 class="fw-bold mb-1">Belum ada periode PPDB</h5>
+            <div class="text-muted">Buat periode default agar tenant ini mulai punya konfigurasi PPDB sendiri.</div>
+        </div>
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="create_default_period">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-plus me-1"></i> Buat Default
+            </button>
+        </form>
+    </div>
+</div>
+{% else %}
+<div class="row">
+    <div class="col-lg-5">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Periode Aktif</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" class="border rounded p-3 mb-4 bg-light">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="add_path">
+                    <input type="hidden" name="period_id" value="{{ selected_period.id }}">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Kode</label>
+                            <input type="text" class="form-control" name="code" placeholder="SMP-REG" required>
+                        </div>
+                        <div class="col-md-8 mb-3">
+                            <label class="form-label">Nama Jenis Program</label>
+                            <input type="text" class="form-control" name="name" placeholder="SMP Reguler Putra" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Program Inti</label>
+                            <select class="form-select" name="program_type" required>
+                                {% for program_type in program_types %}
+                                <option value="{{ program_type.name }}">{{ program_type.value }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Jenjang</label>
+                            <select class="form-select" name="education_level">
+                                <option value="">Sesuai isian formulir</option>
+                                {% for level in education_levels %}
+                                <option value="{{ level.name }}">{{ level.value }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Jalur</label>
+                            <select class="form-select" name="scholarship_category">
+                                <option value="">Reguler/default</option>
+                                {% for category in scholarship_categories %}
+                                <option value="{{ category.name }}">{{ category.value }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Kuota</label>
+                            <input type="number" min="0" class="form-control" name="quota">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Urutan</label>
+                            <input type="number" class="form-control" name="sort_order" value="0">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus me-1"></i> Tambah Jenis Program
+                    </button>
+                </form>
+
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="update_period">
+                    <input type="hidden" name="period_id" value="{{ selected_period.id }}">
+
+                    <div class="mb-3">
+                        <label class="form-label">Nama Periode</label>
+                        <input type="text" class="form-control" name="name" value="{{ selected_period.name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tahun Ajaran</label>
+                        <input type="text" class="form-control" name="academic_year_label" value="{{ selected_period.academic_year_label or '' }}" placeholder="2026/2027">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Mulai</label>
+                            <input type="date" class="form-control" name="start_date" value="{{ selected_period.start_date.isoformat() }}" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Selesai</label>
+                            <input type="date" class="form-control" name="end_date" value="{{ selected_period.end_date.isoformat() }}" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Prefix Nomor</label>
+                            <input type="text" class="form-control" name="registration_no_prefix" value="{{ selected_period.registration_no_prefix }}" maxlength="10" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" name="status">
+                                {% for status in statuses %}
+                                <option value="{{ status.name }}" {% if selected_period.status == status %}selected{% endif %}>{{ status.value }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="public_registration_enabled" id="public_registration_enabled" {% if selected_period.public_registration_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="public_registration_enabled">Form publik aktif</label>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i> Simpan Periode
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 fw-bold text-primary">Jalur Pendaftaran</h6>
+                <form method="POST" class="m-0">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="create_default_period">
+                    <button type="submit" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-wand-magic-sparkles me-1"></i> Lengkapi Default
+                    </button>
+                </form>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="update_paths">
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Aktif</th>
+                                    <th>Kode</th>
+                                    <th>Nama Jalur</th>
+                                    <th>Program</th>
+                                    <th>Kuota</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for path in paths %}
+                                <tr>
+                                    <td class="text-center">
+                                        <input class="form-check-input" type="checkbox" name="path_active_{{ path.id }}" {% if path.is_active %}checked{% endif %}>
+                                    </td>
+                                    <td class="fw-bold">{{ path.code }}</td>
+                                    <td>
+                                        {{ path.name }}
+                                        <div class="small text-muted">
+                                            {{ path.education_level.value if path.education_level else 'Semua jenjang' }}
+                                            |
+                                            {{ path.scholarship_category.value if path.scholarship_category else 'Semua jalur beasiswa' }}
+                                        </div>
+                                    </td>
+                                    <td>{{ path.program_type.value if path.program_type else '-' }}</td>
+                                    <td style="width: 120px;">
+                                        <input type="number" min="0" class="form-control form-control-sm" name="path_quota_{{ path.id }}" value="{{ path.quota if path.quota is not none else '' }}">
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted py-4">Belum ada jalur untuk periode ini.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if paths %}
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i> Simpan Jalur
+                    </button>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if selected_period %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 fw-bold text-primary">Item Biaya per Jenis Program</h6>
+    </div>
+    <div class="card-body">
+        {% for path in paths %}
+        <div class="border rounded p-3 mb-3">
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+                <div>
+                    <div class="fw-bold">{{ path.name }}</div>
+                    <div class="small text-muted">{{ path.code }} | {{ path.program_type.value if path.program_type else '-' }}</div>
+                </div>
+                <span class="badge bg-secondary">{{ (fee_items_by_path.get(path.id) or [])|length }} item</span>
+            </div>
+
+            <form method="POST" class="row g-2 align-items-end mb-3">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="add_fee_item">
+                <input type="hidden" name="path_id" value="{{ path.id }}">
+                <div class="col-md-6">
+                    <label class="form-label">Nama Item</label>
+                    <input type="text" class="form-control" name="name" placeholder="Biaya pendaftaran" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Nominal</label>
+                    <input type="text" class="form-control" name="amount" inputmode="numeric" placeholder="250.000" required>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Urutan</label>
+                    <input type="number" class="form-control" name="sort_order" value="0">
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-primary w-100"><i class="fas fa-plus"></i></button>
+                </div>
+            </form>
+
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Aktif</th>
+                            <th>Nama</th>
+                            <th style="width: 180px;">Nominal</th>
+                            <th style="width: 120px;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in fee_items_by_path.get(path.id, []) %}
+                        <tr>
+                            <td class="text-center">
+                                <form id="fee-form-{{ item.id }}" method="POST">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="action" value="toggle_fee_item">
+                                    <input type="hidden" name="fee_item_id" value="{{ item.id }}">
+                                    <input class="form-check-input" type="checkbox" name="is_active" {% if item.is_active %}checked{% endif %}>
+                                </form>
+                            </td>
+                            <td>{{ item.name }}</td>
+                            <td>
+                                <input form="fee-form-{{ item.id }}" type="text" class="form-control form-control-sm text-end" name="amount" value="{{ '{:,.0f}'.format(item.amount or 0).replace(',', '.') }}" inputmode="numeric">
+                            </td>
+                            <td>
+                                <button form="fee-form-{{ item.id }}" type="submit" class="btn btn-sm btn-outline-primary">Simpan</button>
+                                <form method="POST" class="d-inline" onsubmit="return confirm('Hapus item biaya ini?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="action" value="delete_fee_item">
+                                    <input type="hidden" name="fee_item_id" value="{{ item.id }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-3">Belum ada item biaya.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-3">Tambahkan jenis program terlebih dahulu.</div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Field Tambahan</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" class="border rounded p-3 mb-4 bg-light">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="add_form_field">
+                    <input type="hidden" name="period_id" value="{{ selected_period.id }}">
+                    <div class="row">
+                        <div class="col-md-7 mb-3">
+                            <label class="form-label">Label</label>
+                            <input type="text" class="form-control" name="label" placeholder="Contoh: Hafalan terakhir" required>
+                        </div>
+                        <div class="col-md-5 mb-3">
+                            <label class="form-label">Tipe</label>
+                            <select class="form-select" name="field_type">
+                                {% for field_type in field_types %}
+                                <option value="{{ field_type.name }}">{{ field_type.value }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Berlaku Untuk</label>
+                        <select class="form-select" name="path_id">
+                            <option value="">Semua jenis program</option>
+                            {% for path in paths %}
+                            <option value="{{ path.id }}">{{ path.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-7 mb-3">
+                            <label class="form-label">Key</label>
+                            <input type="text" class="form-control" name="field_key" placeholder="Opsional, otomatis dari label">
+                        </div>
+                        <div class="col-md-5 mb-3">
+                            <label class="form-label">Urutan</label>
+                            <input type="number" class="form-control" name="sort_order" value="0">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Opsi untuk tipe Select</label>
+                        <textarea class="form-control" name="options" rows="3" placeholder="Satu opsi per baris"></textarea>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="is_required" id="field_required_new">
+                        <label class="form-check-label" for="field_required_new">Wajib diisi</label>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus me-1"></i> Tambah Field
+                    </button>
+                </form>
+
+                {% for field in custom_fields %}
+                <div class="border rounded p-3 mb-2">
+                    <div class="d-flex justify-content-between gap-2">
+                        <div>
+                            <div class="fw-bold">{{ field.label }}</div>
+                            <div class="small text-muted">
+                                {{ field.field_key }} | {{ field.field_type.value }}
+                                | {{ field.path.name if field.path else 'Semua jenis program' }}
+                                {% if custom_field_options.get(field.id) %}
+                                | {{ custom_field_options.get(field.id)|join(', ') }}
+                                {% endif %}
+                            </div>
+                        </div>
+                        <form method="POST" onsubmit="return confirm('Hapus field ini?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="action" value="delete_form_field">
+                            <input type="hidden" name="field_id" value="{{ field.id }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                    <form method="POST" class="d-flex flex-wrap gap-3 align-items-center mt-2">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="toggle_form_field">
+                        <input type="hidden" name="field_id" value="{{ field.id }}">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="field_active_{{ field.id }}" {% if field.is_active %}checked{% endif %}>
+                            <label class="form-check-label" for="field_active_{{ field.id }}">Aktif</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_required" id="field_required_{{ field.id }}" {% if field.is_required %}checked{% endif %}>
+                            <label class="form-check-label" for="field_required_{{ field.id }}">Wajib</label>
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-outline-primary">Simpan</button>
+                    </form>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-3">Belum ada field tambahan.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Dokumen Persyaratan</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" class="border rounded p-3 mb-4 bg-light">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="add_document_requirement">
+                    <input type="hidden" name="period_id" value="{{ selected_period.id }}">
+                    <div class="row">
+                        <div class="col-md-7 mb-3">
+                            <label class="form-label">Nama Dokumen</label>
+                            <input type="text" class="form-control" name="name" placeholder="Contoh: Kartu Keluarga" required>
+                        </div>
+                        <div class="col-md-5 mb-3">
+                            <label class="form-label">Kode</label>
+                            <input type="text" class="form-control" name="code" placeholder="Opsional">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Berlaku Untuk</label>
+                        <select class="form-select" name="path_id">
+                            <option value="">Semua jenis program</option>
+                            {% for path in paths %}
+                            <option value="{{ path.id }}">{{ path.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-5 mb-3">
+                            <label class="form-label">Tipe File</label>
+                            <input type="text" class="form-control" name="allowed_file_types" placeholder="pdf,jpg,png">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Maks KB</label>
+                            <input type="number" class="form-control" name="max_file_size_kb" min="1">
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Urutan</label>
+                            <input type="number" class="form-control" name="sort_order" value="0">
+                        </div>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="is_required" id="doc_required_new" checked>
+                        <label class="form-check-label" for="doc_required_new">Wajib dilengkapi</label>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus me-1"></i> Tambah Dokumen
+                    </button>
+                </form>
+
+                {% for requirement in document_requirements %}
+                <div class="border rounded p-3 mb-2">
+                    <div class="d-flex justify-content-between gap-2">
+                        <div>
+                            <div class="fw-bold">{{ requirement.name }}</div>
+                            <div class="small text-muted">
+                                {{ requirement.code }}
+                                | {{ requirement.path.name if requirement.path else 'Semua jenis program' }}
+                                {% if requirement.allowed_file_types %}| {{ requirement.allowed_file_types }}{% endif %}
+                                {% if requirement.max_file_size_kb %}| max {{ requirement.max_file_size_kb }} KB{% endif %}
+                            </div>
+                        </div>
+                        <form method="POST" onsubmit="return confirm('Hapus dokumen ini?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="action" value="delete_document_requirement">
+                            <input type="hidden" name="requirement_id" value="{{ requirement.id }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                    <form method="POST" class="d-flex flex-wrap gap-3 align-items-center mt-2">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="toggle_document_requirement">
+                        <input type="hidden" name="requirement_id" value="{{ requirement.id }}">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="doc_active_{{ requirement.id }}" {% if requirement.is_active %}checked{% endif %}>
+                            <label class="form-check-label" for="doc_active_{{ requirement.id }}">Aktif</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_required" id="doc_required_{{ requirement.id }}" {% if requirement.is_required %}checked{% endif %}>
+                            <label class="form-check-label" for="doc_required_{{ requirement.id }}">Wajib</label>
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-outline-primary">Simpan</button>
+                    </form>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-3">Belum ada persyaratan dokumen.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

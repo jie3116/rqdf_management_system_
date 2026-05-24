@@ -209,6 +209,21 @@ class RegistrationStatus(enum.Enum):
     REJECTED = "Tidak Diterima"
 
 
+class PpdbPeriodStatus(enum.Enum):
+    DRAFT = "Draft"
+    OPEN = "Dibuka"
+    CLOSED = "Ditutup"
+
+
+class PpdbFieldType(enum.Enum):
+    TEXT = "Text"
+    TEXTAREA = "Textarea"
+    NUMBER = "Number"
+    DATE = "Date"
+    SELECT = "Select"
+    BOOLEAN = "Boolean"
+
+
 class ClassType(enum.Enum):
     REGULAR = "Kelas Reguler"
     MAJLIS_TALIM = "Majelis Ta'lim"
@@ -1579,10 +1594,141 @@ class StudentSavingsTransaction(BaseModel):
 # ==========================================
 # 9. PPDB CANDIDATE (COMPLETED)
 # ==========================================
+class PpdbPeriod(BaseModel):
+    __tablename__ = 'ppdb_periods'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    academic_year_label = db.Column(db.String(20), nullable=True)
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    status = db.Column(db.Enum(PpdbPeriodStatus, name='ppdbperiodstatus'), default=PpdbPeriodStatus.DRAFT, nullable=False)
+    registration_no_prefix = db.Column(db.String(10), default='REG', nullable=False)
+    public_registration_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+
+    tenant = db.relationship('Tenant', backref=db.backref('ppdb_periods', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'name', name='uq_ppdb_periods_tenant_name'),
+        db.CheckConstraint('end_date >= start_date', name='ck_ppdb_periods_date_range'),
+    )
+
+
+class PpdbPath(BaseModel):
+    __tablename__ = 'ppdb_paths'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    period_id = db.Column(db.Integer, db.ForeignKey('ppdb_periods.id'), nullable=False, index=True)
+    code = db.Column(db.String(30), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    program_type = db.Column(db.Enum(ProgramType, name="programtype"), nullable=False)
+    education_level = db.Column(db.Enum(EducationLevel), nullable=True)
+    scholarship_category = db.Column(db.Enum(ScholarshipCategory, name="scholarshipcategory"), nullable=True)
+    quota = db.Column(db.Integer, nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+    rules_json = db.Column(db.Text, nullable=True)
+
+    tenant = db.relationship('Tenant', backref=db.backref('ppdb_paths', lazy='dynamic'))
+    period = db.relationship('PpdbPeriod', backref=db.backref('paths', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'period_id', 'code', name='uq_ppdb_paths_period_code'),
+        db.CheckConstraint('quota IS NULL OR quota >= 0', name='ck_ppdb_paths_quota_non_negative'),
+    )
+
+
+class PpdbFormField(BaseModel):
+    __tablename__ = 'ppdb_form_fields'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    period_id = db.Column(db.Integer, db.ForeignKey('ppdb_periods.id'), nullable=False, index=True)
+    path_id = db.Column(db.Integer, db.ForeignKey('ppdb_paths.id'), nullable=True, index=True)
+    field_key = db.Column(db.String(80), nullable=False)
+    label = db.Column(db.String(120), nullable=False)
+    field_type = db.Column(db.Enum(PpdbFieldType, name='ppdbfieldtype'), default=PpdbFieldType.TEXT, nullable=False)
+    is_required = db.Column(db.Boolean, default=False, nullable=False)
+    options_json = db.Column(db.Text, nullable=True)
+    validation_json = db.Column(db.Text, nullable=True)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    tenant = db.relationship('Tenant', backref=db.backref('ppdb_form_fields', lazy='dynamic'))
+    period = db.relationship('PpdbPeriod', backref=db.backref('form_fields', lazy='dynamic'))
+    path = db.relationship('PpdbPath', backref=db.backref('form_fields', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'period_id', 'path_id', 'field_key', name='uq_ppdb_form_fields_scope_key'),
+    )
+
+
+class PpdbDocumentRequirement(BaseModel):
+    __tablename__ = 'ppdb_document_requirements'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    period_id = db.Column(db.Integer, db.ForeignKey('ppdb_periods.id'), nullable=False, index=True)
+    path_id = db.Column(db.Integer, db.ForeignKey('ppdb_paths.id'), nullable=True, index=True)
+    code = db.Column(db.String(50), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    is_required = db.Column(db.Boolean, default=True, nullable=False)
+    allowed_file_types = db.Column(db.String(120), nullable=True)
+    max_file_size_kb = db.Column(db.Integer, nullable=True)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    tenant = db.relationship('Tenant', backref=db.backref('ppdb_document_requirements', lazy='dynamic'))
+    period = db.relationship('PpdbPeriod', backref=db.backref('document_requirements', lazy='dynamic'))
+    path = db.relationship('PpdbPath', backref=db.backref('document_requirements', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'period_id', 'path_id', 'code', name='uq_ppdb_document_requirements_scope_code'),
+    )
+
+
+class PpdbFeeItem(BaseModel):
+    __tablename__ = 'ppdb_fee_items'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    period_id = db.Column(db.Integer, db.ForeignKey('ppdb_periods.id'), nullable=False, index=True)
+    path_id = db.Column(db.Integer, db.ForeignKey('ppdb_paths.id'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    amount = db.Column(db.Integer, default=0, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+    notes = db.Column(db.String(200), nullable=True)
+
+    tenant = db.relationship('Tenant', backref=db.backref('ppdb_fee_items', lazy='dynamic'))
+    period = db.relationship('PpdbPeriod', backref=db.backref('fee_items', lazy='dynamic'))
+    path = db.relationship('PpdbPath', backref=db.backref('fee_items', lazy='dynamic'))
+
+    __table_args__ = (
+        db.CheckConstraint('amount >= 0', name='ck_ppdb_fee_items_amount_non_negative'),
+    )
+
+
+class PpdbFeatureFlag(BaseModel):
+    __tablename__ = 'ppdb_feature_flags'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    key = db.Column(db.String(80), nullable=False)
+    is_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    value_json = db.Column(db.Text, nullable=True)
+    description = db.Column(db.String(200), nullable=True)
+
+    tenant = db.relationship('Tenant', backref=db.backref('ppdb_feature_flags', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'key', name='uq_ppdb_feature_flags_tenant_key'),
+    )
+
+
 class StudentCandidate(BaseModel):
     __tablename__ = 'student_candidates'
     id = db.Column(db.Integer, primary_key=True)
     tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    ppdb_period_id = db.Column(db.Integer, db.ForeignKey('ppdb_periods.id'), nullable=True, index=True)
+    ppdb_path_id = db.Column(db.Integer, db.ForeignKey('ppdb_paths.id'), nullable=True, index=True)
     registration_no = db.Column(db.String(20), unique=True)
     program_type = db.Column(db.Enum(ProgramType, name="programtype"), default=ProgramType.SEKOLAH_FULLDAY)
     education_level = db.Column(db.Enum(EducationLevel))
@@ -1620,6 +1766,11 @@ class StudentCandidate(BaseModel):
     uniform_size = db.Column(db.Enum(UniformSize), default=UniformSize.TIDAK_MEMILIH)
     initial_pledge_amount = db.Column(db.Float, default=0)
     finance_option = db.Column(db.String(50))
+    extra_answers_json = db.Column(db.Text, nullable=True)
+    document_status_json = db.Column(db.Text, nullable=True)
+
+    ppdb_period = db.relationship('PpdbPeriod', backref=db.backref('candidates', lazy='dynamic'))
+    ppdb_path = db.relationship('PpdbPath', backref=db.backref('candidates', lazy='dynamic'))
 
 
 class AdmissionFeeTemplate(BaseModel):

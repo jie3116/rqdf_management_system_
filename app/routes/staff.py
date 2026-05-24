@@ -2,6 +2,8 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
+import json
+import re
 from urllib.parse import urlsplit
 from sqlalchemy import func, or_, and_
 from itsdangerous import URLSafeSerializer, BadSignature
@@ -28,12 +30,22 @@ from app.services.bahasa_service import (
 )
 from app.services.formal_service import sync_student_formal_class_membership
 from app.services.ppdb_fee_service import build_candidate_fee_drafts
+from app.services.ppdb_config_service import (
+    create_default_ppdb_period,
+    get_active_ppdb_period,
+    list_active_ppdb_document_requirements,
+    list_active_ppdb_form_fields,
+    ppdb_field_options,
+    seed_default_ppdb_paths,
+)
 from app.services.finance_posting_service import post_invoice_payment
 from app.models import (
     UserRole, User, Student, Parent, Staff, ClassRoom, Gender,
     Invoice, Transaction, PaymentStatus, FeeType, Tenant, AppConfig,
-    StudentCandidate, RegistrationStatus, ProgramType, EducationLevel,
-    MajlisParticipant, ClassType, Announcement, ProgramGroup
+    StudentCandidate, RegistrationStatus, ProgramType, EducationLevel, ScholarshipCategory,
+    MajlisParticipant, ClassType, Announcement, ProgramGroup,
+    PpdbDocumentRequirement, PpdbFieldType, PpdbFormField,
+    PpdbFeeItem, PpdbPath, PpdbPeriod, PpdbPeriodStatus
 )
 from app.utils.nis import generate_nis
 from app.utils.roles import get_active_role
@@ -186,6 +198,34 @@ def _apply_candidate_fee_overrides(drafts, source_form):
             'nominal': edited_nominal,
         })
     return updated
+
+
+def _normalize_config_key(raw_value, fallback_prefix):
+    value = (raw_value or '').strip().lower()
+    value = re.sub(r'[^a-z0-9_]+', '_', value)
+    value = re.sub(r'_+', '_', value).strip('_')
+    if not value:
+        value = f"{fallback_prefix}_{int(datetime.utcnow().timestamp())}"
+    return value[:80]
+
+
+def _parse_lines_json(raw_value):
+    values = []
+    for line in (raw_value or '').splitlines():
+        item = line.strip()
+        if item:
+            values.append(item)
+    return json.dumps(values, ensure_ascii=False) if values else None
+
+
+def _loads_object(raw_value):
+    if not raw_value:
+        return {}
+    try:
+        parsed = json.loads(raw_value)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 @staff_bp.route('/dashboard')
@@ -1209,6 +1249,261 @@ def edit_student(student_id):
 # 3. MODUL PPDB (VERIFIKASI & PENERIMAAN)
 # =========================================================
 
+@staff_bp.route('/ppdb/settings', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.TU)
+def ppdb_settings():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    if request.method == 'POST':
+        action = (request.form.get('action') or '').strip()
+        try:
+            if action == 'create_default_period':
+                period = get_active_ppdb_period(tenant_id)
+                if period is None:
+                    period = create_default_ppdb_period(tenant_id)
+                    db.session.commit()
+                    flash(f'Periode {period.name} dan jalur PPDB default berhasil dibuat.', 'success')
+                else:
+                    created = seed_default_ppdb_paths(tenant_id, period)
+                    db.session.commit()
+                    flash(f'Jalur default diperiksa. {created} jalur baru ditambahkan.', 'success')
+            elif action == 'update_period':
+                period_id = request.form.get('period_id', type=int)
+                period = PpdbPeriod.query.filter_by(id=period_id, tenant_id=tenant_id, is_deleted=False).first_or_404()
+                period.name = (request.form.get('name') or '').strip() or period.name
+                period.academic_year_label = (request.form.get('academic_year_label') or '').strip() or None
+                period.start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d').date()
+                period.end_date = datetime.strptime(request.form.get('end_date'), '%Y-%m-%d').date()
+                period.registration_no_prefix = ((request.form.get('registration_no_prefix') or 'REG').strip().upper())[:10]
+                period.public_registration_enabled = request.form.get('public_registration_enabled') == 'on'
+                status_name = request.form.get('status') or PpdbPeriodStatus.DRAFT.name
+                period.status = PpdbPeriodStatus[status_name]
+                if period.end_date < period.start_date:
+                    raise ValueError('Tanggal selesai tidak boleh sebelum tanggal mulai.')
+                db.session.commit()
+                flash('Pengaturan periode PPDB berhasil disimpan.', 'success')
+            elif action == 'update_paths':
+                paths = PpdbPath.query.filter_by(tenant_id=tenant_id, is_deleted=False).all()
+                for path in paths:
+                    path.is_active = request.form.get(f'path_active_{path.id}') == 'on'
+                    quota_raw = (request.form.get(f'path_quota_{path.id}') or '').strip()
+                    path.quota = int(quota_raw) if quota_raw else None
+                    if path.quota is not None and path.quota < 0:
+                        raise ValueError('Kuota jalur tidak boleh negatif.')
+                db.session.commit()
+                flash('Status jalur PPDB berhasil diperbarui.', 'success')
+            elif action == 'add_path':
+                period_id = request.form.get('period_id', type=int)
+                period = PpdbPeriod.query.filter_by(id=period_id, tenant_id=tenant_id, is_deleted=False).first_or_404()
+                code = _normalize_config_key(request.form.get('code'), 'path').upper()[:30]
+                name = (request.form.get('name') or '').strip()
+                if not name:
+                    raise ValueError('Nama jenis program wajib diisi.')
+                program_type = ProgramType[request.form.get('program_type')]
+                education_raw = request.form.get('education_level') or ''
+                scholarship_raw = request.form.get('scholarship_category') or ''
+                path = PpdbPath(
+                    tenant_id=tenant_id,
+                    period_id=period.id,
+                    code=code,
+                    name=name,
+                    program_type=program_type,
+                    education_level=EducationLevel[education_raw] if education_raw else None,
+                    scholarship_category=ScholarshipCategory[scholarship_raw] if scholarship_raw else None,
+                    quota=request.form.get('quota', type=int),
+                    sort_order=request.form.get('sort_order', type=int) or 0,
+                    is_active=True,
+                )
+                db.session.add(path)
+                db.session.commit()
+                flash('Jenis program PPDB berhasil ditambahkan.', 'success')
+            elif action == 'delete_path':
+                path_id = request.form.get('path_id', type=int)
+                path = PpdbPath.query.filter_by(id=path_id, tenant_id=tenant_id, is_deleted=False).first_or_404()
+                path.is_deleted = True
+                db.session.commit()
+                flash('Jenis program PPDB dihapus.', 'success')
+            elif action == 'add_fee_item':
+                path_id = request.form.get('path_id', type=int)
+                path = PpdbPath.query.filter_by(id=path_id, tenant_id=tenant_id, is_deleted=False).first_or_404()
+                name = (request.form.get('name') or '').strip()
+                if not name:
+                    raise ValueError('Nama item biaya wajib diisi.')
+                amount = _parse_rupiah_input(request.form.get('amount'), 0)
+                if amount < 0:
+                    raise ValueError('Nominal biaya tidak boleh negatif.')
+                db.session.add(
+                    PpdbFeeItem(
+                        tenant_id=tenant_id,
+                        period_id=path.period_id,
+                        path_id=path.id,
+                        name=name,
+                        amount=amount,
+                        sort_order=request.form.get('sort_order', type=int) or 0,
+                        is_active=True,
+                    )
+                )
+                db.session.commit()
+                flash('Item biaya PPDB berhasil ditambahkan.', 'success')
+            elif action == 'toggle_fee_item':
+                fee_item_id = request.form.get('fee_item_id', type=int)
+                item = PpdbFeeItem.query.filter_by(id=fee_item_id, tenant_id=tenant_id, is_deleted=False).first_or_404()
+                item.is_active = request.form.get('is_active') == 'on'
+                item.amount = _parse_rupiah_input(request.form.get('amount'), item.amount)
+                db.session.commit()
+                flash('Item biaya PPDB berhasil diperbarui.', 'success')
+            elif action == 'delete_fee_item':
+                fee_item_id = request.form.get('fee_item_id', type=int)
+                item = PpdbFeeItem.query.filter_by(id=fee_item_id, tenant_id=tenant_id, is_deleted=False).first_or_404()
+                item.is_deleted = True
+                db.session.commit()
+                flash('Item biaya PPDB dihapus.', 'success')
+            elif action == 'add_form_field':
+                period_id = request.form.get('period_id', type=int)
+                period = PpdbPeriod.query.filter_by(id=period_id, tenant_id=tenant_id, is_deleted=False).first_or_404()
+                label = (request.form.get('label') or '').strip()
+                if not label:
+                    raise ValueError('Label field wajib diisi.')
+                field_type = PpdbFieldType[request.form.get('field_type') or PpdbFieldType.TEXT.name]
+                field = PpdbFormField(
+                    tenant_id=tenant_id,
+                    period_id=period.id,
+                    path_id=request.form.get('path_id', type=int) or None,
+                    field_key=_normalize_config_key(request.form.get('field_key') or label, 'field'),
+                    label=label,
+                    field_type=field_type,
+                    is_required=request.form.get('is_required') == 'on',
+                    options_json=_parse_lines_json(request.form.get('options')) if field_type == PpdbFieldType.SELECT else None,
+                    sort_order=request.form.get('sort_order', type=int) or 0,
+                    is_active=True,
+                )
+                if field_type == PpdbFieldType.SELECT and not field.options_json:
+                    raise ValueError('Field pilihan wajib memiliki minimal satu opsi.')
+                db.session.add(field)
+                db.session.commit()
+                flash('Field tambahan PPDB berhasil ditambahkan.', 'success')
+            elif action == 'toggle_form_field':
+                field_id = request.form.get('field_id', type=int)
+                field = PpdbFormField.query.filter_by(id=field_id, tenant_id=tenant_id, is_deleted=False).first_or_404()
+                field.is_active = request.form.get('is_active') == 'on'
+                field.is_required = request.form.get('is_required') == 'on'
+                db.session.commit()
+                flash('Field tambahan PPDB berhasil diperbarui.', 'success')
+            elif action == 'delete_form_field':
+                field_id = request.form.get('field_id', type=int)
+                field = PpdbFormField.query.filter_by(id=field_id, tenant_id=tenant_id, is_deleted=False).first_or_404()
+                field.is_deleted = True
+                db.session.commit()
+                flash('Field tambahan PPDB dihapus.', 'success')
+            elif action == 'add_document_requirement':
+                period_id = request.form.get('period_id', type=int)
+                period = PpdbPeriod.query.filter_by(id=period_id, tenant_id=tenant_id, is_deleted=False).first_or_404()
+                name = (request.form.get('name') or '').strip()
+                if not name:
+                    raise ValueError('Nama dokumen wajib diisi.')
+                requirement = PpdbDocumentRequirement(
+                    tenant_id=tenant_id,
+                    period_id=period.id,
+                    path_id=request.form.get('path_id', type=int) or None,
+                    code=_normalize_config_key(request.form.get('code') or name, 'doc')[:50],
+                    name=name,
+                    is_required=request.form.get('is_required') == 'on',
+                    allowed_file_types=(request.form.get('allowed_file_types') or '').strip() or None,
+                    max_file_size_kb=request.form.get('max_file_size_kb', type=int),
+                    sort_order=request.form.get('sort_order', type=int) or 0,
+                    is_active=True,
+                )
+                db.session.add(requirement)
+                db.session.commit()
+                flash('Persyaratan dokumen berhasil ditambahkan.', 'success')
+            elif action == 'toggle_document_requirement':
+                requirement_id = request.form.get('requirement_id', type=int)
+                requirement = PpdbDocumentRequirement.query.filter_by(
+                    id=requirement_id,
+                    tenant_id=tenant_id,
+                    is_deleted=False,
+                ).first_or_404()
+                requirement.is_active = request.form.get('is_active') == 'on'
+                requirement.is_required = request.form.get('is_required') == 'on'
+                db.session.commit()
+                flash('Persyaratan dokumen berhasil diperbarui.', 'success')
+            elif action == 'delete_document_requirement':
+                requirement_id = request.form.get('requirement_id', type=int)
+                requirement = PpdbDocumentRequirement.query.filter_by(
+                    id=requirement_id,
+                    tenant_id=tenant_id,
+                    is_deleted=False,
+                ).first_or_404()
+                requirement.is_deleted = True
+                db.session.commit()
+                flash('Persyaratan dokumen dihapus.', 'success')
+            else:
+                flash('Aksi pengaturan PPDB tidak dikenali.', 'warning')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Gagal menyimpan pengaturan PPDB: {e}', 'danger')
+        return redirect(url_for('staff.ppdb_settings'))
+
+    periods = (
+        PpdbPeriod.query.filter_by(tenant_id=tenant_id, is_deleted=False)
+        .order_by(PpdbPeriod.start_date.desc(), PpdbPeriod.id.desc())
+        .all()
+    )
+    active_period = get_active_ppdb_period(tenant_id)
+    selected_period = active_period or (periods[0] if periods else None)
+    paths = []
+    custom_fields = []
+    document_requirements = []
+    fee_items_by_path = {}
+    if selected_period:
+        paths = (
+            PpdbPath.query.filter_by(tenant_id=tenant_id, period_id=selected_period.id, is_deleted=False)
+            .order_by(PpdbPath.sort_order.asc(), PpdbPath.name.asc())
+            .all()
+        )
+        custom_fields = (
+            PpdbFormField.query.filter_by(tenant_id=tenant_id, period_id=selected_period.id, is_deleted=False)
+            .order_by(PpdbFormField.sort_order.asc(), PpdbFormField.label.asc())
+            .all()
+        )
+        document_requirements = (
+            PpdbDocumentRequirement.query.filter_by(
+                tenant_id=tenant_id,
+                period_id=selected_period.id,
+                is_deleted=False,
+            )
+            .order_by(PpdbDocumentRequirement.sort_order.asc(), PpdbDocumentRequirement.name.asc())
+            .all()
+        )
+        fee_items = (
+            PpdbFeeItem.query.filter_by(tenant_id=tenant_id, period_id=selected_period.id, is_deleted=False)
+            .order_by(PpdbFeeItem.sort_order.asc(), PpdbFeeItem.name.asc())
+            .all()
+        )
+        for item in fee_items:
+            fee_items_by_path.setdefault(item.path_id, []).append(item)
+
+    return render_template(
+        'staff/ppdb/settings.html',
+        periods=periods,
+        selected_period=selected_period,
+        paths=paths,
+        statuses=PpdbPeriodStatus,
+        field_types=PpdbFieldType,
+        custom_fields=custom_fields,
+        custom_field_options={field.id: ppdb_field_options(field) for field in custom_fields},
+        document_requirements=document_requirements,
+        fee_items_by_path=fee_items_by_path,
+        program_types=ProgramType,
+        education_levels=EducationLevel,
+        scholarship_categories=ScholarshipCategory,
+    )
+
+
 @staff_bp.route('/ppdb/list')
 @login_required
 @role_required(UserRole.TU)
@@ -1247,12 +1542,18 @@ def ppdb_detail(candidate_id):
     fee_drafts = []
     if candidate.status == RegistrationStatus.PENDING and candidate.program_type != ProgramType.MAJLIS_TALIM:
         fee_drafts = _candidate_fee_drafts(candidate, tenant_id=tenant_id)
+    custom_fields = list_active_ppdb_form_fields(tenant_id, candidate.ppdb_period, candidate.ppdb_path)
+    document_requirements = list_active_ppdb_document_requirements(tenant_id, candidate.ppdb_period, candidate.ppdb_path)
 
     return render_template(
         'staff/ppdb/detail.html',
         candidate=candidate,
         fee_drafts=fee_drafts,
         fee_drafts_total=sum(item.get('nominal', 0) for item in fee_drafts),
+        custom_fields=custom_fields,
+        extra_answers=_loads_object(candidate.extra_answers_json),
+        document_requirements=document_requirements,
+        document_status=_loads_object(candidate.document_status_json),
     )
 
 
