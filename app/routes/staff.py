@@ -51,6 +51,7 @@ from app.models import (
     PpdbFeeItem, PpdbFormSection, PpdbPath, PpdbPeriod, PpdbPeriodStatus, TenantProgram
 )
 from app.utils.nis import generate_nis
+from app.utils.programs import system_program_label, system_program_label_choices
 from app.utils.roles import get_active_role
 from app.utils.money import to_rupiah_int
 from app.utils.invoice import generate_invoice_number
@@ -1552,6 +1553,8 @@ def ppdb_settings():
         tenant_programs=tenant_programs,
         active_tenant_programs=active_tenant_programs,
         program_types=ProgramType,
+        system_program_label=system_program_label,
+        system_program_label_choices=system_program_label_choices(),
         education_levels=EducationLevel,
         scholarship_categories=ScholarshipCategory,
     )

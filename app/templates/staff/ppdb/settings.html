@@ -55,8 +55,8 @@
                 <div class="col-md-3 mb-3">
                     <label class="form-label">Perilaku Sistem</label>
                     <select class="form-select" name="system_type" required>
-                        {% for program_type in program_types %}
-                        <option value="{{ program_type.name }}">{{ program_type.value }}</option>
+                        {% for program_type, label in system_program_label_choices %}
+                        <option value="{{ program_type.name }}">{{ label }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -111,7 +111,7 @@
                         </td>
                         <td class="fw-bold">{{ program.code }}</td>
                         <td>{{ program.name }}</td>
-                        <td>{{ program.system_type.value if program.system_type else '-' }}</td>
+                        <td>{{ system_program_label(program.system_type) }}</td>
                         <td>{{ program.education_level.value if program.education_level else '-' }}</td>
                         <td style="width: 100px;">
                             <input form="tenant-program-form-{{ program.id }}" type="number" name="sort_order" class="form-control form-control-sm" value="{{ program.sort_order }}">
@@ -292,7 +292,7 @@
                                     <td>
                                         {{ path.tenant_program.name if path.tenant_program else (path.program_type.value if path.program_type else '-') }}
                                         {% if path.tenant_program %}
-                                        <div class="small text-muted">{{ path.tenant_program.system_type.value }}</div>
+                                        <div class="small text-muted">{{ system_program_label(path.tenant_program.system_type) }}</div>
                                         {% endif %}
                                     </td>
                                     <td style="width: 120px;">

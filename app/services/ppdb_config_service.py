@@ -17,6 +17,7 @@ from app.models import (
     ScholarshipCategory,
     TenantProgram,
 )
+from app.utils.programs import system_program_label
 from app.utils.timezone import local_today
 
 
@@ -66,7 +67,7 @@ DEFAULT_PPDB_PATHS = (
 DEFAULT_TENANT_PROGRAMS = (
     {
         "code": "SEKOLAH_FULLDAY",
-        "name": "Sekolah Bina Qur'an",
+        "name": "Sekolah Formal",
         "system_type": ProgramType.SEKOLAH_FULLDAY,
         "education_level": None,
         "category": "FORMAL",
@@ -74,7 +75,7 @@ DEFAULT_TENANT_PROGRAMS = (
     },
     {
         "code": "RQDF_SORE",
-        "name": "Kelas Reguler RQDF",
+        "name": "Rumah Qur'an",
         "system_type": ProgramType.RQDF_SORE,
         "education_level": EducationLevel.NON_FORMAL,
         "category": "NON_FORMAL",
@@ -394,7 +395,7 @@ def seed_default_ppdb_paths(tenant_id, period):
         tenant_program = get_or_create_tenant_program(
             tenant_id=tenant_id,
             code=item["program_type"].name,
-            name=item["program_type"].value,
+            name=system_program_label(item["program_type"]),
             system_type=item["program_type"],
             education_level=item["education_level"],
             category="PPDB",
