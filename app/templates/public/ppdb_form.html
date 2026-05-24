@@ -232,12 +232,57 @@
             </div>
 
             {% if custom_fields %}
-            <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-white py-3">
-                    <h5 class="m-0 fw-bold text-primary">Data Tambahan</h5>
+                {% for section in form_sections %}
+                <div class="card shadow-sm border-0 mb-4 ppdb-section-card" data-path-id="{{ section.path_id }}">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="m-0 fw-bold text-primary">{{ section.title }}</h5>
+                        {% if section.description %}
+                        <div class="text-muted small mt-1">{{ section.description }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="card-body p-4">
+                        {% for field in custom_fields_by_section.get(section.id, []) %}
+                        {% set input_name = 'extra_field_' ~ field.field_key %}
+                        {% set options = custom_field_options.get(field.id, []) %}
+                        <div class="mb-3 ppdb-extra-field" data-path-id="{{ field.path_id or '' }}">
+                            <label class="form-label fw-bold" for="{{ input_name }}">
+                                {{ field.label }}
+                                {% if field.is_required %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            {% if field.field_type.name == 'TEXTAREA' %}
+                                <textarea class="form-control" id="{{ input_name }}" name="{{ input_name }}" rows="3" {% if field.is_required %}required{% endif %}>{{ request.form.get(input_name, '') }}</textarea>
+                            {% elif field.field_type.name == 'NUMBER' %}
+                                <input type="number" class="form-control" id="{{ input_name }}" name="{{ input_name }}" value="{{ request.form.get(input_name, '') }}" {% if field.is_required %}required{% endif %}>
+                            {% elif field.field_type.name == 'DATE' %}
+                                <input type="date" class="form-control" id="{{ input_name }}" name="{{ input_name }}" value="{{ request.form.get(input_name, '') }}" {% if field.is_required %}required{% endif %}>
+                            {% elif field.field_type.name == 'SELECT' %}
+                                <select class="form-select" id="{{ input_name }}" name="{{ input_name }}" {% if field.is_required %}required{% endif %}>
+                                    <option value="">Pilih</option>
+                                    {% for option in options %}
+                                    <option value="{{ option }}" {% if request.form.get(input_name) == option %}selected{% endif %}>{{ option }}</option>
+                                    {% endfor %}
+                                </select>
+                            {% elif field.field_type.name == 'BOOLEAN' %}
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="{{ input_name }}" name="{{ input_name }}" {% if request.form.get(input_name) == 'on' %}checked{% endif %}>
+                                    <label class="form-check-label" for="{{ input_name }}">Ya</label>
+                                </div>
+                            {% else %}
+                                <input type="text" class="form-control" id="{{ input_name }}" name="{{ input_name }}" value="{{ request.form.get(input_name, '') }}" {% if field.is_required %}required{% endif %}>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
                 </div>
-                <div class="card-body p-4">
-                    {% for field in custom_fields %}
+                {% endfor %}
+
+                {% if custom_fields_by_section.get(None) %}
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="m-0 fw-bold text-primary">Data Tambahan</h5>
+                    </div>
+                    <div class="card-body p-4">
+                    {% for field in custom_fields_by_section.get(None, []) %}
                     {% set input_name = 'extra_field_' ~ field.field_key %}
                     {% set options = custom_field_options.get(field.id, []) %}
                     <div class="mb-3 ppdb-extra-field" data-path-id="{{ field.path_id or '' }}">
@@ -268,8 +313,9 @@
                         {% endif %}
                     </div>
                     {% endfor %}
+                    </div>
                 </div>
-            </div>
+                {% endif %}
             {% endif %}
 
             {% if document_requirements %}
@@ -382,6 +428,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const paymentTableBody = document.getElementById('payment_table_body');
     const paymentTotal = document.getElementById('payment_total');
     const ppdbForm = document.querySelector('form[method="POST"]');
+    const sectionCards = Array.from(document.querySelectorAll('.ppdb-section-card'));
     const extraFieldRows = Array.from(document.querySelectorAll('.ppdb-extra-field'));
     const documentRows = Array.from(document.querySelectorAll('.ppdb-document-row'));
 
@@ -408,6 +455,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function syncScopedConfigVisibility() {
         const pathId = selectedPathId();
+        sectionCards.forEach((card) => {
+            const scope = card.dataset.pathId || '';
+            card.style.display = (!scope || !pathId || scope === pathId) ? '' : 'none';
+        });
         extraFieldRows.forEach((row) => {
             const scope = row.dataset.pathId || '';
             const visible = !scope || !pathId || scope === pathId;

@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h1 class="h3 mb-0 text-gray-800">Form Builder PPDB</h1>
+        <div class="text-muted small">{{ path.name }} | {{ period.name }}</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('main.ppdb_register') }}" target="_blank" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-eye me-1"></i> Preview Publik
+        </a>
+        <a href="{{ url_for('staff.ppdb_settings') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i> Pengaturan
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-5">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Tambah Section</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="add_section">
+                    <div class="mb-3">
+                        <label class="form-label">Judul Section</label>
+                        <input type="text" class="form-control" name="title" placeholder="Data Akademik" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Deskripsi</label>
+                        <textarea class="form-control" name="description" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Urutan</label>
+                        <input type="number" class="form-control" name="sort_order" value="0">
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-plus me-1"></i> Tambah Section
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Tambah Pertanyaan</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="add_builder_field">
+                    <div class="mb-3">
+                        <label class="form-label">Pertanyaan</label>
+                        <input type="text" class="form-control" name="label" placeholder="Contoh: Jumlah hafalan" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Tipe Jawaban</label>
+                            <select class="form-select" name="field_type">
+                                {% for field_type in field_types %}
+                                <option value="{{ field_type.name }}">{{ field_type.value }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Section</label>
+                            <select class="form-select" name="section_id">
+                                <option value="">Tanpa section</option>
+                                {% for section in sections %}
+                                <option value="{{ section.id }}">{{ section.title }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Key</label>
+                        <input type="text" class="form-control" name="field_key" placeholder="Opsional, otomatis dari pertanyaan">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Opsi untuk Select</label>
+                        <textarea class="form-control" name="options" rows="3" placeholder="Satu opsi per baris"></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Urutan</label>
+                            <input type="number" class="form-control" name="sort_order" value="0">
+                        </div>
+                        <div class="col-md-6 mb-3 d-flex align-items-end">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="is_required" id="new_field_required">
+                                <label class="form-check-label" for="new_field_required">Wajib diisi</label>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-plus me-1"></i> Tambah Pertanyaan
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Struktur Form</h6>
+            </div>
+            <div class="card-body">
+                {% if fields_by_section.get(None) %}
+                <div class="border rounded p-3 mb-3">
+                    <h6 class="fw-bold mb-3">Tanpa Section</h6>
+                    {% for field in fields_by_section.get(None, []) %}
+                        {% include "staff/ppdb/_builder_field_row.html" %}
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% for section in sections %}
+                <div class="border rounded p-3 mb-3">
+                    <form method="POST" class="row g-2 align-items-end mb-3">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="update_section">
+                        <input type="hidden" name="section_id" value="{{ section.id }}">
+                        <div class="col-md-5">
+                            <label class="form-label">Judul</label>
+                            <input type="text" class="form-control form-control-sm" name="title" value="{{ section.title }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Urutan</label>
+                            <input type="number" class="form-control form-control-sm" name="sort_order" value="{{ section.sort_order }}">
+                        </div>
+                        <div class="col-md-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="is_active" id="section_active_{{ section.id }}" {% if section.is_active %}checked{% endif %}>
+                                <label class="form-check-label" for="section_active_{{ section.id }}">Aktif</label>
+                            </div>
+                        </div>
+                        <div class="col-md-2 d-flex gap-1">
+                            <button type="submit" class="btn btn-sm btn-outline-primary">Simpan</button>
+                        </div>
+                        <div class="col-12">
+                            <textarea class="form-control form-control-sm" name="description" rows="2" placeholder="Deskripsi section">{{ section.description or '' }}</textarea>
+                        </div>
+                    </form>
+                    <form method="POST" class="mb-3" onsubmit="return confirm('Hapus section ini? Field di dalamnya akan dipindah ke tanpa section.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="action" value="delete_section">
+                        <input type="hidden" name="section_id" value="{{ section.id }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                            <i class="fas fa-trash me-1"></i> Hapus Section
+                        </button>
+                    </form>
+
+                    {% for field in fields_by_section.get(section.id, []) %}
+                        {% include "staff/ppdb/_builder_field_row.html" %}
+                    {% else %}
+                    <div class="text-muted small">Belum ada pertanyaan di section ini.</div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                    {% if not fields %}
+                    <div class="text-center text-muted py-4">Belum ada section atau pertanyaan.</div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

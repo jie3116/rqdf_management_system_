@@ -24,6 +24,7 @@ from app.services.ppdb_config_service import (
     get_active_ppdb_period,
     list_configured_ppdb_document_requirements,
     list_configured_ppdb_form_fields,
+    list_configured_ppdb_form_sections,
     list_active_ppdb_document_requirements,
     list_active_ppdb_form_fields,
     list_active_ppdb_paths,
@@ -71,6 +72,10 @@ def _render_ppdb_form(form):
         form.ppdb_path_id.choices = [(path.id, path.name) for path in active_paths]
     custom_fields = list_configured_ppdb_form_fields(tenant_id, active_period)
     document_requirements = list_configured_ppdb_document_requirements(tenant_id, active_period)
+    form_sections = list_configured_ppdb_form_sections(tenant_id, active_period)
+    custom_fields_by_section = {}
+    for field in custom_fields:
+        custom_fields_by_section.setdefault(field.section_id, []).append(field)
     return render_template(
         "public/ppdb_form.html",
         form=form,
@@ -78,13 +83,27 @@ def _render_ppdb_form(form):
         active_ppdb_paths=active_paths,
         ppdb_path_config={
             str(path.id): {
-                "program_type": path.program_type.name if path.program_type else "",
-                "education_level": path.education_level.name if path.education_level else "",
+                "program_type": (
+                    path.tenant_program.system_type.name
+                    if path.tenant_program and path.tenant_program.system_type
+                    else (path.program_type.name if path.program_type else "")
+                ),
+                "education_level": (
+                    path.education_level.name
+                    if path.education_level
+                    else (
+                        path.tenant_program.education_level.name
+                        if path.tenant_program and path.tenant_program.education_level
+                        else ""
+                    )
+                ),
                 "scholarship_category": path.scholarship_category.name if path.scholarship_category else "",
             }
             for path in active_paths
         },
         custom_fields=custom_fields,
+        form_sections=form_sections,
+        custom_fields_by_section=custom_fields_by_section,
         custom_field_options={field.id: ppdb_field_options(field) for field in custom_fields},
         document_requirements=document_requirements,
         ppdb_fee_preview=get_public_ppdb_fee_preview(tenant_id=tenant_id),
@@ -364,9 +383,15 @@ def ppdb_register():
                 if active_path is None:
                     flash('Jenis program PPDB tidak valid atau sedang tidak aktif.', 'danger')
                     return _render_ppdb_form(form)
-                program_type = active_path.program_type
+                program_type = (
+                    active_path.tenant_program.system_type
+                    if active_path.tenant_program and active_path.tenant_program.system_type
+                    else active_path.program_type
+                )
                 if active_path.education_level:
                     education_level = active_path.education_level
+                elif active_path.tenant_program and active_path.tenant_program.education_level:
+                    education_level = active_path.tenant_program.education_level
                 elif program_type == ProgramType.MAJLIS_TALIM:
                     education_level = EducationLevel.NON_FORMAL
                 else:

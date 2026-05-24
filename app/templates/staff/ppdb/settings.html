@@ -28,6 +28,109 @@
     </div>
 </div>
 {% else %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+        <h6 class="m-0 fw-bold text-primary">Program Tenant</h6>
+        <form method="POST" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="seed_tenant_programs">
+            <button type="submit" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-wand-magic-sparkles me-1"></i> Lengkapi Default
+            </button>
+        </form>
+    </div>
+    <div class="card-body">
+        <form method="POST" class="border rounded p-3 mb-4 bg-light">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="add_tenant_program">
+            <div class="row">
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Kode</label>
+                    <input type="text" class="form-control" name="code" placeholder="SMP-A" required>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Nama Program</label>
+                    <input type="text" class="form-control" name="name" placeholder="SMP Boarding Putra" required>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Perilaku Sistem</label>
+                    <select class="form-select" name="system_type" required>
+                        {% for program_type in program_types %}
+                        <option value="{{ program_type.name }}">{{ program_type.value }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Jenjang</label>
+                    <select class="form-select" name="education_level">
+                        <option value="">Tidak spesifik</option>
+                        {% for level in education_levels %}
+                        <option value="{{ level.name }}">{{ level.value }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Kategori</label>
+                    <input type="text" class="form-control" name="category" placeholder="FORMAL">
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Urutan</label>
+                    <input type="number" class="form-control" name="sort_order" value="0">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">
+                <i class="fas fa-plus me-1"></i> Tambah Program Tenant
+            </button>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Aktif</th>
+                        <th>Kode</th>
+                        <th>Nama Program</th>
+                        <th>Perilaku Sistem</th>
+                        <th>Jenjang</th>
+                        <th>Urutan</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for program in tenant_programs %}
+                    <tr>
+                        <td class="text-center">
+                            <form id="tenant-program-form-{{ program.id }}" method="POST">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="action" value="toggle_tenant_program">
+                                <input type="hidden" name="tenant_program_id" value="{{ program.id }}">
+                                <input class="form-check-input" type="checkbox" name="is_active" {% if program.is_active %}checked{% endif %}>
+                            </form>
+                        </td>
+                        <td class="fw-bold">{{ program.code }}</td>
+                        <td>{{ program.name }}</td>
+                        <td>{{ program.system_type.value if program.system_type else '-' }}</td>
+                        <td>{{ program.education_level.value if program.education_level else '-' }}</td>
+                        <td style="width: 100px;">
+                            <input form="tenant-program-form-{{ program.id }}" type="number" name="sort_order" class="form-control form-control-sm" value="{{ program.sort_order }}">
+                        </td>
+                        <td>
+                            <button form="tenant-program-form-{{ program.id }}" type="submit" class="btn btn-sm btn-outline-primary">Simpan</button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-3">Belum ada program tenant.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <div class="row">
     <div class="col-lg-5">
         <div class="card shadow mb-4">
@@ -51,10 +154,10 @@
                     </div>
                     <div class="row">
                         <div class="col-md-4 mb-3">
-                            <label class="form-label">Program Inti</label>
-                            <select class="form-select" name="program_type" required>
-                                {% for program_type in program_types %}
-                                <option value="{{ program_type.name }}">{{ program_type.value }}</option>
+                            <label class="form-label">Program Tenant</label>
+                            <select class="form-select" name="tenant_program_id" required>
+                                {% for program in active_tenant_programs %}
+                                <option value="{{ program.id }}">{{ program.name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -182,8 +285,16 @@
                                             |
                                             {{ path.scholarship_category.value if path.scholarship_category else 'Semua jalur beasiswa' }}
                                         </div>
+                                        <a href="{{ url_for('staff.ppdb_form_builder', path_id=path.id) }}" class="btn btn-sm btn-outline-primary mt-2">
+                                            <i class="fas fa-list-check me-1"></i> Form Builder
+                                        </a>
                                     </td>
-                                    <td>{{ path.program_type.value if path.program_type else '-' }}</td>
+                                    <td>
+                                        {{ path.tenant_program.name if path.tenant_program else (path.program_type.value if path.program_type else '-') }}
+                                        {% if path.tenant_program %}
+                                        <div class="small text-muted">{{ path.tenant_program.system_type.value }}</div>
+                                        {% endif %}
+                                    </td>
                                     <td style="width: 120px;">
                                         <input type="number" min="0" class="form-control form-control-sm" name="path_quota_{{ path.id }}" value="{{ path.quota if path.quota is not none else '' }}">
                                     </td>

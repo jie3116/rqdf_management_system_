@@ -1,0 +1,55 @@
+<div class="border rounded p-2 mb-2 bg-light">
+    <form method="POST" class="row g-2 align-items-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="update_builder_field">
+        <input type="hidden" name="field_id" value="{{ field.id }}">
+        <div class="col-md-4">
+            <label class="form-label small">Pertanyaan</label>
+            <input type="text" class="form-control form-control-sm" name="label" value="{{ field.label }}">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small">Section</label>
+            <select class="form-select form-select-sm" name="section_id">
+                <option value="">Tanpa section</option>
+                {% for section_option in sections %}
+                <option value="{{ section_option.id }}" {% if field.section_id == section_option.id %}selected{% endif %}>{{ section_option.title }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">Urutan</label>
+            <input type="number" class="form-control form-control-sm" name="sort_order" value="{{ field.sort_order }}">
+        </div>
+        <div class="col-md-3">
+            <div class="d-flex gap-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="is_required" id="field_required_{{ field.id }}" {% if field.is_required %}checked{% endif %}>
+                    <label class="form-check-label small" for="field_required_{{ field.id }}">Wajib</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="is_active" id="field_active_{{ field.id }}" {% if field.is_active %}checked{% endif %}>
+                    <label class="form-check-label small" for="field_active_{{ field.id }}">Aktif</label>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <div class="small text-muted">
+                {{ field.field_key }} | {{ field.field_type.value }}
+                {% if custom_field_options.get(field.id) %}
+                | {{ custom_field_options.get(field.id)|join(', ') }}
+                {% endif %}
+            </div>
+            <div>
+                <button type="submit" class="btn btn-sm btn-outline-primary">Simpan</button>
+            </div>
+        </div>
+    </form>
+    <form method="POST" class="mt-2" onsubmit="return confirm('Hapus pertanyaan ini?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="delete_builder_field">
+        <input type="hidden" name="field_id" value="{{ field.id }}">
+        <button type="submit" class="btn btn-sm btn-outline-danger">
+            <i class="fas fa-trash me-1"></i> Hapus
+        </button>
+    </form>
+</div>

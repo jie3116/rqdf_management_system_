@@ -1615,11 +1615,32 @@ class PpdbPeriod(BaseModel):
     )
 
 
+class TenantProgram(BaseModel):
+    __tablename__ = 'tenant_programs'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    code = db.Column(db.String(40), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    system_type = db.Column(db.Enum(ProgramType, name="programtype"), nullable=False)
+    education_level = db.Column(db.Enum(EducationLevel), nullable=True)
+    category = db.Column(db.String(40), nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+    description = db.Column(db.Text, nullable=True)
+
+    tenant = db.relationship('Tenant', backref=db.backref('tenant_programs', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'code', name='uq_tenant_programs_tenant_code'),
+    )
+
+
 class PpdbPath(BaseModel):
     __tablename__ = 'ppdb_paths'
     id = db.Column(db.Integer, primary_key=True)
     tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
     period_id = db.Column(db.Integer, db.ForeignKey('ppdb_periods.id'), nullable=False, index=True)
+    tenant_program_id = db.Column(db.Integer, db.ForeignKey('tenant_programs.id'), nullable=True, index=True)
     code = db.Column(db.String(30), nullable=False)
     name = db.Column(db.String(120), nullable=False)
     program_type = db.Column(db.Enum(ProgramType, name="programtype"), nullable=False)
@@ -1632,10 +1653,31 @@ class PpdbPath(BaseModel):
 
     tenant = db.relationship('Tenant', backref=db.backref('ppdb_paths', lazy='dynamic'))
     period = db.relationship('PpdbPeriod', backref=db.backref('paths', lazy='dynamic'))
+    tenant_program = db.relationship('TenantProgram', backref=db.backref('ppdb_paths', lazy='dynamic'))
 
     __table_args__ = (
         db.UniqueConstraint('tenant_id', 'period_id', 'code', name='uq_ppdb_paths_period_code'),
         db.CheckConstraint('quota IS NULL OR quota >= 0', name='ck_ppdb_paths_quota_non_negative'),
+    )
+
+
+class PpdbFormSection(BaseModel):
+    __tablename__ = 'ppdb_form_sections'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    period_id = db.Column(db.Integer, db.ForeignKey('ppdb_periods.id'), nullable=False, index=True)
+    path_id = db.Column(db.Integer, db.ForeignKey('ppdb_paths.id'), nullable=False, index=True)
+    title = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    tenant = db.relationship('Tenant', backref=db.backref('ppdb_form_sections', lazy='dynamic'))
+    period = db.relationship('PpdbPeriod', backref=db.backref('form_sections', lazy='dynamic'))
+    path = db.relationship('PpdbPath', backref=db.backref('form_sections', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('tenant_id', 'path_id', 'title', name='uq_ppdb_form_sections_path_title'),
     )
 
 
@@ -1645,6 +1687,7 @@ class PpdbFormField(BaseModel):
     tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
     period_id = db.Column(db.Integer, db.ForeignKey('ppdb_periods.id'), nullable=False, index=True)
     path_id = db.Column(db.Integer, db.ForeignKey('ppdb_paths.id'), nullable=True, index=True)
+    section_id = db.Column(db.Integer, db.ForeignKey('ppdb_form_sections.id'), nullable=True, index=True)
     field_key = db.Column(db.String(80), nullable=False)
     label = db.Column(db.String(120), nullable=False)
     field_type = db.Column(db.Enum(PpdbFieldType, name='ppdbfieldtype'), default=PpdbFieldType.TEXT, nullable=False)
@@ -1657,6 +1700,7 @@ class PpdbFormField(BaseModel):
     tenant = db.relationship('Tenant', backref=db.backref('ppdb_form_fields', lazy='dynamic'))
     period = db.relationship('PpdbPeriod', backref=db.backref('form_fields', lazy='dynamic'))
     path = db.relationship('PpdbPath', backref=db.backref('form_fields', lazy='dynamic'))
+    section = db.relationship('PpdbFormSection', backref=db.backref('fields', lazy='dynamic'))
 
     __table_args__ = (
         db.UniqueConstraint('tenant_id', 'period_id', 'path_id', 'field_key', name='uq_ppdb_form_fields_scope_key'),
