@@ -43,6 +43,7 @@ from app.services.staff_assignment_service import (
 from app.services.ppdb_fee_service import (
     build_candidate_fee_drafts,
 )
+from app.routes.staff import ppdb_form_builder_view, ppdb_settings_view
 from app.services.finance_posting_service import (
     create_cash_bank_transaction,
     post_invoice_payment,
@@ -4765,6 +4766,27 @@ def generate_invoices(fee_id):
 # =========================================================
 # 8. MANAJEMEN PPDB
 # =========================================================
+
+@admin_bp.route('/ppdb/settings', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def ppdb_settings():
+    return ppdb_settings_view(
+        settings_endpoint='admin.ppdb_settings',
+        form_builder_endpoint='admin.ppdb_form_builder',
+    )
+
+
+@admin_bp.route('/ppdb/form-builder/<int:path_id>', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def ppdb_form_builder(path_id):
+    return ppdb_form_builder_view(
+        path_id,
+        settings_endpoint='admin.ppdb_settings',
+        form_builder_endpoint='admin.ppdb_form_builder',
+    )
+
 
 @admin_bp.route('/ppdb/pendaftar')
 @login_required

@@ -1253,10 +1253,7 @@ def edit_student(student_id):
 # 3. MODUL PPDB (VERIFIKASI & PENERIMAAN)
 # =========================================================
 
-@staff_bp.route('/ppdb/settings', methods=['GET', 'POST'])
-@login_required
-@role_required(UserRole.TU)
-def ppdb_settings():
+def ppdb_settings_view(settings_endpoint='admin.ppdb_settings', form_builder_endpoint='admin.ppdb_form_builder'):
     tenant_id = _current_tenant_id()
     if tenant_id is None:
         flash('Tenant default tidak ditemukan.', 'danger')
@@ -1492,7 +1489,7 @@ def ppdb_settings():
         except Exception as e:
             db.session.rollback()
             flash(f'Gagal menyimpan pengaturan PPDB: {e}', 'danger')
-        return redirect(url_for('staff.ppdb_settings'))
+        return redirect(url_for(settings_endpoint))
 
     periods = (
         PpdbPeriod.query.filter_by(tenant_id=tenant_id, is_deleted=False)
@@ -1557,13 +1554,16 @@ def ppdb_settings():
         system_program_label_choices=system_program_label_choices(),
         education_levels=EducationLevel,
         scholarship_categories=ScholarshipCategory,
+        settings_endpoint=settings_endpoint,
+        form_builder_endpoint=form_builder_endpoint,
     )
 
 
-@staff_bp.route('/ppdb/form-builder/<int:path_id>', methods=['GET', 'POST'])
-@login_required
-@role_required(UserRole.TU)
-def ppdb_form_builder(path_id):
+def ppdb_form_builder_view(
+    path_id,
+    settings_endpoint='admin.ppdb_settings',
+    form_builder_endpoint='admin.ppdb_form_builder',
+):
     tenant_id = _current_tenant_id()
     if tenant_id is None:
         flash('Tenant default tidak ditemukan.', 'danger')
@@ -1697,7 +1697,7 @@ def ppdb_form_builder(path_id):
         except Exception as e:
             db.session.rollback()
             flash(f'Gagal menyimpan form builder: {e}', 'danger')
-        return redirect(url_for('staff.ppdb_form_builder', path_id=path.id))
+        return redirect(url_for(form_builder_endpoint, path_id=path.id))
 
     sections = (
         PpdbFormSection.query.filter_by(tenant_id=tenant_id, path_id=path.id, is_deleted=False)
@@ -1722,6 +1722,7 @@ def ppdb_form_builder(path_id):
         fields_by_section=fields_by_section,
         field_types=PpdbFieldType,
         custom_field_options={field.id: ppdb_field_options(field) for field in fields},
+        settings_endpoint=settings_endpoint,
     )
 
 

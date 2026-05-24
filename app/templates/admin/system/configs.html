@@ -4,6 +4,20 @@
 <div class="row">
     <div class="col-md-4">
         <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-primary text-white">
+                <h6 class="m-0 fw-bold"><i class="fas fa-sliders-h me-2"></i>Konfigurasi PPDB</h6>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    Atur periode, program tenant, jenis program, form builder, dokumen, dan item biaya PPDB.
+                </p>
+                <a href="{{ url_for('admin.ppdb_settings') }}" class="btn btn-primary w-100">
+                    Buka Pengaturan PPDB
+                </a>
+            </div>
+        </div>
+
+        <div class="card shadow mb-4">
             <div class="card-header py-3 bg-dark text-white">
                 <h6 class="m-0 fw-bold"><i class="fas fa-cogs me-2"></i>Setting Variabel</h6>
             </div>
