@@ -54,6 +54,9 @@ from app.models import (
     TahfidzEvaluation,
     Schedule,
     Announcement,
+    AppConfig,
+    Tenant,
+    TenantStatus,
 )
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
 from app.utils.roles import get_active_role, set_active_role
@@ -62,10 +65,64 @@ from app.utils.tenant_modules import get_tenant_package, role_allowed_for_packag
 main_bp = Blueprint('main', __name__)
 
 
-def _render_ppdb_form(form):
-    tenant_id = resolve_tenant_id(
-        current_user if getattr(current_user, "is_authenticated", False) else None
+_PPDB_DOMAIN_CONFIG_KEYS = ("ppdb_public_domain", "public_ppdb_domain")
+
+
+def _normalize_public_host(host):
+    value = (host or "").split(":", 1)[0].strip().lower()
+    if value.startswith("www."):
+        value = value[4:]
+    return value
+
+
+def _iter_configured_domains(raw_value):
+    for item in (raw_value or "").replace("\n", ",").split(","):
+        domain = _normalize_public_host(item)
+        if domain:
+            yield domain
+
+
+def _resolve_ppdb_tenant_from_host():
+    host = _normalize_public_host(request.host)
+    if not host:
+        return None
+
+    configs = (
+        AppConfig.query.join(Tenant, AppConfig.tenant_id == Tenant.id)
+        .filter(
+            AppConfig.key.in_(_PPDB_DOMAIN_CONFIG_KEYS),
+            AppConfig.is_deleted.is_(False),
+            Tenant.status == TenantStatus.ACTIVE,
+            Tenant.is_deleted.is_(False),
+        )
+        .all()
     )
+    for config in configs:
+        if host in set(_iter_configured_domains(config.value)):
+            return Tenant.query.filter_by(
+                id=config.tenant_id,
+                status=TenantStatus.ACTIVE,
+                is_deleted=False,
+            ).first()
+
+    subdomain = host.split(".", 1)[0]
+    if subdomain and subdomain not in {"ppdb", "www"}:
+        return Tenant.query.filter_by(slug=subdomain, status=TenantStatus.ACTIVE, is_deleted=False).first()
+    return None
+
+
+def _resolve_public_ppdb_tenant(tenant_slug=None):
+    if tenant_slug:
+        return Tenant.query.filter_by(slug=tenant_slug, status=TenantStatus.ACTIVE, is_deleted=False).first()
+    if getattr(current_user, "is_authenticated", False):
+        tenant_id = resolve_tenant_id(current_user, fallback_default=False)
+        return Tenant.query.filter_by(id=tenant_id, status=TenantStatus.ACTIVE, is_deleted=False).first()
+    return None
+
+
+def _render_ppdb_form(form, tenant=None):
+    tenant = tenant or _resolve_public_ppdb_tenant()
+    tenant_id = tenant.id if tenant else None
     active_period = get_active_ppdb_period(tenant_id)
     active_paths = list_active_ppdb_paths(tenant_id, active_period)
     if active_paths:
@@ -108,6 +165,7 @@ def _render_ppdb_form(form):
         document_requirements=document_requirements,
         ppdb_fee_preview=get_public_ppdb_fee_preview(tenant_id=tenant_id),
         ppdb_path_fee_preview=ppdb_fee_preview_by_path(tenant_id, active_period),
+        public_ppdb_tenant=tenant,
     )
 
 
@@ -329,11 +387,39 @@ def majlis_dashboard():
 # ==========================================
 
 @main_bp.route('/ppdb', methods=['GET', 'POST'])
-def ppdb_register():
+@main_bp.route('/ppdb/<tenant_slug>', methods=['GET', 'POST'])
+def ppdb_register(tenant_slug=None):
     form = PPDBForm()
-    tenant_id_for_choices = resolve_tenant_id(
-        current_user if getattr(current_user, "is_authenticated", False) else None
-    )
+    tenant = _resolve_public_ppdb_tenant(tenant_slug)
+    if tenant is None:
+        host_tenant = _resolve_ppdb_tenant_from_host() if tenant_slug is None else None
+        if host_tenant:
+            return redirect(url_for('main.ppdb_register', tenant_slug=host_tenant.slug))
+        default_tenant = Tenant.query.filter_by(
+            is_default=True,
+            status=TenantStatus.ACTIVE,
+            is_deleted=False,
+        ).first()
+        if tenant_slug is None and default_tenant:
+            return redirect(url_for('main.ppdb_register', tenant_slug=default_tenant.slug))
+        flash("Tenant PPDB tidak ditemukan. Gunakan link PPDB dari sekolah yang dituju.", "danger")
+        return render_template(
+            "public/ppdb_form.html",
+            form=form,
+            active_ppdb_period=None,
+            active_ppdb_paths=[],
+            ppdb_path_config={},
+            custom_fields=[],
+            form_sections=[],
+            custom_fields_by_section={},
+            custom_field_options={},
+            document_requirements=[],
+            ppdb_fee_preview=[],
+            ppdb_path_fee_preview={},
+            public_ppdb_tenant=None,
+        )
+
+    tenant_id_for_choices = tenant.id
     active_period_for_choices = get_active_ppdb_period(tenant_id_for_choices)
     active_paths_for_choices = list_active_ppdb_paths(tenant_id_for_choices, active_period_for_choices)
     if active_paths_for_choices:
@@ -351,29 +437,37 @@ def ppdb_register():
             else:
                 flash('Mohon lengkapi data pendaftaran yang wajib diisi.', 'danger')
             current_app.logger.warning("PPDB form validation errors: %s", form.errors)
-            return _render_ppdb_form(form)
+            return _render_ppdb_form(form, tenant=tenant)
         try:
+            if active_period_for_choices is None:
+                flash("Pendaftaran PPDB tenant ini belum memiliki periode aktif.", "warning")
+                return _render_ppdb_form(form, tenant=tenant)
+            if not active_period_for_choices.public_registration_enabled:
+                flash("Pendaftaran PPDB tenant ini sedang ditutup.", "warning")
+                return _render_ppdb_form(form, tenant=tenant)
+
             # Logika berdasarkan program type
             try:
                 program_type = ProgramType[form.program_type.data]
             except KeyError:
                 flash('Pilihan program tidak valid.', 'danger')
-                return _render_ppdb_form(form)
+                return _render_ppdb_form(form, tenant=tenant)
 
             is_majlis = program_type == ProgramType.MAJLIS_TALIM
             is_rqdf = program_type == ProgramType.RQDF_SORE
 
-            tenant_id = resolve_tenant_id(
-                current_user if getattr(current_user, "is_authenticated", False) else None
-            )
+            tenant_id = tenant.id
             if tenant_id is None:
                 flash("Tenant default tidak ditemukan. Pendaftaran belum bisa diproses.", "danger")
-                return _render_ppdb_form(form)
+                return _render_ppdb_form(form, tenant=tenant)
 
             active_period = get_active_ppdb_period(tenant_id)
-            if active_period and not active_period.public_registration_enabled:
+            if active_period is None:
+                flash("Pendaftaran PPDB tenant ini belum memiliki periode aktif.", "warning")
+                return _render_ppdb_form(form, tenant=tenant)
+            if not active_period.public_registration_enabled:
                 flash("Pendaftaran PPDB tenant ini sedang ditutup.", "warning")
-                return _render_ppdb_form(form)
+                return _render_ppdb_form(form, tenant=tenant)
 
             active_paths = list_active_ppdb_paths(tenant_id, active_period)
             active_path = None
@@ -382,7 +476,7 @@ def ppdb_register():
                 active_path = next((path for path in active_paths if path.id == selected_path_id), None)
                 if active_path is None:
                     flash('Jenis program PPDB tidak valid atau sedang tidak aktif.', 'danger')
-                    return _render_ppdb_form(form)
+                    return _render_ppdb_form(form, tenant=tenant)
                 program_type = (
                     active_path.tenant_program.system_type
                     if active_path.tenant_program and active_path.tenant_program.system_type
@@ -405,24 +499,24 @@ def ppdb_register():
                 contact_phone = form.personal_phone.data
                 if not contact_phone:
                     flash("Nomor WhatsApp wajib diisi untuk Majelis Ta'lim", 'danger')
-                    return _render_ppdb_form(form)
+                    return _render_ppdb_form(form, tenant=tenant)
             else:
                 contact_phone = form.parent_phone.data
                 if not contact_phone:
                     flash('Nomor Telepon Orang Tua wajib diisi', 'danger')
-                    return _render_ppdb_form(form)
+                    return _render_ppdb_form(form, tenant=tenant)
                 nik_value = (form.nik.data or '').strip()
                 kk_number_value = (form.kk_number.data or '').strip()
                 if not nik_value or not kk_number_value:
                     flash('Nomor NIK dan Nomor KK wajib diisi.', 'danger')
-                    return _render_ppdb_form(form)
+                    return _render_ppdb_form(form, tenant=tenant)
                 if is_rqdf:
                     if form.tahfidz_schedule.data == TahfidzSchedule.TIDAK_ADA.name:
                         flash('Jadwal kelas RQDF wajib dipilih.', 'danger')
-                        return _render_ppdb_form(form)
+                        return _render_ppdb_form(form, tenant=tenant)
                     if (form.initial_pledge_amount.data or 0) <= 0:
                         flash('Infaq pembangunan wajib dipilih untuk kelas reguler RQDF.', 'danger')
-                        return _render_ppdb_form(form)
+                        return _render_ppdb_form(form, tenant=tenant)
             if is_majlis:
                 nik_value = (form.nik.data or '').strip() or None
                 kk_number_value = (form.kk_number.data or '').strip() or None
@@ -442,7 +536,7 @@ def ppdb_register():
                 )
                 if active_period and active_path is None:
                     flash('Jalur PPDB untuk kombinasi program tersebut tidak aktif pada tenant ini.', 'danger')
-                    return _render_ppdb_form(form)
+                    return _render_ppdb_form(form, tenant=tenant)
 
             custom_fields = list_active_ppdb_form_fields(tenant_id, active_period, active_path)
             extra_answers = {}
@@ -454,12 +548,12 @@ def ppdb_register():
                     value = (request.form.get(input_name) or "").strip()
                 if field.is_required and not value:
                     flash(f'{field.label} wajib diisi.', 'danger')
-                    return _render_ppdb_form(form)
+                    return _render_ppdb_form(form, tenant=tenant)
                 if field.field_type.name == "SELECT":
                     allowed_options = ppdb_field_options(field)
                     if value and allowed_options and value not in allowed_options:
                         flash(f'Pilihan {field.label} tidak valid.', 'danger')
-                        return _render_ppdb_form(form)
+                        return _render_ppdb_form(form, tenant=tenant)
                 extra_answers[field.field_key] = {
                     "label": field.label,
                     "value": value,
@@ -537,4 +631,4 @@ def ppdb_register():
             current_app.logger.exception("PPDB registration failed")
             flash("Terjadi kesalahan sistem saat memproses pendaftaran.", "danger")
 
-    return _render_ppdb_form(form)
+    return _render_ppdb_form(form, tenant=tenant)

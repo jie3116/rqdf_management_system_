@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, date
 import csv
+import json
 import re
 from urllib.parse import urlsplit
 from io import BytesIO, StringIO, TextIOWrapper
@@ -43,7 +44,11 @@ from app.services.staff_assignment_service import (
 from app.services.ppdb_fee_service import (
     build_candidate_fee_drafts,
 )
-from app.routes.staff import ppdb_form_builder_view, ppdb_settings_view
+from app.services.ppdb_config_service import (
+    list_active_ppdb_document_requirements,
+    list_active_ppdb_form_fields,
+)
+from app.routes.ppdb_config_views import ppdb_form_builder_view, ppdb_settings_view
 from app.services.finance_posting_service import (
     create_cash_bank_transaction,
     post_invoice_payment,
@@ -106,6 +111,16 @@ admin_bp = Blueprint('admin', __name__)
 
 def _current_tenant_id():
     return resolve_tenant_id(current_user)
+
+
+def _loads_object(raw_value):
+    if not raw_value:
+        return {}
+    try:
+        parsed = json.loads(raw_value)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _tenant_teachers_query(tenant_id):
@@ -4810,7 +4825,45 @@ def ppdb_list():
         )
 
     candidates = candidates_query.order_by(StudentCandidate.created_at.desc()).all()
-    return render_template('admin/ppdb/list.html', candidates=candidates, query=query)
+    tenant = Tenant.query.filter_by(id=tenant_id, is_deleted=False).first()
+    return render_template(
+        'staff/ppdb/list.html',
+        candidates=candidates,
+        query=query,
+        list_endpoint='admin.ppdb_list',
+        detail_endpoint='admin.ppdb_detail',
+        public_ppdb_tenant_slug=tenant.slug if tenant else None,
+    )
+
+
+@admin_bp.route('/ppdb/detail/<int:candidate_id>')
+@login_required
+@role_required(UserRole.ADMIN)
+def ppdb_detail(candidate_id):
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    candidate = StudentCandidate.query.filter_by(id=candidate_id, tenant_id=tenant_id, is_deleted=False).first_or_404()
+    fee_drafts = []
+    if candidate.status == RegistrationStatus.PENDING and candidate.program_type != ProgramType.MAJLIS_TALIM:
+        fee_drafts = build_candidate_fee_drafts(candidate, tenant_id=tenant_id)
+    custom_fields = list_active_ppdb_form_fields(tenant_id, candidate.ppdb_period, candidate.ppdb_path)
+    document_requirements = list_active_ppdb_document_requirements(tenant_id, candidate.ppdb_period, candidate.ppdb_path)
+
+    return render_template(
+        'staff/ppdb/detail.html',
+        candidate=candidate,
+        fee_drafts=fee_drafts,
+        fee_drafts_total=sum(item.get('nominal', 0) for item in fee_drafts),
+        custom_fields=custom_fields,
+        extra_answers=_loads_object(candidate.extra_answers_json),
+        document_requirements=document_requirements,
+        document_status=_loads_object(candidate.document_status_json),
+        list_endpoint='admin.ppdb_list',
+        accept_endpoint='admin.accept_candidate',
+    )
 
 
 @admin_bp.route('/ppdb/terima/<int:candidate_id>', methods=['POST'])
@@ -4835,7 +4888,11 @@ def accept_candidate(candidate_id):
             if not nomor_majelis:
                 raise ValueError('Nomor WhatsApp peserta Majelis tidak ditemukan.')
 
-            majlis_user = User.query.filter_by(username=nomor_majelis).first()
+            majlis_user = User.query.filter_by(
+                username=nomor_majelis,
+                tenant_id=tenant_id,
+                is_deleted=False,
+            ).first()
             if not majlis_user:
                 majlis_user = User(
                     tenant_id=tenant_id,
@@ -4847,9 +4904,6 @@ def accept_candidate(candidate_id):
                 )
                 db.session.add(majlis_user)
                 db.session.flush()
-            elif majlis_user.tenant_id != tenant_id:
-                raise ValueError('Akun Majelis lintas tenant tidak diizinkan.')
-
             ensure_majlis_participant_acceptance(
                 user=majlis_user,
                 full_name=calon.full_name,
@@ -4871,7 +4925,11 @@ def accept_candidate(candidate_id):
         if not parent_phone:
             raise ValueError('Nomor Telepon Orang Tua wajib diisi.')
 
-        user_wali = User.query.filter_by(username=parent_phone).first()
+        user_wali = User.query.filter_by(
+            username=parent_phone,
+            tenant_id=tenant_id,
+            is_deleted=False,
+        ).first()
         if not user_wali:
             user_wali = User(tenant_id=tenant_id, username=parent_phone, email=f"wali.{nis_baru}@sekolah.id",
                              password_hash=generate_password_hash(parent_phone or "123456"),

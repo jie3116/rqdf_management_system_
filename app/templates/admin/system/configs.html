@@ -35,6 +35,9 @@
                         assignment_label.boarding_supervisor
                     </div>
                 </div>
+                <div class="alert alert-secondary small">
+                    <i class="fas fa-link me-1"></i> Untuk domain PPDB tenant, gunakan key <span class="font-monospace">ppdb_public_domain</span> dengan value domain, misalnya <span class="font-monospace">ppdb.rqdf.co.id</span>. Bisa lebih dari satu domain dengan pemisah koma.
+                </div>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <div class="mb-3">

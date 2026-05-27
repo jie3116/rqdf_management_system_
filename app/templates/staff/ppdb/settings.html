@@ -260,6 +260,7 @@
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="update_paths">
+                    <input type="hidden" name="period_id" value="{{ selected_period.id }}">
                     <div class="table-responsive">
                         <table class="table table-bordered align-middle">
                             <thead class="table-light">
