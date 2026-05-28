@@ -14,6 +14,10 @@ import 'features/auth/presentation/providers/auth_provider.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/auth/presentation/screens/splash_screen.dart';
 import 'features/auth/presentation/utils/auth_navigation.dart';
+import 'features/boarding_dashboard/data/repositories/boarding_dashboard_repository.dart';
+import 'features/boarding_dashboard/data/services/boarding_dashboard_service.dart';
+import 'features/boarding_dashboard/presentation/providers/boarding_dashboard_provider.dart';
+import 'features/boarding_dashboard/presentation/screens/boarding_dashboard_screen.dart';
 import 'features/majlis_dashboard/data/repositories/majlis_dashboard_repository.dart';
 import 'features/majlis_dashboard/data/services/majlis_dashboard_service.dart';
 import 'features/majlis_dashboard/presentation/providers/majlis_dashboard_provider.dart';
@@ -106,13 +110,20 @@ class _RqdfAppState extends State<RqdfApp> {
     AuthProvider authProvider,
   ) async {
     final user = authProvider.currentUser;
-    if (user?.isTeacher == true) {
+    final activeRole = user?.activeRoleKey;
+    if (activeRole == 'teacher') {
       await context
           .read<TeacherDashboardProvider>()
           .fetchDashboard(forceRefresh: true);
       return;
     }
-    if (user?.isMajlisParticipant == true) {
+    if (activeRole == 'wali_asrama') {
+      await context
+          .read<BoardingDashboardProvider>()
+          .fetchDashboard(forceRefresh: true);
+      return;
+    }
+    if (activeRole == 'majlis_participant') {
       await context
           .read<MajlisDashboardProvider>()
           .fetchDashboard(forceRefresh: true);
@@ -143,6 +154,10 @@ class _RqdfAppState extends State<RqdfApp> {
     final majlisDashboardService = MajlisDashboardService(apiClient: apiClient);
     final majlisDashboardRepository =
         MajlisDashboardRepository(majlisDashboardService);
+    final boardingDashboardService =
+        BoardingDashboardService(apiClient: apiClient);
+    final boardingDashboardRepository =
+        BoardingDashboardRepository(boardingDashboardService);
     final featureService = ParentFeatureService(apiClient: apiClient);
     final featureRepository = ParentFeatureRepository(featureService);
     final teacherDashboardService =
@@ -182,6 +197,16 @@ class _RqdfAppState extends State<RqdfApp> {
               ))
             ..setSession(isAuthenticated: authProvider.isAuthenticated),
         ),
+        ChangeNotifierProxyProvider<AuthProvider, BoardingDashboardProvider>(
+          create: (_) => BoardingDashboardProvider(
+            repository: boardingDashboardRepository,
+          ),
+          update: (_, authProvider, dashboardProvider) => (dashboardProvider ??
+              BoardingDashboardProvider(
+                repository: boardingDashboardRepository,
+              ))
+            ..setSession(isAuthenticated: authProvider.isAuthenticated),
+        ),
         ChangeNotifierProxyProvider<AuthProvider, TeacherDashboardProvider>(
           create: (_) => TeacherDashboardProvider(
             repository: teacherDashboardRepository,
@@ -218,6 +243,10 @@ class _RqdfAppState extends State<RqdfApp> {
             case MajlisDashboardScreen.routeName:
               return MaterialPageRoute<void>(
                 builder: (_) => const MajlisDashboardScreen(),
+              );
+            case BoardingDashboardScreen.routeName:
+              return MaterialPageRoute<void>(
+                builder: (_) => const BoardingDashboardScreen(),
               );
             case TeacherDashboardScreen.routeName:
               return MaterialPageRoute<void>(

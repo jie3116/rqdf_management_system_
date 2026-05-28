@@ -17,32 +17,93 @@ class UserModel {
   final List<String> roles;
   final String activeRole;
 
-  List<String> get _rolePool {
-    final values = <String>{
-      if (role.trim().isNotEmpty && role.trim() != '-')
-        role.trim().toLowerCase(),
-      if (activeRole.trim().isNotEmpty && activeRole.trim() != '-')
-        activeRole.trim().toLowerCase(),
+  static const List<String> dashboardRolePriority = <String>[
+    'teacher',
+    'wali_asrama',
+    'wali_murid',
+    'majlis_participant',
+  ];
+
+  static const Map<String, String> roleLabels = <String, String>{
+    'teacher': 'Guru',
+    'wali_asrama': 'Wali Asrama',
+    'wali_murid': 'Wali Murid',
+    'majlis_participant': 'Peserta Majlis',
+  };
+
+  Set<String> get roleSet {
+    return {
+      if (role.trim().isNotEmpty && role.trim() != '-') _normalizeRole(role),
       ...roles
-          .map((item) => item.trim().toLowerCase())
+          .map(_normalizeRole)
           .where((item) => item.isNotEmpty && item != '-'),
     };
-    return values.toList();
+  }
+
+  String get activeRoleKey {
+    final normalized = _normalizeRole(activeRole);
+    if (roleSet.contains(normalized)) {
+      return normalized;
+    }
+    return defaultDashboardRole ?? normalized;
+  }
+
+  String get activeRoleLabel {
+    return roleLabels[activeRoleKey] ?? activeRoleKey.replaceAll('_', ' ');
+  }
+
+  List<String> get dashboardRoles {
+    final available = roleSet;
+    return dashboardRolePriority
+        .where((role) => available.contains(role))
+        .toList();
+  }
+
+  String? get defaultDashboardRole {
+    final dashboards = dashboardRoles;
+    return dashboards.isNotEmpty ? dashboards.first : null;
+  }
+
+  bool hasRole(String value) {
+    return roleSet.contains(_normalizeRole(value));
+  }
+
+  UserModel withActiveRole(String value) {
+    final normalized = _normalizeRole(value);
+    return UserModel(
+      id: id,
+      name: name,
+      username: username,
+      role: role,
+      roles: roles,
+      activeRole: roleSet.contains(normalized)
+          ? normalized
+          : (defaultDashboardRole ?? activeRole),
+    );
   }
 
   bool get isParent {
-    return _rolePool.any(
+    return roleSet.any(
       (item) => item.contains('wali_murid') || item.contains('parent'),
     );
   }
 
   bool get isMajlisParticipant {
-    return _rolePool.any((item) => item.contains('majlis'));
+    return roleSet.any((item) => item.contains('majlis'));
   }
 
   bool get isTeacher {
-    return _rolePool.any(
+    return roleSet.any(
       (item) => item.contains('guru') || item.contains('teacher'),
+    );
+  }
+
+  bool get isBoardingGuardian {
+    return roleSet.any(
+      (item) =>
+          item.contains('wali_asrama') ||
+          item.contains('boarding_guardian') ||
+          item.contains('asrama'),
     );
   }
 
@@ -73,5 +134,13 @@ class UserModel {
       roles: parsedRoles,
       activeRole: activeRole,
     );
+  }
+
+  static String _normalizeRole(String value) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized == 'guru') return 'teacher';
+    if (normalized == 'parent') return 'wali_murid';
+    if (normalized == 'boarding_guardian') return 'wali_asrama';
+    return normalized;
   }
 }

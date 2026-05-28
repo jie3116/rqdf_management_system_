@@ -62,6 +62,12 @@ class AuthRepository {
 
   Future<bool> loadRememberMe() => _preferencesStorage.readRememberMe();
 
+  Future<String?> loadActiveRole() => _preferencesStorage.readActiveRole();
+
+  Future<void> saveActiveRole(String value) {
+    return _preferencesStorage.saveActiveRole(value);
+  }
+
   Future<void> logout() async {
     final refreshToken = await _tokenStorage.readRefreshToken() ?? '';
     try {
@@ -70,6 +76,7 @@ class AuthRepository {
       // Keep local logout even when API session is already invalid.
     }
     await _tokenStorage.clearTokens();
+    await _preferencesStorage.clearActiveRole();
   }
 
   Future<void> registerPushToken({

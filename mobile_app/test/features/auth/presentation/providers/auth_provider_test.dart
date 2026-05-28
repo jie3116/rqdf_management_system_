@@ -55,6 +55,7 @@ void main() {
         rememberMe: true,
       ),
     ).thenAnswer((_) async => user);
+    when(() => authRepository.loadActiveRole()).thenAnswer((_) async => null);
 
     final result = await provider.login(
       identifier: 'admin',

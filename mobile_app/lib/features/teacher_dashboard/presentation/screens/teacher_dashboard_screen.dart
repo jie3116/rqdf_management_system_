@@ -10,6 +10,7 @@ import '../../../../shared/widgets/app_loading_view.dart';
 import '../../../../shared/widgets/section_title.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
+import '../../../auth/presentation/widgets/role_switcher_button.dart';
 import '../../../parent_dashboard/presentation/widgets/announcements_section.dart';
 import '../../data/models/teacher_dashboard_model.dart';
 import 'teacher_attendance_input_screen.dart';
@@ -103,6 +104,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen>
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         actions: [
+          const RoleSwitcherButton(),
           IconButton(
             icon: const Icon(Icons.logout_rounded),
             onPressed: _logout,

@@ -50,6 +50,7 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       currentUser = await _authRepository.me();
+      await _applySavedActiveRole();
       await _syncPushToken();
       errorMessage = null;
       state = ViewState.success;
@@ -58,6 +59,7 @@ class AuthProvider extends ChangeNotifier {
       if (refreshed) {
         try {
           currentUser = await _authRepository.me();
+          await _applySavedActiveRole();
           await _syncPushToken();
           errorMessage = null;
           state = ViewState.success;
@@ -87,6 +89,7 @@ class AuthProvider extends ChangeNotifier {
         password: password,
         rememberMe: rememberMeChoice,
       );
+      await _applySavedActiveRole();
       await _syncPushToken();
       rememberMe = rememberMeChoice;
       state = ViewState.success;
@@ -121,6 +124,14 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> switchActiveRole(String role) async {
+    final user = currentUser;
+    if (user == null || !user.hasRole(role)) return;
+    currentUser = user.withActiveRole(role);
+    await _authRepository.saveActiveRole(currentUser!.activeRoleKey);
+    notifyListeners();
+  }
+
   Future<bool> _recoverUnauthorized() async {
     final refreshed = await _authRepository.tryRefreshToken();
     if (!refreshed) {
@@ -136,6 +147,20 @@ class AuthProvider extends ChangeNotifier {
       return error.message;
     }
     return 'Username atau password salah';
+  }
+
+  Future<void> _applySavedActiveRole() async {
+    final user = currentUser;
+    if (user == null) return;
+    final savedRole = await _authRepository.loadActiveRole();
+    if (savedRole != null && user.hasRole(savedRole)) {
+      currentUser = user.withActiveRole(savedRole);
+      return;
+    }
+    final fallbackRole = user.defaultDashboardRole;
+    if (fallbackRole != null && user.activeRoleKey != fallbackRole) {
+      currentUser = user.withActiveRole(fallbackRole);
+    }
   }
 
   @override
@@ -176,8 +201,8 @@ class AuthProvider extends ChangeNotifier {
     await _ensurePushInitialized();
     if (!_pushInitialized) return;
 
-    final token = (forcedToken ?? await FirebaseMessaging.instance.getToken())
-        ?.trim();
+    final token =
+        (forcedToken ?? await FirebaseMessaging.instance.getToken())?.trim();
     if (token == null || token.isEmpty) return;
     if (_lastSyncedPushToken == token) return;
 

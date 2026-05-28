@@ -9,6 +9,7 @@ import '../../../../../shared/widgets/app_loading_view.dart';
 import '../../../../../shared/widgets/section_title.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
+import '../../../auth/presentation/widgets/role_switcher_button.dart';
 import '../../../majlis_dashboard/presentation/screens/majlis_dashboard_screen.dart';
 import '../../data/models/quick_action_model.dart';
 import '../../data/repositories/parent_feature_repository.dart';
@@ -107,6 +108,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         actions: [
+          const RoleSwitcherButton(),
           IconButton(
             icon: const Icon(Icons.logout_rounded),
             onPressed: _logout,
