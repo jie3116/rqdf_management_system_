@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .privacy-page {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 2rem 0 3rem;
+        color: #243447;
+    }
+
+    .privacy-hero {
+        background: #ffffff;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+    }
+
+    .privacy-hero h1 {
+        margin-bottom: 0.75rem;
+        color: #0f5132;
+        font-weight: 700;
+        letter-spacing: 0;
+    }
+
+    .privacy-meta {
+        display: grid;
+        gap: 0.75rem;
+        margin-top: 1.25rem;
+    }
+
+    .privacy-meta-item {
+        display: flex;
+        gap: 0.75rem;
+        align-items: flex-start;
+        color: #495057;
+    }
+
+    .privacy-meta-item i {
+        width: 1.25rem;
+        color: #198754;
+        line-height: 1.5;
+        text-align: center;
+    }
+
+    .privacy-section {
+        background: #ffffff;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-top: 1rem;
+    }
+
+    .privacy-section h2 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #1f2937;
+        margin-bottom: 0.85rem;
+    }
+
+    .privacy-section p:last-child,
+    .privacy-section ul:last-child {
+        margin-bottom: 0;
+    }
+
+    .privacy-section ul {
+        padding-left: 1.25rem;
+    }
+
+    .privacy-section li {
+        margin-bottom: 0.35rem;
+    }
+
+    .privacy-contact {
+        display: grid;
+        gap: 0.65rem;
+    }
+
+    .privacy-contact a {
+        color: #0f5132;
+        font-weight: 600;
+    }
+
+    @media (max-width: 576px) {
+        .privacy-page {
+            padding: 1rem 0 2rem;
+        }
+
+        .privacy-hero,
+        .privacy-section {
+            padding: 1.25rem;
+        }
+    }
+</style>
+
+<main class="privacy-page">
+    <section class="privacy-hero">
+        <h1>Kebijakan Privasi RQDF Mobile</h1>
+        <p class="lead mb-0">
+            Kebijakan Privasi ini menjelaskan bagaimana RQDF Mobile mengumpulkan, menggunakan,
+            menyimpan, melindungi, dan mengelola data pengguna dalam layanan pendidikan.
+        </p>
+
+        <div class="privacy-meta">
+            <div class="privacy-meta-item">
+                <i class="fas fa-calendar-check" aria-hidden="true"></i>
+                <div><strong>Tanggal berlaku:</strong> 21 April 2026</div>
+            </div>
+            <div class="privacy-meta-item">
+                <i class="fas fa-mobile-screen-button" aria-hidden="true"></i>
+                <div><strong>Nama aplikasi:</strong> RQDF Mobile</div>
+            </div>
+            <div class="privacy-meta-item">
+                <i class="fas fa-school" aria-hidden="true"></i>
+                <div><strong>Pengelola aplikasi:</strong> Pesantren Rumah Qur'an Darul Falah Cianjur dengan dukungan pengembangan sistem oleh Nizamiya</div>
+            </div>
+            <div class="privacy-meta-item">
+                <i class="fas fa-envelope" aria-hidden="true"></i>
+                <div><strong>Kontak:</strong> <a href="mailto:admin@rqdf.co.id">admin@rqdf.co.id</a></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="privacy-section">
+        <h2>1. Pendahuluan</h2>
+        <p>
+            RQDF Mobile adalah aplikasi mobile yang digunakan untuk mendukung layanan administrasi,
+            akademik, komunikasi, dan informasi di lingkungan Pesantren Rumah Qur'an Darul Falah
+            Cianjur.
+        </p>
+        <p>
+            Dengan menggunakan aplikasi RQDF Mobile, pengguna dianggap telah membaca dan memahami
+            Kebijakan Privasi ini.
+        </p>
+    </section>
+
+    <section class="privacy-section">
+        <h2>2. Data yang Kami Kumpulkan</h2>
+        <p>
+            RQDF Mobile dapat mengumpulkan dan memproses beberapa jenis data sesuai peran pengguna,
+            seperti admin, guru, siswa/santri, wali murid, atau staf.
+        </p>
+        <p>Data yang dapat diproses meliputi:</p>
+        <ul>
+            <li>Data akun pengguna, termasuk nama, email atau username/login ID, role, dan status akun.</li>
+            <li>Data identitas pendidikan, termasuk nama siswa/santri, kelas, kelompok belajar, program pendidikan, data wali murid, data orang tua, data guru, atau data staf.</li>
+            <li>Data akademik dan administrasi, termasuk data kelas, kehadiran, pengumuman, aktivitas pembelajaran, dan data lain yang berkaitan dengan layanan pendidikan.</li>
+            <li>Data teknis aplikasi, termasuk informasi perangkat secara terbatas, token autentikasi, token perangkat untuk notifikasi, dan log teknis untuk keamanan, audit, serta perbaikan sistem.</li>
+            <li>Data komunikasi, termasuk pengumuman, pesan, atau informasi yang dikirim melalui sistem jika fitur tersebut tersedia.</li>
+        </ul>
+        <p>Kami hanya mengumpulkan data yang diperlukan untuk menjalankan fungsi aplikasi dan layanan pendidikan yang terkait.</p>
+    </section>
+
+    <section class="privacy-section">
+        <h2>3. Cara Kami Menggunakan Data</h2>
+        <p>Data pengguna digunakan untuk:</p>
+        <ul>
+            <li>Mengautentikasi pengguna saat login.</li>
+            <li>Menampilkan informasi sesuai role pengguna.</li>
+            <li>Mengelola layanan akademik dan administrasi pendidikan.</li>
+            <li>Menampilkan data kelas, siswa/santri, guru, wali murid, atau staf sesuai hak akses.</li>
+            <li>Mengirimkan pengumuman atau notifikasi yang relevan.</li>
+            <li>Menjaga keamanan sistem dan mencegah akses tidak sah.</li>
+            <li>Memperbaiki kualitas layanan, stabilitas aplikasi, dan pengalaman pengguna.</li>
+            <li>Memenuhi kebutuhan audit internal dan pengelolaan operasional lembaga.</li>
+        </ul>
+        <p>Kami tidak menggunakan data pengguna untuk menjual data pribadi kepada pihak ketiga.</p>
+    </section>
+
+    <section class="privacy-section">
+        <h2>4. Hak Akses Berdasarkan Role</h2>
+        <p>
+            RQDF Mobile menerapkan pembatasan akses berdasarkan role atau jenis akun pengguna.
+            Setiap pengguna hanya dapat mengakses data sesuai kewenangan yang diberikan oleh lembaga.
+        </p>
+        <ul>
+            <li>Admin dapat mengelola data operasional sesuai tugasnya.</li>
+            <li>Guru dapat mengakses data yang berkaitan dengan tugas pengajaran.</li>
+            <li>Siswa/santri dapat mengakses informasi yang berkaitan dengan dirinya.</li>
+            <li>Wali murid dapat mengakses informasi anak yang berada dalam tanggung jawabnya.</li>
+            <li>Staf dapat mengakses data sesuai kebutuhan pekerjaan dan kewenangannya.</li>
+        </ul>
+        <p>Pembatasan akses ini diterapkan untuk menjaga kerahasiaan dan keamanan data.</p>
+    </section>
+
+    <section class="privacy-section">
+        <h2>5. Penyimpanan dan Keamanan Data</h2>
+        <p>Kami berupaya menjaga keamanan data pengguna dengan langkah-langkah teknis dan organisasi yang wajar, termasuk:</p>
+        <ul>
+            <li>Penggunaan autentikasi login.</li>
+            <li>Pembatasan akses berdasarkan role pengguna.</li>
+            <li>Penggunaan koneksi aman pada layanan aplikasi.</li>
+            <li>Pengelolaan token akses dan sesi pengguna.</li>
+            <li>Pembatasan akses database hanya kepada pihak yang berwenang.</li>
+            <li>Pemantauan sistem untuk mencegah penyalahgunaan atau akses tidak sah.</li>
+        </ul>
+        <p>
+            Meskipun kami berupaya menjaga keamanan data, tidak ada sistem elektronik yang sepenuhnya
+            bebas dari risiko. Pengguna juga bertanggung jawab untuk menjaga kerahasiaan akun, password,
+            dan perangkat yang digunakan.
+        </p>
+    </section>
+
+    <section class="privacy-section">
+        <h2>6. Pembagian Data kepada Pihak Ketiga</h2>
+        <p>Kami tidak menjual data pribadi pengguna kepada pihak ketiga.</p>
+        <p>Data dapat diproses oleh layanan pihak ketiga yang digunakan untuk mendukung operasional aplikasi, misalnya:</p>
+        <ul>
+            <li>Penyedia layanan hosting/server.</li>
+            <li>Penyedia layanan database.</li>
+            <li>Penyedia layanan notifikasi, jika digunakan.</li>
+            <li>Penyedia layanan analitik atau crash reporting, jika digunakan.</li>
+            <li>Layanan lain yang diperlukan untuk menjalankan aplikasi.</li>
+        </ul>
+        <p>
+            Pihak ketiga tersebut hanya digunakan untuk mendukung fungsi aplikasi dan tidak diperbolehkan
+            menggunakan data pengguna di luar tujuan layanan yang diberikan.
+        </p>
+    </section>
+
+    <section class="privacy-section">
+        <h2>7. Data Anak atau Siswa/Santri</h2>
+        <p>
+            RQDF Mobile dapat memproses data siswa/santri sebagai bagian dari layanan pendidikan.
+            Data siswa/santri digunakan hanya untuk kepentingan administrasi, akademik, komunikasi,
+            dan layanan pendidikan yang dikelola oleh lembaga.
+        </p>
+        <p>
+            Akses terhadap data siswa/santri dibatasi kepada pihak yang berwenang, seperti admin, guru,
+            staf terkait, siswa/santri yang bersangkutan, dan wali murid sesuai hak akses yang ditentukan
+            oleh lembaga.
+        </p>
+        <p>Kami tidak menggunakan data siswa/santri untuk tujuan periklanan perilaku atau penjualan data.</p>
+    </section>
+
+    <section class="privacy-section">
+        <h2>8. Notifikasi</h2>
+        <p>
+            RQDF Mobile dapat menggunakan fitur notifikasi untuk mengirim informasi penting, seperti
+            pengumuman, informasi akademik, atau informasi administrasi.
+        </p>
+        <p>
+            Jika fitur notifikasi digunakan, aplikasi dapat menyimpan token perangkat agar notifikasi dapat
+            dikirim ke perangkat pengguna. Pengguna dapat mengatur izin notifikasi melalui pengaturan
+            perangkat masing-masing.
+        </p>
+    </section>
+
+    <section class="privacy-section">
+        <h2>9. Retensi Data</h2>
+        <p>
+            Data pengguna disimpan selama masih diperlukan untuk menjalankan layanan pendidikan,
+            administrasi, keamanan, audit, atau kewajiban hukum yang berlaku.
+        </p>
+        <p>Data dapat dihapus, dinonaktifkan, atau dianonimkan jika:</p>
+        <ul>
+            <li>Pengguna tidak lagi terdaftar sebagai bagian dari layanan.</li>
+            <li>Data tidak lagi diperlukan untuk tujuan operasional.</li>
+            <li>Ada permintaan penghapusan data yang valid.</li>
+            <li>Lembaga menentukan bahwa data sudah tidak perlu disimpan.</li>
+        </ul>
+    </section>
+
+    <section class="privacy-section">
+        <h2>10. Hak Pengguna</h2>
+        <p>Pengguna dapat menghubungi pengelola aplikasi untuk:</p>
+        <ul>
+            <li>Meminta informasi mengenai data yang diproses.</li>
+            <li>Meminta koreksi data yang tidak akurat.</li>
+            <li>Meminta penghapusan atau penonaktifan akun, sesuai ketentuan lembaga.</li>
+            <li>Menanyakan penggunaan data pribadi dalam aplikasi.</li>
+        </ul>
+        <p>Permintaan dapat dikirimkan melalui kontak resmi yang tercantum dalam Kebijakan Privasi ini.</p>
+    </section>
+
+    <section class="privacy-section">
+        <h2>11. Penghapusan Akun dan Data</h2>
+        <p>Jika pengguna ingin menghapus atau menonaktifkan akun, pengguna dapat menghubungi pengelola aplikasi melalui:</p>
+        <ul>
+            <li>Email: <a href="mailto:admin@rqdf.co.id">admin@rqdf.co.id</a></li>
+            <li>Subjek: Permintaan Penghapusan Akun RQDF Mobile</li>
+        </ul>
+        <p>
+            Permintaan akan diproses sesuai kebijakan lembaga, kebutuhan administrasi, dan kewajiban
+            penyimpanan data yang berlaku. Beberapa data tertentu mungkin tetap disimpan jika diperlukan
+            untuk arsip akademik, administrasi, audit, keamanan, atau kewajiban hukum.
+        </p>
+    </section>
+
+    <section class="privacy-section">
+        <h2>12. Tautan ke Layanan Lain</h2>
+        <p>
+            Aplikasi dapat menampilkan tautan atau mengarahkan pengguna ke layanan lain yang berkaitan
+            dengan operasional pendidikan.
+        </p>
+        <p>
+            Kami tidak bertanggung jawab atas kebijakan privasi situs atau layanan pihak ketiga di luar
+            kendali kami. Pengguna disarankan membaca kebijakan privasi dari layanan pihak ketiga tersebut.
+        </p>
+    </section>
+
+    <section class="privacy-section">
+        <h2>13. Perubahan Kebijakan Privasi</h2>
+        <p>
+            Kami dapat memperbarui Kebijakan Privasi ini dari waktu ke waktu untuk menyesuaikan perubahan
+            fitur, layanan, kebutuhan operasional, atau peraturan yang berlaku.
+        </p>
+        <p>
+            Perubahan akan diumumkan melalui halaman Kebijakan Privasi ini atau melalui media komunikasi
+            resmi lainnya. Tanggal berlaku terbaru akan ditampilkan di bagian atas dokumen ini.
+        </p>
+    </section>
+
+    <section class="privacy-section">
+        <h2>14. Kontak</h2>
+        <div class="privacy-contact">
+            <div><strong>Pengelola:</strong> Pesantren Rumah Qur'an Darul Falah Cianjur</div>
+            <div><strong>Alamat:</strong> Kp. Buniwangi Bojongherang Cianjur</div>
+            <div><strong>Email:</strong> <a href="mailto:admin@rqdf.co.id">admin@rqdf.co.id</a></div>
+            <div><strong>Website:</strong> <a href="https://rqdf.co.id" rel="noopener">rqdf.co.id</a></div>
+        </div>
+    </section>
+</main>
+{% endblock %}

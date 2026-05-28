@@ -1353,7 +1353,7 @@ IconData _icon(String key) =>
       'absensi': Icons.fact_check_rounded,
       'jadwal': Icons.calendar_month_rounded,
       'perilaku': Icons.shield_outlined,
-      'tabungan': Icons.savings_outlined,
+      'tabungan': Icons.account_balance_wallet_outlined,
     }[key.toLowerCase()] ??
     Icons.apps_rounded;
 

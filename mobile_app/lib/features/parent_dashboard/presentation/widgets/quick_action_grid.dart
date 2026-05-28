@@ -96,7 +96,7 @@ class QuickActionGrid extends StatelessWidget {
       case 'perilaku':
         return Icons.emoji_people_outlined;
       case 'tabungan':
-        return Icons.savings_outlined;
+        return Icons.account_balance_wallet_outlined;
       default:
         return Icons.apps_rounded;
     }

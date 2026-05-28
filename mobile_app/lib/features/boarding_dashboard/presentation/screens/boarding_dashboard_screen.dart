@@ -106,7 +106,7 @@ class _BoardingDashboardScreenState extends State<BoardingDashboardScreen>
             label: 'Absensi',
           ),
           NavigationDestination(
-            icon: Icon(Icons.savings_outlined),
+            icon: Icon(Icons.account_balance_wallet_outlined),
             label: 'Tabungan',
           ),
           NavigationDestination(
@@ -593,14 +593,28 @@ class _BoardingSavingsTabState extends State<_BoardingSavingsTab> {
                 )
               else ...[
                 DropdownButtonFormField<int>(
+                  isExpanded: true,
                   initialValue: selectedStudent?.id,
                   decoration: const InputDecoration(labelText: 'Santri'),
+                  selectedItemBuilder: (context) {
+                    return savings.students.map((student) {
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '${student.name} (${CurrencyFormatter.rupiah(student.balance)})',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
+                    }).toList();
+                  },
                   items: savings.students
                       .map(
                         (student) => DropdownMenuItem<int>(
                           value: student.id,
                           child: Text(
                             '${student.name} (${CurrencyFormatter.rupiah(student.balance)})',
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -1249,7 +1263,10 @@ class _SavingsStudentTile extends StatelessWidget {
               color: AppColors.accentBlueSoft,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const Icon(Icons.savings_outlined, color: AppColors.primary),
+            child: const Icon(
+              Icons.account_balance_wallet_outlined,
+              color: AppColors.primary,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(

@@ -204,6 +204,11 @@ def index():
     return redirect(url_for('auth.login'))
 
 
+@main_bp.route('/privacy-policy')
+def privacy_policy():
+    return render_template('public/privacy_policy.html')
+
+
 @main_bp.route('/dashboard')
 @login_required
 def dashboard():
