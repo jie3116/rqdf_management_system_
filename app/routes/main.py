@@ -209,6 +209,11 @@ def privacy_policy():
     return render_template('public/privacy_policy.html')
 
 
+@main_bp.route('/delete-data')
+def delete_data_policy():
+    return render_template('public/delete_data.html')
+
+
 @main_bp.route('/dashboard')
 @login_required
 def dashboard():

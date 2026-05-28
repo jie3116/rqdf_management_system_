@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .legal-page {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 2rem 0 3rem;
+        color: #243447;
+    }
+
+    .legal-hero {
+        background: #ffffff;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+    }
+
+    .legal-hero h1 {
+        margin-bottom: 0.75rem;
+        color: #0f5132;
+        font-weight: 700;
+        letter-spacing: 0;
+    }
+
+    .legal-meta {
+        display: grid;
+        gap: 0.75rem;
+        margin-top: 1.25rem;
+    }
+
+    .legal-meta-item {
+        display: flex;
+        gap: 0.75rem;
+        align-items: flex-start;
+        color: #495057;
+    }
+
+    .legal-meta-item i {
+        width: 1.25rem;
+        color: #198754;
+        line-height: 1.5;
+        text-align: center;
+    }
+
+    .legal-section {
+        background: #ffffff;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-top: 1rem;
+    }
+
+    .legal-section h2 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #1f2937;
+        margin-bottom: 0.85rem;
+    }
+
+    .legal-section p:last-child,
+    .legal-section ol:last-child,
+    .legal-section ul:last-child {
+        margin-bottom: 0;
+    }
+
+    .legal-section ol,
+    .legal-section ul {
+        padding-left: 1.25rem;
+    }
+
+    .legal-section li {
+        margin-bottom: 0.35rem;
+    }
+
+    .legal-callout {
+        background: #f0fdf4;
+        border: 1px solid rgba(25, 135, 84, 0.18);
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+    }
+
+    .legal-contact {
+        display: grid;
+        gap: 0.65rem;
+    }
+
+    .legal-contact a,
+    .legal-section a {
+        color: #0f5132;
+        font-weight: 600;
+    }
+
+    @media (max-width: 576px) {
+        .legal-page {
+            padding: 1rem 0 2rem;
+        }
+
+        .legal-hero,
+        .legal-section {
+            padding: 1.25rem;
+        }
+    }
+</style>
+
+<main class="legal-page">
+    <section class="legal-hero">
+        <h1>Permintaan Penghapusan Akun dan Data RQDF Mobile</h1>
+        <p class="lead mb-0">
+            Halaman ini menjelaskan cara pengguna RQDF Mobile dapat mengajukan permintaan
+            penghapusan atau penonaktifan akun dan data yang terkait dengan penggunaan aplikasi.
+        </p>
+
+        <div class="legal-meta">
+            <div class="legal-meta-item">
+                <i class="fas fa-mobile-screen-button" aria-hidden="true"></i>
+                <div><strong>Nama aplikasi:</strong> RQDF Mobile</div>
+            </div>
+            <div class="legal-meta-item">
+                <i class="fas fa-school" aria-hidden="true"></i>
+                <div><strong>Pengelola layanan dan data:</strong> Pesantren Rumah Qur'an Darul Falah Cianjur</div>
+            </div>
+            <div class="legal-meta-item">
+                <i class="fas fa-screwdriver-wrench" aria-hidden="true"></i>
+                <div><strong>Pengembang dan dukungan teknis:</strong> Nizamiya</div>
+            </div>
+            <div class="legal-meta-item">
+                <i class="fas fa-calendar-check" aria-hidden="true"></i>
+                <div><strong>Tanggal berlaku:</strong> 21 April 2026</div>
+            </div>
+            <div class="legal-meta-item">
+                <i class="fas fa-envelope" aria-hidden="true"></i>
+                <div><strong>Kontak:</strong> <a href="mailto:admin@rqdf.co.id">admin@rqdf.co.id</a></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="legal-section">
+        <h2>1. Pendahuluan</h2>
+        <p>
+            RQDF Mobile adalah aplikasi yang digunakan untuk mendukung layanan administrasi,
+            akademik, komunikasi, dan informasi pendidikan di lingkungan Pesantren Rumah Qur'an
+            Darul Falah Cianjur. Aplikasi ini dikembangkan dan didukung secara teknis oleh Nizamiya.
+        </p>
+    </section>
+
+    <section class="legal-section">
+        <h2>2. Cara Mengajukan Permintaan Penghapusan Data</h2>
+        <p>
+            Pengguna dapat mengajukan permintaan penghapusan atau penonaktifan akun dengan
+            menghubungi pengelola aplikasi melalui email resmi.
+        </p>
+        <div class="legal-callout">
+            <div><strong>Email:</strong> <a href="mailto:admin@rqdf.co.id">admin@rqdf.co.id</a></div>
+            <div><strong>Subjek email:</strong> Permintaan Penghapusan Data RQDF Mobile</div>
+        </div>
+        <p>Dalam email permintaan, mohon sertakan informasi berikut:</p>
+        <ol>
+            <li>Nama lengkap pengguna.</li>
+            <li>Username, email, atau nomor telepon yang terdaftar.</li>
+            <li>Role pengguna, misalnya guru, wali murid, siswa/santri, staf, atau admin.</li>
+            <li>Nama siswa/santri, jika permintaan terkait akun siswa/santri atau wali murid.</li>
+            <li>Alasan permintaan penghapusan data, jika ada.</li>
+        </ol>
+        <p>
+            Setelah permintaan diterima, pengelola akan melakukan verifikasi terlebih dahulu untuk
+            memastikan bahwa permintaan diajukan oleh pihak yang berhak.
+        </p>
+    </section>
+
+    <section class="legal-section">
+        <h2>3. Data yang Dapat Dihapus atau Dinonaktifkan</h2>
+        <p>
+            Bergantung pada jenis akun dan hasil verifikasi, data berikut dapat dihapus,
+            dinonaktifkan, atau tidak lagi digunakan dalam aplikasi:
+        </p>
+        <ol>
+            <li>Akun login pengguna.</li>
+            <li>Informasi profil pengguna.</li>
+            <li>Token perangkat untuk notifikasi.</li>
+            <li>Data sesi login atau autentikasi.</li>
+            <li>Data aktivitas aplikasi yang tidak lagi diperlukan.</li>
+            <li>Data teknis yang tidak bersifat wajib untuk disimpan.</li>
+        </ol>
+        <p>
+            Jika akun tidak dapat dihapus sepenuhnya karena alasan administrasi atau arsip lembaga,
+            akun dapat dinonaktifkan agar tidak dapat digunakan untuk login ke aplikasi.
+        </p>
+    </section>
+
+    <section class="legal-section">
+        <h2>4. Data yang Mungkin Tetap Disimpan</h2>
+        <p>
+            Beberapa data mungkin tetap disimpan apabila diperlukan untuk kepentingan administrasi
+            pendidikan, arsip akademik, audit, keamanan, kewajiban hukum, atau kebijakan lembaga.
+        </p>
+        <p>Data yang mungkin tetap disimpan meliputi:</p>
+        <ol>
+            <li>Data akademik siswa/santri.</li>
+            <li>Data kehadiran.</li>
+            <li>Data administrasi sekolah atau pesantren.</li>
+            <li>Data wali murid yang terkait dengan arsip pendidikan.</li>
+            <li>Data guru atau staf yang diperlukan untuk administrasi lembaga.</li>
+            <li>Catatan audit dan keamanan sistem.</li>
+            <li>Data yang wajib disimpan berdasarkan ketentuan hukum, regulasi, atau kebijakan internal lembaga.</li>
+        </ol>
+        <p>
+            Data yang tetap disimpan hanya digunakan untuk tujuan administrasi, arsip, keamanan,
+            audit, atau kewajiban hukum yang relevan.
+        </p>
+    </section>
+
+    <section class="legal-section">
+        <h2>5. Waktu Pemrosesan Permintaan</h2>
+        <p>
+            Permintaan penghapusan atau penonaktifan akun akan diproses dalam waktu yang wajar
+            setelah verifikasi selesai dilakukan.
+        </p>
+        <p>
+            Waktu pemrosesan dapat berbeda-beda tergantung pada jenis data, status akun,
+            kebutuhan verifikasi, dan kewajiban administrasi yang berlaku.
+        </p>
+    </section>
+
+    <section class="legal-section">
+        <h2>6. Catatan Penting</h2>
+        <p>Saat ini, pengguna belum dapat menghapus akun secara langsung dari dalam aplikasi RQDF Mobile.</p>
+        <p>
+            Permintaan penghapusan data harus diajukan melalui email resmi agar pengelola dapat
+            melakukan verifikasi dan mencegah penghapusan data oleh pihak yang tidak berwenang.
+        </p>
+        <p>
+            Untuk akun siswa/santri dan wali murid, permintaan penghapusan data dapat memerlukan
+            verifikasi tambahan karena data tersebut dapat berkaitan dengan arsip pendidikan dan
+            administrasi lembaga.
+        </p>
+        <p>
+            Penghapusan atau penonaktifan akun dapat menyebabkan pengguna tidak lagi dapat mengakses
+            layanan RQDF Mobile.
+        </p>
+    </section>
+
+    <section class="legal-section">
+        <h2>7. Kontak</h2>
+        <p>Untuk mengajukan permintaan penghapusan akun atau data, silakan hubungi:</p>
+        <div class="legal-contact">
+            <div><strong>Pengelola layanan dan data:</strong> Pesantren Rumah Qur'an Darul Falah Cianjur</div>
+            <div><strong>Pengembang dan dukungan teknis:</strong> Nizamiya</div>
+            <div><strong>Email:</strong> <a href="mailto:admin@rqdf.co.id">admin@rqdf.co.id</a></div>
+            <div><strong>Website:</strong> <a href="https://app.rqdf.co.id" rel="noopener">https://app.rqdf.co.id</a></div>
+        </div>
+    </section>
+</main>
+{% endblock %}
