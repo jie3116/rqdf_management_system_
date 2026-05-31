@@ -1431,10 +1431,17 @@ def register_teacher_routes(api_bp):
             if not isinstance(row, dict):
                 continue
             surah = (row.get("surah") or "").strip()
-            ayat = _safe_parse_int(row.get("ayat"), default=0)
-            if not surah or ayat <= 0:
+            ayat_start = _safe_parse_int(row.get("ayat_start") or row.get("ayat"), default=0)
+            ayat_end = _safe_parse_int(row.get("ayat_end") or row.get("ayat"), default=0)
+            if not surah or ayat_start <= 0 or ayat_end <= 0 or ayat_end < ayat_start:
                 continue
-            normalized_questions.append({"surah": surah, "ayat": ayat, "score": 100})
+            normalized_questions.append({
+                "surah": surah,
+                "ayat": ayat_start,
+                "ayat_start": ayat_start,
+                "ayat_end": ayat_end,
+                "score": 100,
+            })
 
         if not normalized_questions:
             return api_error("invalid_request", "Pertanyaan evaluasi belum valid.", 400)
@@ -1466,8 +1473,8 @@ def register_teacher_routes(api_bp):
             question_details=(payload.get("question_details") or "").strip() or None,
             question_items=json.dumps(normalized_questions),
             surah=summary_surah,
-            ayat_start=first_question["ayat"],
-            ayat_end=last_question["ayat"],
+            ayat_start=first_question["ayat_start"],
+            ayat_end=last_question["ayat_end"],
             makhraj_errors=makhraj_errors,
             tajwid_errors=tajwid_errors,
             harakat_errors=harakat_errors,

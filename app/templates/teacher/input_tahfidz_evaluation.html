@@ -78,7 +78,7 @@
                                 <div class="d-flex justify-content-between align-items-center mb-3">
                                     <div>
                                         <h6 class="fw-bold mb-1">Cakupan Uji</h6>
-                                        <small class="text-muted">Setiap item menyimpan surah dan ayat yang diuji.</small>
+                                        <small class="text-muted">Setiap item menyimpan surah dan rentang ayat yang diuji.</small>
                                     </div>
                                     <button type="button" id="add-question-btn" class="btn btn-outline-warning btn-sm">
                                         <i class="fas fa-plus me-1"></i>Tambah Item
@@ -286,7 +286,8 @@
 
         function bindQuestionCard(card) {
             const removeButton = card.querySelector("[data-remove-question]");
-            const ayatInput = card.querySelector('input[name="question_ayat[]"]');
+            const ayatStartInput = card.querySelector('input[name="question_ayat_start[]"]');
+            const ayatEndInput = card.querySelector('input[name="question_ayat_end[]"]');
             const surahSelect = card.querySelector('select[name="question_surah[]"]');
             const maxAyatInfo = card.querySelector("[data-max-ayat]");
 
@@ -296,8 +297,25 @@
                 maxAyatInfo.textContent = maxAyat
                     ? `Jumlah ayat surah terpilih: ${maxAyat} ayat`
                     : "Pilih surah untuk melihat jumlah ayat.";
-                if (ayatInput.value && maxAyat && parseInt(ayatInput.value, 10) > parseInt(maxAyat, 10)) {
-                    ayatInput.value = maxAyat;
+                [ayatStartInput, ayatEndInput].forEach((input) => {
+                    if (!input) {
+                        return;
+                    }
+                    if (maxAyat) {
+                        input.setAttribute("max", maxAyat);
+                    } else {
+                        input.removeAttribute("max");
+                    }
+                    if (input.value && maxAyat && parseInt(input.value, 10) > parseInt(maxAyat, 10)) {
+                        input.value = maxAyat;
+                    }
+                });
+                if (ayatStartInput.value && ayatEndInput.value) {
+                    const startValue = parseInt(ayatStartInput.value, 10);
+                    const endValue = parseInt(ayatEndInput.value, 10);
+                    if (!Number.isNaN(startValue) && !Number.isNaN(endValue) && endValue < startValue) {
+                        ayatEndInput.value = ayatStartInput.value;
+                    }
                 }
             }
 
@@ -311,6 +329,8 @@
             });
 
             surahSelect.addEventListener("change", updateMaxAyat);
+            ayatStartInput.addEventListener("input", updateMaxAyat);
+            ayatEndInput.addEventListener("input", updateMaxAyat);
             updateMaxAyat();
         }
 
@@ -333,8 +353,12 @@
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <label class="small text-muted fw-bold">Ayat</label>
-                        <input type="number" name="question_ayat[]" class="form-control" min="1" required>
+                        <label class="small text-muted fw-bold">Ayat awal</label>
+                        <input type="number" name="question_ayat_start[]" class="form-control" min="1" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small text-muted fw-bold">Ayat akhir</label>
+                        <input type="number" name="question_ayat_end[]" class="form-control" min="1" required>
                     </div>
                     <div class="col-12">
                         <small class="text-muted" data-max-ayat>Pilih surah untuk melihat jumlah ayat.</small>

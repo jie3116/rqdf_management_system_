@@ -322,11 +322,16 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
               .map(
                 (item) => {
                   'surah': item.surahController.text.trim(),
-                  'ayat': item.ayatController.text.trim(),
-                  'score': item.scoreController.text.trim(),
+                  'ayat_start': item.ayatStartController.text.trim(),
+                  'ayat_end': item.ayatEndController.text.trim(),
+                  'score': '100',
                 },
               )
               .toList(),
+          'tajwid_errors': _counters['tajwid_errors'],
+          'makhraj_errors': _counters['makhraj_errors'],
+          'harakat_errors': _counters['harakat_errors'],
+          'tahfidz_errors': _counters['tahfidz_errors'],
           'notes': _notesController.text.trim(),
         };
       case 'input-behavior':
@@ -618,7 +623,7 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
       _moduleHeaderCard(
         title: 'Input Evaluasi Tahfidz',
         subtitle:
-            'Tambahkan soal satu per satu. Nilai akhir dihitung dari rata-rata nilai setiap soal.',
+            'Tambahkan item uji satu per satu. Nilai akhir dihitung dari jumlah item dan total kesalahan.',
         icon: Icons.fact_check_outlined,
       ),
       const SizedBox(height: 18),
@@ -653,7 +658,7 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
         children: [
           Expanded(
             child: Text(
-              'Daftar Pertanyaan (${_evaluationQuestions.length})',
+                'Daftar Item Uji (${_evaluationQuestions.length})',
               style: const TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
@@ -663,7 +668,7 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
           TextButton.icon(
             onPressed: () => setState(_addEvaluationQuestion),
             icon: const Icon(Icons.add_circle_outline),
-            label: const Text('Tambah Pertanyaan'),
+            label: const Text('Tambah Item'),
           ),
         ],
       ),
@@ -677,7 +682,7 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
             const SizedBox(width: 12),
             const Expanded(
               child: Text(
-                'Nilai akhir otomatis dihitung dari rata-rata semua soal.',
+                'Nilai akhir = ((jumlah item x 100) - (4 x total kesalahan)) / jumlah item.',
                 style: TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 13,
@@ -694,6 +699,9 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
           ],
         ),
       ),
+      const SizedBox(height: 12),
+      _counterGroup(
+          const ['tajwid_errors', 'makhraj_errors', 'harakat_errors', 'tahfidz_errors']),
       const SizedBox(height: 12),
       _text(_notesController, 'Catatan'),
       const SizedBox(height: 12),
@@ -730,8 +738,8 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
             : '';
         final questionText =
             previewLines.isEmpty ? '' : '\n$previewLines$moreCount';
-        return '${JsonHelper.asString(row['period_label'])}\n$questionCount pertanyaan$detailText$questionText';
-      }, (row) => 'Rata-rata ${JsonHelper.asString(row['score'])}'),
+        return '${JsonHelper.asString(row['period_label'])}\n$questionCount item$detailText$questionText';
+      }, (row) => 'Nilai ${JsonHelper.asString(row['score'])}'),
     ];
   }
 
@@ -739,7 +747,7 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
     if (_evaluationQuestions.isEmpty) {
       return [
         const Text(
-          'Tambahkan minimal satu pertanyaan evaluasi.',
+          'Tambahkan minimal satu item evaluasi.',
           style: TextStyle(color: AppColors.textSecondary),
         ),
       ];
@@ -756,7 +764,7 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Soal ${index + 1}',
+                      'Item ${index + 1}',
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
@@ -785,8 +793,8 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
                 children: [
                   Expanded(
                     child: _text(
-                      item.ayatController,
-                      'Ayat',
+                      item.ayatStartController,
+                      'Ayat awal',
                       number: true,
                       onChanged: (_) => setState(() {}),
                     ),
@@ -794,8 +802,8 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: _text(
-                      item.scoreController,
-                      'Nilai',
+                      item.ayatEndController,
+                      'Ayat akhir',
                       number: true,
                       onChanged: (_) => setState(() {}),
                     ),
@@ -1800,16 +1808,16 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
   }
 
   String? _evaluationAverageScore() {
-    final values = _evaluationQuestions
-        .map((item) => double.tryParse(item.scoreController.text.trim()))
-        .whereType<double>()
-        .toList();
-    if (values.isEmpty) {
+    final questionCount = _evaluationQuestions.length;
+    if (questionCount <= 0) {
       return null;
     }
-    final average =
-        values.reduce((left, right) => left + right) / values.length;
-    return average.toStringAsFixed(2);
+    final totalErrors = (_counters['tajwid_errors'] ?? 0) +
+        (_counters['makhraj_errors'] ?? 0) +
+        (_counters['harakat_errors'] ?? 0) +
+        (_counters['tahfidz_errors'] ?? 0);
+    final score = ((questionCount * 100) - (totalErrors * 4)) / questionCount;
+    return score < 0 ? '0.00' : score.toStringAsFixed(2);
   }
 
   List<Widget> _cards(
@@ -2113,17 +2121,17 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
 class _EvaluationQuestionInput {
   _EvaluationQuestionInput()
       : surahController = TextEditingController(),
-        ayatController = TextEditingController(),
-        scoreController = TextEditingController();
+        ayatStartController = TextEditingController(),
+        ayatEndController = TextEditingController();
 
   final TextEditingController surahController;
-  final TextEditingController ayatController;
-  final TextEditingController scoreController;
+  final TextEditingController ayatStartController;
+  final TextEditingController ayatEndController;
 
   void dispose() {
     surahController.dispose();
-    ayatController.dispose();
-    scoreController.dispose();
+    ayatStartController.dispose();
+    ayatEndController.dispose();
   }
 }
 

@@ -2330,24 +2330,32 @@ def input_tahfidz_evaluation():
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         question_surahs = request.form.getlist('question_surah[]')
-        question_ayats = request.form.getlist('question_ayat[]')
-        if len(question_surahs) != len(question_ayats):
-            flash("Setiap item uji harus memiliki surah dan ayat.", "danger")
+        question_ayat_starts = request.form.getlist('question_ayat_start[]')
+        question_ayat_ends = request.form.getlist('question_ayat_end[]')
+        legacy_question_ayats = request.form.getlist('question_ayat[]')
+        if legacy_question_ayats and not question_ayat_starts and not question_ayat_ends:
+            question_ayat_starts = legacy_question_ayats
+            question_ayat_ends = legacy_question_ayats
+        if len(question_surahs) != len(question_ayat_starts) or len(question_surahs) != len(question_ayat_ends):
+            flash("Setiap item uji harus memiliki surah, ayat awal, dan ayat akhir.", "danger")
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
         normalized_questions = []
         try:
-            for surah, ayat_raw in zip(question_surahs, question_ayats):
+            for surah, ayat_start_raw, ayat_end_raw in zip(question_surahs, question_ayat_starts, question_ayat_ends):
                 surah = (surah or '').strip()
-                ayat = int(ayat_raw or 0)
-                if not surah or ayat < 1:
+                ayat_start = int(ayat_start_raw or 0)
+                ayat_end = int(ayat_end_raw or 0)
+                if not surah or ayat_start < 1 or ayat_end < 1 or ayat_end < ayat_start:
                     raise ValueError
                 normalized_questions.append({
                     'surah': surah,
-                    'ayat': ayat,
+                    'ayat': ayat_start,
+                    'ayat_start': ayat_start,
+                    'ayat_end': ayat_end,
                     'score': 100,
                 })
         except ValueError:
-            flash("Setiap item uji harus memiliki surah dan ayat yang valid.", "danger")
+            flash("Setiap item uji harus memiliki rentang ayat yang valid.", "danger")
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         if not normalized_questions:
@@ -2375,8 +2383,8 @@ def input_tahfidz_evaluation():
             question_details=question_details,
             question_items=json.dumps(normalized_questions),
             surah=summary_surah,
-            ayat_start=first_question['ayat'],
-            ayat_end=last_question['ayat'],
+            ayat_start=first_question['ayat_start'],
+            ayat_end=last_question['ayat_end'],
             makhraj_errors=makhraj_errors,
             tajwid_errors=tajwid_errors,
             harakat_errors=harakat_errors,
