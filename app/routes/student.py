@@ -3,6 +3,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from datetime import datetime
+from collections import defaultdict
 from sqlalchemy.orm import joinedload  # Wajib diimport untuk optimasi N+1
 from app import db
 
@@ -14,6 +15,7 @@ from app.models import (
 )
 from app.decorators import role_required
 from app.services.formal_service import get_student_formal_classroom
+from app.services.grade_formula_service import calculate_weighted_final
 from app.services.online_meeting_service import build_join_payload
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
 from app.utils.tenant import resolve_tenant_id, scoped_classrooms_query
@@ -318,20 +320,37 @@ def dashboard():
         by_subject = {}
         for g in grades:
             key = g.subject.name if g.subject else '-'
-            by_subject.setdefault(key, {'subject': key, 'tugas_uh': [], 'uts': [], 'uas': []})
-            if g.type.name in ('TUGAS', 'UH'):
-                by_subject[key]['tugas_uh'].append(g.score)
-            elif g.type.name == 'UTS':
-                by_subject[key]['uts'].append(g.score)
-            elif g.type.name == 'UAS':
-                by_subject[key]['uas'].append(g.score)
+            by_subject.setdefault(key, {
+                'subject': key,
+                'subject_id': g.subject_id,
+                'academic_year_id': g.academic_year_id,
+                'scores': defaultdict(list),
+            })
+            if g.type:
+                by_subject[key]['scores'][g.type.name].append(g.score)
 
+        tenant_id = resolve_tenant_id(current_user)
         for item in by_subject.values():
-            tugas = sum(item['tugas_uh']) / len(item['tugas_uh']) if item['tugas_uh'] else 0
-            uts = sum(item['uts']) / len(item['uts']) if item['uts'] else 0
-            uas = sum(item['uas']) / len(item['uas']) if item['uas'] else 0
-            final = round((tugas * 0.3) + (uts * 0.3) + (uas * 0.4), 2)
-            academic_recap.append({'subject': item['subject'], 'tugas_uh': round(tugas, 2), 'uts': round(uts, 2), 'uas': round(uas, 2),'final': final})
+            type_averages = {}
+            for grade_type, scores in item['scores'].items():
+                if scores:
+                    type_averages[grade_type] = round(sum(scores) / len(scores), 2)
+            final = calculate_weighted_final(
+                type_averages,
+                tenant_id=tenant_id,
+                academic_year_id=item['academic_year_id'],
+                subject_id=item['subject_id'],
+                student_id=student.id,
+                class_id=student.current_class_id,
+            )
+            academic_recap.append({
+                'subject': item['subject'],
+                'tugas': type_averages.get('TUGAS', '-'),
+                'uh': type_averages.get('UH', '-'),
+                'uts': type_averages.get('UTS', '-'),
+                'uas': type_averages.get('UAS', '-'),
+                'final': final,
+            })
 
     # --- BAGIAN 4: CATATAN PERILAKU ---
     # [OPTIMASI DYNAMIC] Cukup panggil student.violations

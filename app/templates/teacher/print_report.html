@@ -104,7 +104,12 @@
                         <td class="fw-bold px-2">{{ item.subject }}</td>
                         <td class="text-center">{{ item.kkm }}</td>
 
-                        <td class="text-center fw-bold fs-6">{{ item.final }}</td>
+                        <td class="text-center fw-bold fs-6">
+                            {{ item.final }}
+                            {% if item.is_adjusted %}
+                            <div class="small fw-normal">Adj. resmi: {{ item.adjustment_reference }}</div>
+                            {% endif %}
+                        </td>
                         <td class="text-center fw-bold">{{ item.predikat }}</td>
 
                         <td class="px-2 small fst-italic" style="font-size: 11pt;">

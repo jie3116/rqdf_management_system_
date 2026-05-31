@@ -29,10 +29,12 @@ from app.models import (
     Teacher,
     UserRole,
 )
+from app.services.grade_formula_service import calculate_weighted_final
 from app.routes.teacher import (
     _behavior_indicator_items,
     _behavior_matrix_for_student,
     _build_participant_rows,
+    _calculate_tahfidz_evaluation_score,
     _classroom_visible_for_teacher,
     _collect_teacher_assignment_summary,
     _get_class_participants,
@@ -44,6 +46,8 @@ from app.routes.teacher import (
     _teacher_can_access_attendance_class,
     _teacher_can_access_class,
     _teacher_can_access_tahfidz_class,
+    _normalize_tahfidz_evaluation_type,
+    TAHFIDZ_EVALUATION_TYPES,
 )
 from app.utils.announcements import get_announcements_for_dashboard
 from app.utils.push_notifications import notify_announcement_created
@@ -114,19 +118,15 @@ def _bool_value(raw_value):
     return str(raw_value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _calculate_weighted_final(type_averages):
-    weights = {"TUGAS": 0.3, "UH": 0.2, "UTS": 0.25, "UAS": 0.25}
-    weighted = 0.0
-    total_weight = 0.0
-    for grade_type, average in (type_averages or {}).items():
-        weight = float(weights.get(grade_type, 0))
-        if weight <= 0:
-            continue
-        weighted += float(average) * weight
-        total_weight += weight
-    if total_weight <= 0:
-        return 0
-    return round(weighted / total_weight, 2)
+def _calculate_weighted_final(type_averages, tenant_id=None, academic_year_id=None, subject_id=None, student_id=None, class_id=None):
+    return calculate_weighted_final(
+        type_averages,
+        tenant_id=tenant_id,
+        academic_year_id=academic_year_id,
+        subject_id=subject_id,
+        student_id=student_id,
+        class_id=class_id,
+    )
 
 
 def _participant_name_from_attendance(record):
@@ -244,6 +244,8 @@ def _recent_evaluation_payload(rows):
             "period_type": row.period_type.name if row.period_type else "-",
             "period_type_label": row.period_type.value if row.period_type else "-",
             "period_label": row.period_label or "-",
+            "evaluation_type": row.evaluation_type or "SAMBUNG_AYAT",
+            "evaluation_type_label": TAHFIDZ_EVALUATION_TYPES.get(row.evaluation_type or "SAMBUNG_AYAT", "-"),
             "question_count": row.question_count or 0,
             "question_details": row.question_details or "-",
             "question_items": json.loads(row.question_items or "[]") if row.question_items else [],
@@ -263,15 +265,25 @@ def _grade_subject_name(row):
     return "-"
 
 
-def _academic_report_payload(rows, include_history=False, history_limit=120):
-    grouped = defaultdict(lambda: defaultdict(list))
+def _academic_report_payload(rows, include_history=False, history_limit=120, tenant_id=None, student_id=None, class_id=None):
+    grouped = {}
     summary_rows = []
     history_rows = []
 
     for row in rows or []:
         subject_name = _grade_subject_name(row)
+        subject_key = row.subject_id if row.subject_id is not None else f"majlis:{row.majlis_subject_id or subject_name}"
+        grouped.setdefault(
+            subject_key,
+            {
+                "subject_name": subject_name,
+                "subject_id": row.subject_id,
+                "academic_year_id": row.academic_year_id,
+                "scores": defaultdict(list),
+            },
+        )
         if row.type:
-            grouped[subject_name][row.type.name].append(float(row.score or 0))
+            grouped[subject_key]["scores"][row.type.name].append(float(row.score or 0))
 
         if include_history and len(history_rows) < max(1, history_limit):
             history_rows.append(
@@ -287,19 +299,26 @@ def _academic_report_payload(rows, include_history=False, history_limit=120):
                 }
             )
 
-    for subject_name, type_map in grouped.items():
+    for subject_data in grouped.values():
         type_averages = {}
         type_counts = {}
-        for type_name, scores in type_map.items():
+        for type_name, scores in subject_data["scores"].items():
             if scores:
                 type_averages[type_name] = round(sum(scores) / len(scores), 2)
                 type_counts[type_name] = len(scores)
         summary_rows.append(
             {
-                "subject_name": subject_name,
+                "subject_name": subject_data["subject_name"],
                 "type_averages": type_averages,
                 "type_counts": type_counts,
-                "final_score": _calculate_weighted_final(type_averages),
+                "final_score": _calculate_weighted_final(
+                    type_averages,
+                    tenant_id=tenant_id,
+                    academic_year_id=subject_data["academic_year_id"],
+                    subject_id=subject_data["subject_id"],
+                    student_id=student_id,
+                    class_id=class_id,
+                ),
             }
         )
 
@@ -1368,6 +1387,10 @@ def register_teacher_routes(api_bp):
                 "selected_class": _class_payload(selected_class) if selected_class else {"id": 0, "name": "-"},
                 "participants": _serialize_participants(participants),
                 "evaluation_periods": [{"key": item.name, "label": item.value} for item in EvaluationPeriod],
+                "evaluation_types": [
+                    {"key": key, "label": label}
+                    for key, label in TAHFIDZ_EVALUATION_TYPES.items()
+                ],
                 "recent_records": recent_records,
             }
         )
@@ -1395,6 +1418,10 @@ def register_teacher_routes(api_bp):
         if period_type not in {item.name for item in EvaluationPeriod}:
             return api_error("invalid_request", "Periode evaluasi tidak valid.", 400)
 
+        evaluation_type = _normalize_tahfidz_evaluation_type(payload.get("evaluation_type"))
+        if not evaluation_type:
+            return api_error("invalid_request", "Jenis evaluasi tidak valid.", 400)
+
         raw_questions = payload.get("questions") or []
         if not isinstance(raw_questions, list) or not raw_questions:
             return api_error("invalid_request", "Data pertanyaan evaluasi wajib diisi.", 400)
@@ -1405,19 +1432,20 @@ def register_teacher_routes(api_bp):
                 continue
             surah = (row.get("surah") or "").strip()
             ayat = _safe_parse_int(row.get("ayat"), default=0)
-            score = _safe_parse_float(row.get("score"), default=-1)
-            if not surah or ayat <= 0 or score < 0:
+            if not surah or ayat <= 0:
                 continue
-            normalized_questions.append({"surah": surah, "ayat": ayat, "score": score})
+            normalized_questions.append({"surah": surah, "ayat": ayat, "score": 100})
 
         if not normalized_questions:
             return api_error("invalid_request", "Pertanyaan evaluasi belum valid.", 400)
 
         question_count = len(normalized_questions)
-        score = round(
-            sum(float(item["score"]) for item in normalized_questions) / float(question_count),
-            2,
-        )
+        makhraj_errors = max(0, _safe_parse_int(payload.get("makhraj_errors"), default=0))
+        tajwid_errors = max(0, _safe_parse_int(payload.get("tajwid_errors"), default=0))
+        harakat_errors = max(0, _safe_parse_int(payload.get("harakat_errors"), default=0))
+        tahfidz_errors = max(0, _safe_parse_int(payload.get("tahfidz_errors"), default=0))
+        total_errors = makhraj_errors + tajwid_errors + harakat_errors + tahfidz_errors
+        score = _calculate_tahfidz_evaluation_score(question_count, total_errors)
         first_question = normalized_questions[0]
         last_question = normalized_questions[-1]
         summary_surah = (
@@ -1433,16 +1461,17 @@ def register_teacher_routes(api_bp):
             teacher_id=teacher.id,
             period_type=EvaluationPeriod[period_type],
             period_label=(payload.get("period_label") or "").strip() or "-",
+            evaluation_type=evaluation_type,
             question_count=question_count,
             question_details=(payload.get("question_details") or "").strip() or None,
             question_items=json.dumps(normalized_questions),
             surah=summary_surah,
             ayat_start=first_question["ayat"],
             ayat_end=last_question["ayat"],
-            makhraj_errors=max(0, _safe_parse_int(payload.get("makhraj_errors"), default=0)),
-            tajwid_errors=max(0, _safe_parse_int(payload.get("tajwid_errors"), default=0)),
-            harakat_errors=max(0, _safe_parse_int(payload.get("harakat_errors"), default=0)),
-            tahfidz_errors=max(0, _safe_parse_int(payload.get("tahfidz_errors"), default=0)),
+            makhraj_errors=makhraj_errors,
+            tajwid_errors=tajwid_errors,
+            harakat_errors=harakat_errors,
+            tahfidz_errors=tahfidz_errors,
             score=score,
             notes=(payload.get("notes") or "").strip() or None,
             date=utc_now_naive(),
@@ -1671,7 +1700,14 @@ def register_teacher_routes(api_bp):
                         {
                             "subject_name": subject_name,
                             "type_averages": type_averages,
-                            "final_score": _calculate_weighted_final(type_averages),
+                            "final_score": _calculate_weighted_final(
+                                type_averages,
+                                tenant_id=user.tenant_id,
+                                student_id=selected_participant["student_id"]
+                                if selected_participant["participant_type"] == ParticipantType.STUDENT
+                                else None,
+                                class_id=selected_class.id if selected_class else None,
+                            ),
                         }
                     )
                 academic_summary_rows.sort(key=lambda row: (row.get("subject_name") or "").lower())
@@ -1914,7 +1950,13 @@ def register_teacher_routes(api_bp):
 
         students_payload = []
         for row in students:
-            academic_report = _academic_report_payload(grade_rows_by_student.get(row.id, []), include_history=False)
+            academic_report = _academic_report_payload(
+                grade_rows_by_student.get(row.id, []),
+                include_history=False,
+                tenant_id=user.tenant_id,
+                student_id=row.id,
+                class_id=selected_class.id,
+            )
             attendance_report = _attendance_report_payload(attendance_rows_by_student.get(row.id, []), include_history=False)
             behavior_summary = _behavior_summary_from_indicator_rows(behavior_rows_by_student.get(row.id, []))
             students_payload.append(
@@ -1948,6 +1990,9 @@ def register_teacher_routes(api_bp):
                 selected_grade_rows,
                 include_history=True,
                 history_limit=history_limit,
+                tenant_id=user.tenant_id,
+                student_id=selected_student.id,
+                class_id=selected_class.id,
             )
             attendance_report = _attendance_report_payload(
                 selected_attendance_rows,

@@ -363,13 +363,13 @@
                     <div class="table-responsive">
                         <table class="table table-bordered table-hover js-row-paginate" id="dataTableNilai">
                             <thead class="bg-primary text-white">
-                                <tr><th>Mata Pelajaran</th><th>Tugas/UH (30%)</th><th>UTS (30%)</th><th>UAS (40%)</th><th>Nilai Final</th></tr>
+                                <tr><th>Mata Pelajaran</th><th>Tugas</th><th>UH</th><th>UTS</th><th>UAS</th><th>Nilai Final</th></tr>
                             </thead>
                             <tbody>
                                 {% for r in academic_recap %}
-                                <tr><td>{{ r.subject }}</td><td>{{ r.tugas_uh }}</td><td>{{ r.uts }}</td><td>{{ r.uas }}</td><td class="fw-bold">{{ r.final }}</td></tr>
+                                <tr><td>{{ r.subject }}</td><td>{{ r.tugas }}</td><td>{{ r.uh }}</td><td>{{ r.uts }}</td><td>{{ r.uas }}</td><td class="fw-bold">{{ r.final }}</td></tr>
                                 {% else %}
-                                <tr><td colspan="5" class="text-center">Belum ada nilai akademik.</td></tr>
+                                <tr><td colspan="6" class="text-center">Belum ada nilai akademik.</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>

@@ -1760,8 +1760,6 @@ class _TeacherModuleScreenState extends State<TeacherModuleScreen> {
         return const [
           {'key': 'Tengah Semester 1', 'label': 'Tengah Semester 1'},
           {'key': 'Tengah Semester 2', 'label': 'Tengah Semester 2'},
-          {'key': 'Tengah Semester 3', 'label': 'Tengah Semester 3'},
-          {'key': 'Tengah Semester 4', 'label': 'Tengah Semester 4'},
         ];
       case 'SEMESTER':
         return const [

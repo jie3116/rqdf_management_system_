@@ -148,6 +148,7 @@
                     <li><a href="{{ url_for('admin.manage_subjects') }}"><i class="fas fa-book me-2"></i> Mata Pelajaran</a></li>
                     <li><a href="{{ url_for('admin.manage_classes') }}"><i class="fas fa-school me-2"></i> Data Kelas</a></li>
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.manage_schedules') }}"><i class="fas fa-fw fa-clock me-2"></i> Jadwal Pelajaran</a></li>
+                    <li><a href="{{ url_for('admin.manage_report_score_adjustments') }}"><i class="fas fa-file-signature me-2"></i> Adjustment Raport</a></li>
                     {% endif %}
 
                     {% if module_school_enabled or module_rumah_quran_enabled %}

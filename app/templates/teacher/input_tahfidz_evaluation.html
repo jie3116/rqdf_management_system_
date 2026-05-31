@@ -49,6 +49,15 @@
                             </select>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="fw-bold small">Jenis Evaluasi</label>
+                            <select name="evaluation_type" id="evaluation_type" class="form-select" required>
+                                {% for key, label in evaluation_types.items() %}
+                                <option value="{{ key }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="fw-bold small">Periode Evaluasi</label>
@@ -68,11 +77,11 @@
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-center mb-3">
                                     <div>
-                                        <h6 class="fw-bold mb-1">Pertanyaan Uji</h6>
-                                        <small class="text-muted">Setiap soal menyimpan surah, ayat yang diuji, dan nilai per soal.</small>
+                                        <h6 class="fw-bold mb-1">Cakupan Uji</h6>
+                                        <small class="text-muted">Setiap item menyimpan surah dan ayat yang diuji.</small>
                                     </div>
                                     <button type="button" id="add-question-btn" class="btn btn-outline-warning btn-sm">
-                                        <i class="fas fa-plus me-1"></i>Tambah Pertanyaan
+                                        <i class="fas fa-plus me-1"></i>Tambah Item
                                     </button>
                                 </div>
 
@@ -82,7 +91,7 @@
                                     <div class="row align-items-center">
                                         <div class="col-md-8">
                                             <div class="fw-bold">Nilai akhir</div>
-                                            <small class="text-muted">Nilai akhir = rata-rata nilai semua soal - (4 x total kesalahan).</small>
+                                            <small class="text-muted">Nilai akhir = ((jumlah soal x 100) - (4 x total kesalahan)) / jumlah soal.</small>
                                         </div>
                                         <div class="col-md-4 mt-2 mt-md-0">
                                             <input type="text" id="score_preview" class="form-control text-center fw-bold" value="0.00" readonly>
@@ -118,7 +127,7 @@
 
                         <div class="mb-3">
                             <label class="small text-muted">Keterangan materi uji</label>
-                            <textarea name="question_details" class="form-control" rows="2" placeholder="Contoh: Sambung ayat, tebak lanjutan ayat, atau baca acak."></textarea>
+                            <textarea name="question_details" class="form-control" rows="2" placeholder="Contoh: Simak hafalan juz 30, sambung ayat, atau baca acak."></textarea>
                         </div>
 
                         <div class="mb-3">
@@ -137,7 +146,7 @@
         <div class="col-lg-4">
             <div class="alert alert-info">
                 <i class="fas fa-info-circle me-2"></i>
-                Tambahkan soal satu per satu sesuai ayat yang diuji. Nilai akhir akan dihitung otomatis dari rata-rata nilai seluruh pertanyaan.
+                Tambahkan soal satu per satu sesuai ayat yang diuji. Setiap soal bernilai awal 100 dan berkurang 4 untuk setiap kesalahan.
             </div>
         </div>
     </div>
@@ -197,7 +206,7 @@
             "Juli", "Agustus", "September", "Oktober", "November", "Desember"
         ],
         TENGAH_SEMESTER: [
-            "Tengah Semester 1", "Tengah Semester 2", "Tengah Semester 3", "Tengah Semester 4"
+            "Tengah Semester 1", "Tengah Semester 2"
         ],
         SEMESTER: [
             "Semester 1", "Semester 2"
@@ -256,32 +265,27 @@
             questionList.querySelectorAll("[data-question-card]").forEach((card, index) => {
                 const title = card.querySelector("[data-question-title]");
                 if (title) {
-                    title.textContent = `Soal ${index + 1}`;
+                    title.textContent = `Item ${index + 1}`;
                 }
             });
         }
 
         function updateScorePreview() {
-            const values = Array.from(document.querySelectorAll('input[name="question_score[]"]'))
-                .map((input) => parseFloat(input.value || ""))
-                .filter((value) => !Number.isNaN(value));
-            if (!values.length) {
+            const questionCount = document.querySelectorAll("[data-question-card]").length;
+            if (!questionCount) {
                 scorePreview.value = "0.00";
                 return;
             }
-            const total = values.reduce((sum, value) => sum + value, 0);
-            const averageScore = total / values.length;
             const totalErrors = errorInputs.reduce((sum, input) => {
                 const value = parseInt(input.value || "0", 10);
                 return sum + (Number.isNaN(value) ? 0 : Math.max(0, value));
             }, 0);
-            const finalScore = Math.max(0, averageScore - (totalErrors * 4));
+            const finalScore = Math.max(0, ((questionCount * 100) - (totalErrors * 4)) / questionCount);
             scorePreview.value = finalScore.toFixed(2);
         }
 
         function bindQuestionCard(card) {
             const removeButton = card.querySelector("[data-remove-question]");
-            const scoreInput = card.querySelector('input[name="question_score[]"]');
             const ayatInput = card.querySelector('input[name="question_ayat[]"]');
             const surahSelect = card.querySelector('select[name="question_surah[]"]');
             const maxAyatInfo = card.querySelector("[data-max-ayat]");
@@ -306,7 +310,6 @@
                 updateScorePreview();
             });
 
-            scoreInput.addEventListener("input", updateScorePreview);
             surahSelect.addEventListener("change", updateMaxAyat);
             updateMaxAyat();
         }
@@ -317,7 +320,7 @@
             wrapper.className = "border rounded p-3 bg-white";
             wrapper.innerHTML = `
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <div class="fw-bold" data-question-title>Soal</div>
+                    <div class="fw-bold" data-question-title>Item</div>
                     <button type="button" class="btn btn-outline-danger btn-sm" data-remove-question>
                         <i class="fas fa-trash-alt me-1"></i>Hapus
                     </button>
@@ -332,10 +335,6 @@
                     <div class="col-md-3">
                         <label class="small text-muted fw-bold">Ayat</label>
                         <input type="number" name="question_ayat[]" class="form-control" min="1" required>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="small text-muted fw-bold">Nilai</label>
-                        <input type="number" name="question_score[]" class="form-control" min="0" max="100" step="0.01" required>
                     </div>
                     <div class="col-12">
                         <small class="text-muted" data-max-ayat>Pilih surah untuk melihat jumlah ayat.</small>

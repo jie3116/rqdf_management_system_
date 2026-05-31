@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, date
+from collections import defaultdict
 import csv
 import json
 import re
@@ -56,11 +57,16 @@ from app.services.finance_posting_service import (
     post_savings_transaction,
     reverse_journal,
 )
+from app.services.grade_formula_service import (
+    REPORT_ADJUSTMENT_STATUS_ACTIVE,
+    REPORT_ADJUSTMENT_STATUS_VOID,
+    calculate_report_final_detail,
+)
 from app.utils.timezone import local_day_bounds_utc_naive, local_now, local_today
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
     # Base & Enums
-    UserRole, Gender, AttendanceStatus, PaymentStatus, RegistrationStatus, ProgramType, EducationLevel, AssignmentRole, TenantStatus, BehaviorReportType,
+    UserRole, Gender, AttendanceStatus, PaymentStatus, RegistrationStatus, ProgramType, EducationLevel, AssignmentRole, TenantStatus, BehaviorReportType, ParticipantType,
     # Users
     User, UserRoleAssignment, Student, Parent, Teacher, Staff, MajlisParticipant, BoardingGuardian, Tenant,
     # Academic
@@ -75,7 +81,7 @@ from app.models import (
     FinanceJournal, FinanceJournalLine, FinanceJournalStatus, FinanceJournalSourceType, FinanceEntrySide,
     SavingsTransactionType, SavingsTransactionStatus, StudentSavingsTransaction,
     # Student Related
-    StudentClassHistory, Attendance, BoardingAttendance, Grade, ReportCard, StudentAttitude,
+    StudentClassHistory, Attendance, BoardingAttendance, Grade, ReportCard, ReportScoreAdjustment, StudentAttitude,
     Violation, BehaviorReport, TahfidzRecord, TahfidzSummary, RecitationRecord, TahfidzEvaluation,
     student_extracurriculars, StudentSavingsAccount,
     # User/System Related
@@ -1310,6 +1316,432 @@ def manage_app_config():
 
     configs = configs_query.order_by(AppConfig.key.asc()).all()
     return render_template('admin/system/configs.html', configs=configs, query=query)
+
+
+def _student_in_tenant_query(tenant_id):
+    class_ids = [row.id for row in scoped_classrooms_query(tenant_id).all()]
+    if not class_ids:
+        return Student.query.filter(False)
+    return Student.query.filter(
+        Student.is_deleted.is_(False),
+        Student.current_class_id.in_(class_ids),
+    )
+
+
+def _calculated_final_for_adjustment(student_id, academic_year_id, subject_id, tenant_id, class_id=None):
+    rows = Grade.query.filter(
+        Grade.is_deleted.is_(False),
+        Grade.participant_type == ParticipantType.STUDENT,
+        Grade.student_id == student_id,
+        Grade.academic_year_id == academic_year_id,
+        Grade.subject_id == subject_id,
+    ).all()
+    type_scores = defaultdict(list)
+    for row in rows:
+        if row.type:
+            type_scores[row.type.name].append(float(row.score or 0))
+    type_averages = {
+        type_name: round(sum(scores) / len(scores), 2)
+        for type_name, scores in type_scores.items()
+        if scores
+    }
+    detail = calculate_report_final_detail(
+        type_averages,
+        tenant_id=tenant_id,
+        academic_year_id=academic_year_id,
+        subject_id=subject_id,
+        student_id=student_id,
+        class_id=class_id,
+    )
+    return detail['final_score']
+
+
+def _row_value(row, *keys):
+    for key in keys:
+        value = row.get(key)
+        if value not in (None, ''):
+            return str(value).strip()
+    lower_map = {str(k).strip().lower(): v for k, v in row.items()}
+    for key in keys:
+        value = lower_map.get(str(key).strip().lower())
+        if value not in (None, ''):
+            return str(value).strip()
+    return ''
+
+
+def _resolve_adjustment_student(row, tenant_id):
+    student_id_raw = _row_value(row, 'student_id', 'id_siswa')
+    nis = _row_value(row, 'nis', 'NIS')
+    full_name = _row_value(row, 'nama', 'nama_siswa', 'full_name')
+
+    query = _student_in_tenant_query(tenant_id)
+    if student_id_raw:
+        try:
+            student_id = int(student_id_raw)
+        except ValueError:
+            return None, f'ID siswa tidak valid: {student_id_raw}'
+        student = query.filter(Student.id == student_id).first()
+        return (student, None) if student else (None, f'Siswa ID {student_id} tidak ditemukan di tenant ini.')
+
+    if nis:
+        student = query.filter(Student.nis == nis).first()
+        return (student, None) if student else (None, f'NIS {nis} tidak ditemukan di tenant ini.')
+
+    if full_name:
+        matches = query.filter(func.lower(Student.full_name) == full_name.lower()).all()
+        if len(matches) == 1:
+            return matches[0], None
+        if len(matches) > 1:
+            return None, f'Nama siswa "{full_name}" duplikat, gunakan NIS atau student_id.'
+        return None, f'Nama siswa "{full_name}" tidak ditemukan.'
+
+    return None, 'Isi salah satu kolom student_id, nis, atau nama_siswa.'
+
+
+def _resolve_adjustment_subject(row):
+    subject_id_raw = _row_value(row, 'subject_id', 'id_mapel')
+    subject_name = _row_value(row, 'mapel', 'mata_pelajaran', 'subject')
+
+    if subject_id_raw:
+        try:
+            subject_id = int(subject_id_raw)
+        except ValueError:
+            return None, f'ID mapel tidak valid: {subject_id_raw}'
+        subject = Subject.query.filter_by(id=subject_id, is_deleted=False).first()
+        return (subject, None) if subject else (None, f'Mapel ID {subject_id} tidak ditemukan.')
+
+    if subject_name:
+        matches = Subject.query.filter(
+            Subject.is_deleted.is_(False),
+            func.lower(Subject.name) == subject_name.lower(),
+        ).all()
+        if len(matches) == 1:
+            return matches[0], None
+        if len(matches) > 1:
+            return None, f'Mapel "{subject_name}" duplikat, gunakan subject_id.'
+        return None, f'Mapel "{subject_name}" tidak ditemukan.'
+
+    return None, 'Isi salah satu kolom subject_id atau mapel.'
+
+
+def _resolve_adjustment_academic_year(row):
+    academic_year_id_raw = _row_value(row, 'academic_year_id', 'id_tahun_ajaran')
+    year_name = _row_value(row, 'tahun_ajaran', 'academic_year', 'tahun')
+    semester = _row_value(row, 'semester')
+
+    if academic_year_id_raw:
+        try:
+            academic_year_id = int(academic_year_id_raw)
+        except ValueError:
+            return None, f'ID tahun ajaran tidak valid: {academic_year_id_raw}'
+        academic_year = AcademicYear.query.filter_by(id=academic_year_id, is_deleted=False).first()
+        return (academic_year, None) if academic_year else (None, f'Tahun ajaran ID {academic_year_id} tidak ditemukan.')
+
+    if year_name:
+        query = AcademicYear.query.filter(
+            AcademicYear.is_deleted.is_(False),
+            func.lower(AcademicYear.name) == year_name.lower(),
+        )
+        if semester:
+            query = query.filter(func.lower(AcademicYear.semester) == semester.lower())
+        matches = query.all()
+        if len(matches) == 1:
+            return matches[0], None
+        if len(matches) > 1:
+            return None, f'Tahun ajaran "{year_name}" memiliki beberapa semester, isi kolom semester.'
+        return None, f'Tahun ajaran "{year_name}" tidak ditemukan.'
+
+    return None, 'Isi salah satu kolom academic_year_id atau tahun_ajaran.'
+
+
+def _resolve_adjustment_class(row, tenant_id, student):
+    class_id_raw = _row_value(row, 'class_id', 'id_kelas')
+    class_name = _row_value(row, 'kelas', 'class_name')
+
+    if class_id_raw:
+        try:
+            class_id = int(class_id_raw)
+        except ValueError:
+            return None, f'ID kelas tidak valid: {class_id_raw}'
+        class_room = scoped_classrooms_query(tenant_id).filter(ClassRoom.id == class_id).first()
+        return (class_room, None) if class_room else (None, f'Kelas ID {class_id} tidak ditemukan di tenant ini.')
+
+    if class_name:
+        matches = scoped_classrooms_query(tenant_id).filter(func.lower(ClassRoom.name) == class_name.lower()).all()
+        if len(matches) == 1:
+            return matches[0], None
+        if len(matches) > 1:
+            return None, f'Kelas "{class_name}" duplikat, gunakan class_id.'
+        return None, f'Kelas "{class_name}" tidak ditemukan di tenant ini.'
+
+    return student.current_class, None
+
+
+def _create_report_score_adjustment(student, class_room, academic_year, subject, adjusted_score, approval_reference, reason, tenant_id):
+    class_id = class_room.id if class_room else student.current_class_id
+    original_score = _calculated_final_for_adjustment(
+        student_id=student.id,
+        academic_year_id=academic_year.id,
+        subject_id=subject.id,
+        tenant_id=tenant_id,
+        class_id=class_id,
+    )
+
+    existing_active = ReportScoreAdjustment.query.filter(
+        ReportScoreAdjustment.tenant_id == tenant_id,
+        ReportScoreAdjustment.student_id == student.id,
+        ReportScoreAdjustment.academic_year_id == academic_year.id,
+        ReportScoreAdjustment.subject_id == subject.id,
+        ReportScoreAdjustment.status == REPORT_ADJUSTMENT_STATUS_ACTIVE,
+        ReportScoreAdjustment.is_deleted.is_(False),
+    ).all()
+    for existing in existing_active:
+        existing.status = REPORT_ADJUSTMENT_STATUS_VOID
+        existing.void_reason = 'Digantikan oleh adjustment resmi baru.'
+        existing.voided_by_user_id = current_user.id
+        existing.voided_at = local_now()
+
+    db.session.add(ReportScoreAdjustment(
+        tenant_id=tenant_id,
+        student_id=student.id,
+        class_id=class_id,
+        academic_year_id=academic_year.id,
+        subject_id=subject.id,
+        original_score=original_score,
+        adjusted_score=adjusted_score,
+        reason=reason,
+        approval_reference=approval_reference,
+        approved_by_user_id=current_user.id,
+        approved_at=local_now(),
+        status=REPORT_ADJUSTMENT_STATUS_ACTIVE,
+    ))
+
+
+@admin_bp.route('/akademik/adjustment-raport/template')
+@login_required
+@role_required(UserRole.ADMIN)
+def report_score_adjustment_template():
+    return _xlsx_response(
+        'template_adjustment_nilai_raport.xlsx',
+        'Adjustment Nilai',
+        [
+            'nis',
+            'nama_siswa',
+            'kelas',
+            'tahun_ajaran',
+            'semester',
+            'mapel',
+            'nilai_adjustment',
+            'nomor_dokumen',
+            'alasan',
+        ],
+        [
+            [
+                '12345',
+                'Nama Siswa',
+                'Kelas 7A',
+                '2025/2026',
+                'Ganjil',
+                'Matematika',
+                88.5,
+                'BA-NILAI/2026/001',
+                'Adjustment resmi sesuai berita acara.',
+            ],
+        ],
+    )
+
+
+@admin_bp.route('/akademik/adjustment-raport', methods=['GET', 'POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def manage_report_score_adjustments():
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    class_options = scoped_classrooms_query(tenant_id).order_by(ClassRoom.name.asc()).all()
+    student_options = _student_in_tenant_query(tenant_id).order_by(Student.full_name.asc()).all()
+    academic_year_options = AcademicYear.query.filter(AcademicYear.is_deleted.is_(False)).order_by(
+        AcademicYear.name.desc(),
+        AcademicYear.semester.asc(),
+    ).all()
+    subject_options = Subject.query.filter(Subject.is_deleted.is_(False)).order_by(Subject.name.asc()).all()
+
+    if request.method == 'POST':
+        action = (request.form.get('action') or 'create').strip()
+        if action == 'void':
+            adjustment_id = request.form.get('adjustment_id', type=int)
+            void_reason = (request.form.get('void_reason') or '').strip()
+            adjustment = ReportScoreAdjustment.query.filter_by(
+                id=adjustment_id,
+                tenant_id=tenant_id,
+                is_deleted=False,
+            ).first()
+            if not adjustment:
+                flash('Data adjustment tidak ditemukan.', 'danger')
+                return redirect(url_for('admin.manage_report_score_adjustments'))
+            if not void_reason:
+                flash('Alasan pembatalan wajib diisi.', 'warning')
+                return redirect(url_for('admin.manage_report_score_adjustments'))
+            adjustment.status = REPORT_ADJUSTMENT_STATUS_VOID
+            adjustment.void_reason = void_reason
+            adjustment.voided_by_user_id = current_user.id
+            adjustment.voided_at = local_now()
+            db.session.commit()
+            flash('Adjustment raport resmi dibatalkan.', 'success')
+            return redirect(url_for('admin.manage_report_score_adjustments'))
+
+        if action == 'upload_excel':
+            file = request.files.get('file')
+            if not file or not file.filename:
+                flash('File Excel belum dipilih.', 'warning')
+                return redirect(url_for('admin.manage_report_score_adjustments'))
+            if not file.filename.lower().endswith('.xlsx'):
+                flash('Format file harus XLSX.', 'warning')
+                return redirect(url_for('admin.manage_report_score_adjustments'))
+
+            created = 0
+            skipped = 0
+            errors = []
+            for idx, row in _iter_upload_rows(file):
+                if not any((value or '').strip() for value in row.values()):
+                    continue
+
+                student, error = _resolve_adjustment_student(row, tenant_id)
+                if error:
+                    skipped += 1
+                    errors.append(f'Baris {idx}: {error}')
+                    continue
+
+                subject, error = _resolve_adjustment_subject(row)
+                if error:
+                    skipped += 1
+                    errors.append(f'Baris {idx}: {error}')
+                    continue
+
+                academic_year, error = _resolve_adjustment_academic_year(row)
+                if error:
+                    skipped += 1
+                    errors.append(f'Baris {idx}: {error}')
+                    continue
+
+                class_room, error = _resolve_adjustment_class(row, tenant_id, student)
+                if error:
+                    skipped += 1
+                    errors.append(f'Baris {idx}: {error}')
+                    continue
+
+                adjusted_score_raw = _row_value(row, 'nilai_adjustment', 'adjusted_score', 'nilai', 'nilai_akhir')
+                approval_reference = _row_value(row, 'nomor_dokumen', 'approval_reference', 'dokumen', 'no_dokumen')
+                reason = _row_value(row, 'alasan', 'reason', 'keterangan')
+
+                if not approval_reference or not reason:
+                    skipped += 1
+                    errors.append(f'Baris {idx}: Nomor dokumen dan alasan wajib diisi.')
+                    continue
+
+                try:
+                    adjusted_score = round(float(adjusted_score_raw.replace(',', '.')), 2)
+                except (AttributeError, ValueError):
+                    skipped += 1
+                    errors.append(f'Baris {idx}: Nilai adjustment harus berupa angka.')
+                    continue
+                if adjusted_score < 0 or adjusted_score > 100:
+                    skipped += 1
+                    errors.append(f'Baris {idx}: Nilai adjustment harus berada pada rentang 0 sampai 100.')
+                    continue
+
+                try:
+                    with db.session.begin_nested():
+                        _create_report_score_adjustment(
+                            student=student,
+                            class_room=class_room,
+                            academic_year=academic_year,
+                            subject=subject,
+                            adjusted_score=adjusted_score,
+                            approval_reference=approval_reference,
+                            reason=reason,
+                            tenant_id=tenant_id,
+                        )
+                        created += 1
+                except Exception as exc:
+                    skipped += 1
+                    errors.append(f'Baris {idx}: {exc}')
+
+            db.session.commit()
+            flash(f'Upload adjustment selesai. Berhasil: {created}, Dilewati: {skipped}.', 'success')
+            if errors:
+                flash('Contoh error: ' + '; '.join(errors[:5]), 'warning')
+            return redirect(url_for('admin.manage_report_score_adjustments'))
+
+        student_id = request.form.get('student_id', type=int)
+        class_id = request.form.get('class_id', type=int) or None
+        academic_year_id = request.form.get('academic_year_id', type=int)
+        subject_id = request.form.get('subject_id', type=int)
+        adjusted_score_raw = request.form.get('adjusted_score')
+        approval_reference = (request.form.get('approval_reference') or '').strip()
+        reason = (request.form.get('reason') or '').strip()
+
+        student = _student_in_tenant_query(tenant_id).filter(Student.id == student_id).first()
+        subject = Subject.query.filter_by(id=subject_id, is_deleted=False).first()
+        academic_year = AcademicYear.query.filter_by(id=academic_year_id, is_deleted=False).first()
+        class_room = None
+        if class_id:
+            class_room = ClassRoom.query.filter_by(id=class_id, is_deleted=False).first()
+            if not class_room or not classroom_in_tenant(class_room, tenant_id):
+                class_room = None
+
+        if not student or not subject or not academic_year:
+            flash('Siswa, tahun ajaran, atau mata pelajaran tidak valid untuk tenant ini.', 'danger')
+            return redirect(url_for('admin.manage_report_score_adjustments'))
+        if class_id and not class_room:
+            flash('Kelas tidak valid untuk tenant ini.', 'danger')
+            return redirect(url_for('admin.manage_report_score_adjustments'))
+        if not approval_reference or not reason:
+            flash('Nomor dokumen persetujuan dan alasan adjustment wajib diisi.', 'warning')
+            return redirect(url_for('admin.manage_report_score_adjustments'))
+        try:
+            adjusted_score = round(float(adjusted_score_raw), 2)
+        except (TypeError, ValueError):
+            flash('Nilai adjustment harus berupa angka.', 'warning')
+            return redirect(url_for('admin.manage_report_score_adjustments'))
+        if adjusted_score < 0 or adjusted_score > 100:
+            flash('Nilai adjustment harus berada pada rentang 0 sampai 100.', 'warning')
+            return redirect(url_for('admin.manage_report_score_adjustments'))
+
+        _create_report_score_adjustment(
+            student=student,
+            class_room=class_room,
+            academic_year=academic_year,
+            subject=subject,
+            adjusted_score=adjusted_score,
+            approval_reference=approval_reference,
+            reason=reason,
+            tenant_id=tenant_id,
+        )
+        db.session.commit()
+        flash('Adjustment nilai raport resmi tersimpan.', 'success')
+        return redirect(url_for('admin.manage_report_score_adjustments'))
+
+    adjustments = (
+        ReportScoreAdjustment.query.filter(
+            ReportScoreAdjustment.tenant_id == tenant_id,
+            ReportScoreAdjustment.is_deleted.is_(False),
+        )
+        .order_by(ReportScoreAdjustment.created_at.desc(), ReportScoreAdjustment.id.desc())
+        .limit(300)
+        .all()
+    )
+    return render_template(
+        'admin/academic/report_score_adjustments.html',
+        adjustments=adjustments,
+        class_options=class_options,
+        student_options=student_options,
+        academic_year_options=academic_year_options,
+        subject_options=subject_options,
+        active_status=REPORT_ADJUSTMENT_STATUS_ACTIVE,
+    )
 
 
 @admin_bp.route('/platform/tenants', methods=['GET', 'POST'])

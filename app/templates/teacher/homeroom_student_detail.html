@@ -153,7 +153,13 @@
                             <td>{{ row.type_averages.get('UH', '-') }}</td>
                             <td>{{ row.type_averages.get('UTS', '-') }}</td>
                             <td>{{ row.type_averages.get('UAS', '-') }}</td>
-                            <td class="fw-bold text-primary">{{ row.final_score }}</td>
+                            <td class="fw-bold text-primary">
+                                {{ row.final_score }}
+                                {% if row.is_adjusted %}
+                                <span class="badge bg-warning text-dark ms-1">Adjusted</span>
+                                <div class="small text-muted">Awal {{ row.original_score }} · {{ row.adjustment_reference }}</div>
+                                {% endif %}
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -292,12 +298,12 @@
                     <h6 class="fw-bold">Evaluasi Tahfidz</h6>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered js-row-paginate">
-                            <thead><tr><th>Tanggal</th><th>Periode</th><th>Nilai</th></tr></thead>
+                            <thead><tr><th>Tanggal</th><th>Jenis</th><th>Periode</th><th>Nilai</th></tr></thead>
                             <tbody>
                                 {% for row in quran.evaluation_history %}
-                                <tr><td>{{ row.date }}</td><td>{{ row.period_type_label }} - {{ row.period_label }}</td><td>{{ row.score }}</td></tr>
+                                <tr><td>{{ row.date }}</td><td>{{ row.evaluation_type_label }}</td><td>{{ row.period_type_label }} - {{ row.period_label }}</td><td>{{ row.score }}</td></tr>
                                 {% else %}
-                                <tr><td colspan="3" class="text-center text-muted">Belum ada data.</td></tr>
+                                <tr><td colspan="4" class="text-center text-muted">Belum ada data.</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>

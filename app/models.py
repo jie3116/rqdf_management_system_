@@ -1155,6 +1155,45 @@ class ReportCard(BaseModel):
     description = db.Column(db.Text)  # Catatan Guru Mapel
 
 
+class ReportScoreAdjustment(BaseModel):
+    """
+    Adjustment resmi nilai akhir raport.
+    Tidak mengubah nilai raw guru; hanya mengoreksi nilai final dengan jejak persetujuan.
+    """
+    __tablename__ = 'report_score_adjustments'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('class_rooms.id'), nullable=True, index=True)
+    academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'), nullable=False, index=True)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=False, index=True)
+    original_score = db.Column(db.Float, nullable=False)
+    adjusted_score = db.Column(db.Float, nullable=False)
+    reason = db.Column(db.Text, nullable=False)
+    approval_reference = db.Column(db.String(100), nullable=False)
+    approved_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    approved_at = db.Column(db.DateTime, default=utc_now_naive, nullable=False)
+    status = db.Column(db.String(20), default='ACTIVE', nullable=False, index=True)
+    void_reason = db.Column(db.Text, nullable=True)
+    voided_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    voided_at = db.Column(db.DateTime, nullable=True)
+
+    tenant = db.relationship('Tenant', backref='report_score_adjustments')
+    student = db.relationship('Student', backref='report_score_adjustments')
+    class_room = db.relationship('ClassRoom', backref='report_score_adjustments')
+    academic_year = db.relationship('AcademicYear', backref='report_score_adjustments')
+    subject = db.relationship('Subject', backref='report_score_adjustments')
+    approved_by_user = db.relationship('User', foreign_keys=[approved_by_user_id], backref='approved_report_score_adjustments')
+    voided_by_user = db.relationship('User', foreign_keys=[voided_by_user_id], backref='voided_report_score_adjustments')
+
+    __table_args__ = (
+        db.Index(
+            'idx_report_score_adjustment_lookup',
+            'tenant_id', 'student_id', 'academic_year_id', 'subject_id', 'status'
+        ),
+    )
+
+
 class StudentAttitude(BaseModel):
     """
     Menyimpan Nilai Sikap & Absensi Semester (Inputan Wali Kelas).
@@ -1304,7 +1343,7 @@ class RecitationRecord(BaseModel):
     # Penilaian
     tajwid_errors = db.Column(db.Integer, default=0)
     makhraj_errors = db.Column(db.Integer, default=0)
-    score = db.Column(db.Integer)
+    score = db.Column(db.Float)
     notes = db.Column(db.Text)
 
     # Relationships
@@ -1328,6 +1367,7 @@ class TahfidzEvaluation(BaseModel):
     date = db.Column(db.DateTime, default=utc_now_naive)
     period_type = db.Column(db.Enum(EvaluationPeriod, name='evaluationperiod'))
     period_label = db.Column(db.String(30))
+    evaluation_type = db.Column(db.String(30), default='SAMBUNG_AYAT')
     question_count = db.Column(db.Integer, default=0)
     question_details = db.Column(db.Text)
     question_items = db.Column(db.Text)

@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h1 class="h3 mb-0 text-gray-800">Adjustment Nilai Raport</h1>
+        <div class="small text-muted">Adjustment resmi nilai akhir per siswa, mapel, dan tahun ajaran.</div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow">
+            <div class="card-header py-3 bg-dark text-white">
+                <h6 class="m-0 fw-bold"><i class="fas fa-file-signature me-2"></i>Input Adjustment Resmi</h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning small">
+                    Adjustment wajib punya nomor dokumen persetujuan dan alasan. Nilai raw guru tidak diubah.
+                </div>
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="action" value="create">
+                    <div class="mb-3">
+                        <label class="small fw-bold">Siswa/Santri</label>
+                        <select name="student_id" class="form-select select2" required>
+                            <option value="">Pilih siswa</option>
+                            {% for student in student_options %}
+                            <option value="{{ student.id }}">{{ student.full_name }} - {{ student.nis }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small fw-bold">Kelas</label>
+                        <select name="class_id" class="form-select">
+                            <option value="">Ikuti kelas aktif siswa</option>
+                            {% for cls in class_options %}
+                            <option value="{{ cls.id }}">{{ cls.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small fw-bold">Tahun Ajaran / Semester</label>
+                        <select name="academic_year_id" class="form-select" required>
+                            <option value="">Pilih tahun ajaran</option>
+                            {% for year in academic_year_options %}
+                            <option value="{{ year.id }}">{{ year.name }} - {{ year.semester }}{% if year.is_active %} (Aktif){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small fw-bold">Mata Pelajaran</label>
+                        <select name="subject_id" class="form-select select2" required>
+                            <option value="">Pilih mapel</option>
+                            {% for subject in subject_options %}
+                            <option value="{{ subject.id }}">{{ subject.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small fw-bold">Nilai Akhir Setelah Adjustment</label>
+                        <input type="number" step="0.01" min="0" max="100" name="adjusted_score" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small fw-bold">Nomor Dokumen Persetujuan</label>
+                        <input type="text" name="approval_reference" class="form-control" placeholder="Cth: BA-NILAI/2026/001" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small fw-bold">Alasan Adjustment</label>
+                        <textarea name="reason" class="form-control" rows="3" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-dark w-100">Simpan Adjustment</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow mt-4">
+            <div class="card-header py-3 bg-success text-white">
+                <h6 class="m-0 fw-bold"><i class="fas fa-file-excel me-2"></i>Upload Excel Adjustment</h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info small">
+                    Gunakan file XLSX dengan kolom: nis, nama_siswa, kelas, tahun_ajaran, semester, mapel, nilai_adjustment, nomor_dokumen, alasan.
+                </div>
+                <form method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="action" value="upload_excel">
+                    <div class="mb-3">
+                        <label class="small fw-bold">File Excel</label>
+                        <input type="file" name="file" class="form-control" accept=".xlsx" required>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-success">Upload Adjustment</button>
+                        <a href="{{ url_for('admin.report_score_adjustment_template') }}" class="btn btn-outline-success">
+                            Download Template
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8 mb-4">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">Riwayat Adjustment</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover align-middle js-row-paginate" data-default-per-page="12">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Dokumen</th>
+                                <th>Siswa</th>
+                                <th>Periode</th>
+                                <th>Mapel</th>
+                                <th>Nilai</th>
+                                <th>Status</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in adjustments %}
+                            <tr>
+                                <td>
+                                    <div class="fw-bold">{{ row.approval_reference }}</div>
+                                    <div class="small text-muted">{{ row.reason }}</div>
+                                </td>
+                                <td>{{ row.student.full_name if row.student else '-' }}</td>
+                                <td>{{ row.academic_year.name if row.academic_year else '-' }} / {{ row.academic_year.semester if row.academic_year else '-' }}</td>
+                                <td>{{ row.subject.name if row.subject else '-' }}</td>
+                                <td>
+                                    <span class="text-muted">{{ row.original_score }}</span>
+                                    <i class="fas fa-arrow-right mx-1 text-muted"></i>
+                                    <span class="fw-bold text-primary">{{ row.adjusted_score }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge {% if row.status == active_status %}bg-success{% else %}bg-secondary{% endif %}">
+                                        {{ row.status }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if row.status == active_status %}
+                                    <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#voidAdjustment{{ row.id }}">
+                                        Batalkan
+                                    </button>
+                                    <div class="modal fade" id="voidAdjustment{{ row.id }}" tabindex="-1" aria-hidden="true">
+                                        <div class="modal-dialog">
+                                            <div class="modal-content">
+                                                <form method="POST">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <input type="hidden" name="action" value="void">
+                                                    <input type="hidden" name="adjustment_id" value="{{ row.id }}">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">Batalkan Adjustment</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <label class="small fw-bold">Alasan Pembatalan</label>
+                                                        <textarea name="void_reason" class="form-control" rows="3" required></textarea>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+                                                        <button type="submit" class="btn btn-danger">Batalkan</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% else %}
+                                    <span class="small text-muted">{{ row.void_reason or '-' }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="7" class="text-center text-muted">Belum ada adjustment.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

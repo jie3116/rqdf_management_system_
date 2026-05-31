@@ -19,6 +19,7 @@ from app.decorators import role_required
 from app.services.rumah_quran_service import is_rumah_quran_classroom, list_rumah_quran_students_for_class
 from app.services.bahasa_service import is_bahasa_classroom, list_bahasa_students_for_class
 from app.services.formal_service import is_formal_classroom, list_formal_students_for_class
+from app.services.grade_formula_service import calculate_report_final_detail, calculate_weighted_final
 from app.services.staff_assignment_service import (
     list_teacher_homeroom_classes_from_assignments,
     list_teacher_subject_classes_from_assignments,
@@ -43,6 +44,25 @@ from app.utils.tenant import classroom_in_tenant, resolve_tenant_id, scoped_clas
 from app.utils.timezone import local_day_bounds_utc_naive, local_now, local_today, utc_now_naive
 
 teacher_bp = Blueprint('teacher', __name__)
+
+TAHFIDZ_EVALUATION_TYPES = {
+    'SIMAK_HAFALAN': 'Simak Hafalan',
+    'SAMBUNG_AYAT': 'Pertanyaan Sambung Ayat',
+}
+
+
+def _normalize_tahfidz_evaluation_type(value):
+    normalized = (value or 'SAMBUNG_AYAT').strip().upper()
+    if normalized not in TAHFIDZ_EVALUATION_TYPES:
+        return None
+    return normalized
+
+
+def _calculate_tahfidz_evaluation_score(question_count, total_errors):
+    if question_count <= 0:
+        return 0
+    total_score = (question_count * 100) - (max(0, total_errors) * 4)
+    return round(max(0, total_score) / question_count, 2)
 
 
 def _teacher_tenant_id(teacher):
@@ -717,8 +737,6 @@ def _evaluation_period_labels(period_type):
         'TENGAH_SEMESTER': [
             'Tengah Semester 1',
             'Tengah Semester 2',
-            'Tengah Semester 3',
-            'Tengah Semester 4',
         ],
         'SEMESTER': ['Semester 1', 'Semester 2'],
     }
@@ -750,16 +768,16 @@ def _build_participant_rows(students, majlis_participants):
     return rows
 
 
-def _calculate_weighted_final(type_averages):
+def _calculate_weighted_final(type_averages, tenant_id=None, academic_year_id=None, subject_id=None, student_id=None, class_id=None):
     """Hitung nilai akhir berbobot dari rata-rata per tipe nilai."""
-    weights = {'TUGAS': 0.3, 'UH': 0.2, 'UTS': 0.25, 'UAS': 0.25}
-    total_weighted = 0
-    total_weight = 0
-    for type_name, avg_score in type_averages.items():
-        weight = weights.get(type_name, 0)
-        total_weighted += avg_score * weight
-        total_weight += weight
-    return round(total_weighted / total_weight, 2) if total_weight > 0 else 0
+    return calculate_weighted_final(
+        type_averages,
+        tenant_id=tenant_id,
+        academic_year_id=academic_year_id,
+        subject_id=subject_id,
+        student_id=student_id,
+        class_id=class_id,
+    )
 
 
 def _resolve_selected_participant(participants, participant_key):
@@ -944,15 +962,22 @@ def _grade_subject_name(row):
     return '-'
 
 
-def _academic_report_payload_for_homeroom(rows, include_history=False, history_limit=120):
-    grouped = defaultdict(lambda: defaultdict(list))
+def _academic_report_payload_for_homeroom(rows, include_history=False, history_limit=120, tenant_id=None, student_id=None, class_id=None):
+    grouped = {}
     summary_rows = []
     history_rows = []
 
     for row in rows or []:
         subject_name = _grade_subject_name(row)
+        subject_key = row.subject_id if row.subject_id is not None else f"majlis:{row.majlis_subject_id or subject_name}"
+        grouped.setdefault(subject_key, {
+            'subject_name': subject_name,
+            'subject_id': row.subject_id,
+            'academic_year_id': row.academic_year_id,
+            'scores': defaultdict(list),
+        })
         if row.type:
-            grouped[subject_name][row.type.name].append(float(row.score or 0))
+            grouped[subject_key]['scores'][row.type.name].append(float(row.score or 0))
 
         if include_history and len(history_rows) < max(1, history_limit):
             history_rows.append({
@@ -966,18 +991,31 @@ def _academic_report_payload_for_homeroom(rows, include_history=False, history_l
                 'teacher_name': row.teacher.full_name if row.teacher and row.teacher.full_name else '-',
             })
 
-    for subject_name, type_map in grouped.items():
+    for subject_data in grouped.values():
         type_averages = {}
         type_counts = {}
-        for type_name, scores in type_map.items():
+        for type_name, scores in subject_data['scores'].items():
             if scores:
                 type_averages[type_name] = round(sum(scores) / len(scores), 2)
                 type_counts[type_name] = len(scores)
+        final_detail = calculate_report_final_detail(
+            type_averages,
+            tenant_id=tenant_id,
+            academic_year_id=subject_data['academic_year_id'],
+            subject_id=subject_data['subject_id'],
+            student_id=student_id,
+            class_id=class_id,
+        )
+        adjustment = final_detail.get('adjustment')
         summary_rows.append({
-            'subject_name': subject_name,
+            'subject_name': subject_data['subject_name'],
             'type_averages': type_averages,
             'type_counts': type_counts,
-            'final_score': _calculate_weighted_final(type_averages),
+            'final_score': final_detail['final_score'],
+            'original_score': final_detail['original_score'],
+            'is_adjusted': final_detail['is_adjusted'],
+            'adjustment_reference': adjustment.approval_reference if adjustment else None,
+            'adjustment_reason': adjustment.reason if adjustment else None,
         })
 
     summary_rows.sort(key=lambda row: (row.get('subject_name') or '').lower())
@@ -1128,6 +1166,8 @@ def _quran_report_payload_for_homeroom(tahfidz_rows, recitation_rows, evaluation
             'period_type': row.period_type.name if row.period_type else '-',
             'period_type_label': row.period_type.value if row.period_type else '-',
             'period_label': row.period_label or '-',
+            'evaluation_type': row.evaluation_type or 'SAMBUNG_AYAT',
+            'evaluation_type_label': TAHFIDZ_EVALUATION_TYPES.get(row.evaluation_type or 'SAMBUNG_AYAT', '-'),
             'question_count': row.question_count or 0,
             'question_details': row.question_details or '-',
             'score': row.score or 0,
@@ -1705,7 +1745,12 @@ def grade_history():
                     'subject_name': subject_name,
                     'type_averages': type_averages,
                     'type_counts': type_counts,
-                    'final_score': _calculate_weighted_final(type_averages)
+                    'final_score': _calculate_weighted_final(
+                        type_averages,
+                        tenant_id=_teacher_tenant_id(teacher),
+                        student_id=selected_participant['student_id'] if selected_participant['participant_type'] == ParticipantType.STUDENT else None,
+                        class_id=selected_class.id,
+                    )
                 })
 
             academic_summary_rows.sort(key=lambda row: row['subject_name'])
@@ -1721,7 +1766,8 @@ def grade_history():
         academic_summary_rows=academic_summary_rows,
         tahfidz_records=tahfidz_records,
         recitation_records=recitation_records,
-        tahfidz_evaluations=tahfidz_evaluations
+        tahfidz_evaluations=tahfidz_evaluations,
+        evaluation_types=TAHFIDZ_EVALUATION_TYPES
     )
 
 
@@ -2224,6 +2270,7 @@ def input_tahfidz_evaluation():
     if request.method == 'POST':
         form_class_id = request.form.get('class_id', type=int)
         participant_type, participant_id = _parse_participant_key(request.form.get('student_id'))
+        evaluation_type = _normalize_tahfidz_evaluation_type(request.form.get('evaluation_type'))
         period_type = request.form.get('period_type')
         period_label = request.form.get('period_label')
         question_details = request.form.get('question_details')
@@ -2240,6 +2287,10 @@ def input_tahfidz_evaluation():
 
         if not participant_id or not participant_type:
             flash("Silakan pilih peserta terlebih dahulu.", "warning")
+            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+
+        if not evaluation_type:
+            flash("Jenis evaluasi tidak valid.", "danger")
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         if period_type not in [p.name for p in EvaluationPeriod]:
@@ -2280,37 +2331,32 @@ def input_tahfidz_evaluation():
 
         question_surahs = request.form.getlist('question_surah[]')
         question_ayats = request.form.getlist('question_ayat[]')
-        question_scores = request.form.getlist('question_score[]')
-        if not (
-            len(question_surahs) == len(question_ayats) == len(question_scores)
-        ):
-            flash("Setiap pertanyaan harus memiliki surah, ayat, dan nilai.", "danger")
+        if len(question_surahs) != len(question_ayats):
+            flash("Setiap item uji harus memiliki surah dan ayat.", "danger")
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
         normalized_questions = []
         try:
-            for surah, ayat_raw, score_raw in zip(question_surahs, question_ayats, question_scores):
+            for surah, ayat_raw in zip(question_surahs, question_ayats):
                 surah = (surah or '').strip()
                 ayat = int(ayat_raw or 0)
-                score_value = float(score_raw or 0)
-                if not surah or ayat < 1 or score_value < 0 or score_value > 100:
+                if not surah or ayat < 1:
                     raise ValueError
                 normalized_questions.append({
                     'surah': surah,
                     'ayat': ayat,
-                    'score': round(score_value, 2),
+                    'score': 100,
                 })
         except ValueError:
-            flash("Setiap pertanyaan harus memiliki surah, ayat, dan nilai yang valid.", "danger")
+            flash("Setiap item uji harus memiliki surah dan ayat yang valid.", "danger")
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         if not normalized_questions:
-            flash("Tambahkan minimal satu pertanyaan evaluasi.", "danger")
+            flash("Tambahkan minimal satu item evaluasi.", "danger")
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         question_count = len(normalized_questions)
-        average_score = round(sum(item['score'] for item in normalized_questions) / question_count, 2)
         total_errors = makhraj_errors + tajwid_errors + harakat_errors + tahfidz_errors
-        score = round(max(0, average_score - (total_errors * 4)), 2)
+        score = _calculate_tahfidz_evaluation_score(question_count, total_errors)
         first_question = normalized_questions[0]
         last_question = normalized_questions[-1]
         summary_surah = first_question['surah']
@@ -2324,6 +2370,7 @@ def input_tahfidz_evaluation():
             teacher_id=teacher.id,
             period_type=EvaluationPeriod[period_type],
             period_label=period_label,
+            evaluation_type=evaluation_type,
             question_count=question_count,
             question_details=question_details,
             question_items=json.dumps(normalized_questions),
@@ -2349,6 +2396,7 @@ def input_tahfidz_evaluation():
                            students=students,
                            majlis_participants=majlis_participants,
                            selected_class=selected_class,
+                           evaluation_types=TAHFIDZ_EVALUATION_TYPES,
                            EvaluationPeriod=EvaluationPeriod)
 
 
@@ -2975,9 +3023,16 @@ def homeroom_students():
         for row in behavior_rows:
             behavior_rows_by_student[row.student_id].append(row)
 
+    tenant_id = _teacher_tenant_id(teacher)
     student_report_rows = []
     for row in students:
-        academic_report = _academic_report_payload_for_homeroom(grade_rows_by_student.get(row.id, []), include_history=False)
+        academic_report = _academic_report_payload_for_homeroom(
+            grade_rows_by_student.get(row.id, []),
+            include_history=False,
+            tenant_id=tenant_id,
+            student_id=row.id,
+            class_id=selected_class.id,
+        )
         attendance_report = _attendance_report_payload_for_homeroom(
             attendance_rows_by_student.get(row.id, []),
             include_history=False
@@ -3077,7 +3132,10 @@ def homeroom_student_detail(student_id):
     academic_report = _academic_report_payload_for_homeroom(
         selected_grade_rows,
         include_history=True,
-        history_limit=history_limit
+        history_limit=history_limit,
+        tenant_id=_teacher_tenant_id(teacher),
+        student_id=selected_student.id,
+        class_id=selected_class.id,
     )
     attendance_report = _attendance_report_payload_for_homeroom(
         selected_attendance_rows,
@@ -3199,7 +3257,14 @@ def calculate_student_grades(student_id):
         for grade_type, scores in type_scores.items():
             type_averages[grade_type.name] = sum(scores) / len(scores)
 
-        subject_averages[subject.name] = _calculate_weighted_final(type_averages)
+        subject_averages[subject.name] = _calculate_weighted_final(
+            type_averages,
+            tenant_id=_teacher_tenant_id(teacher),
+            academic_year_id=active_year.id,
+            subject_id=subject.id,
+            student_id=student.id,
+            class_id=student.current_class_id,
+        )
     
     return render_template('teacher/student_grades_calculation.html',
                          student=student,
@@ -3238,9 +3303,33 @@ def print_report_card(student_id):
                 scores = data.get(grade_type, [])
                 if scores:
                     type_averages[grade_type] = sum(scores) / len(scores)
-            final_score = _calculate_weighted_final(type_averages)
+            final_score = _calculate_weighted_final(
+                type_averages,
+                tenant_id=_teacher_tenant_id(teacher),
+                academic_year_id=active_year.id,
+                subject_id=sub.id if sub else None,
+                student_id=student.id,
+                class_id=student.current_class_id,
+            )
+            final_detail = calculate_report_final_detail(
+                type_averages,
+                tenant_id=_teacher_tenant_id(teacher),
+                academic_year_id=active_year.id,
+                subject_id=sub.id if sub else None,
+                student_id=student.id,
+                class_id=student.current_class_id,
+            )
             predikat = 'A' if final_score >= 85 else 'B' if final_score >= 75 else 'C' if final_score >= 65 else 'D'
-            final_report.append({'subject': sub.name, 'kkm': sub.kkm or 70, 'final': final_score, 'predikat': predikat})
+            adjustment = final_detail.get('adjustment')
+            final_report.append({
+                'subject': sub.name,
+                'kkm': sub.kkm or 70,
+                'final': final_score,
+                'predikat': predikat,
+                'original_score': final_detail['original_score'],
+                'is_adjusted': final_detail['is_adjusted'],
+                'adjustment_reference': adjustment.approval_reference if adjustment else None,
+            })
 
     attendance_stats = {'sakit': 0, 'izin': 0, 'alpa': 0}
     if active_year:

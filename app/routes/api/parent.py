@@ -30,6 +30,7 @@ from app.models import (
     Violation,
 )
 from app.services.formal_service import get_student_formal_classroom
+from app.services.grade_formula_service import calculate_weighted_final
 from app.services.pesantren_service import is_student_in_pesantren_program
 from app.utils.announcements import get_announcements_for_dashboard
 from app.utils.tenant import resolve_tenant_id, scoped_classrooms_query
@@ -111,19 +112,15 @@ def _resolve_child_class(user, student):
     return active_class, active_class_id
 
 
-def _calculate_weighted_final(type_averages):
-    weights = {"TUGAS": 0.3, "UH": 0.2, "UTS": 0.25, "UAS": 0.25}
-    total_weighted = 0.0
-    total_weight = 0.0
-    for type_name, score in (type_averages or {}).items():
-        weight = float(weights.get(type_name, 0))
-        if weight <= 0:
-            continue
-        total_weighted += float(score) * weight
-        total_weight += weight
-    if total_weight <= 0:
-        return 0
-    return round(total_weighted / total_weight, 2)
+def _calculate_weighted_final(type_averages, tenant_id=None, academic_year_id=None, subject_id=None, student_id=None, class_id=None):
+    return calculate_weighted_final(
+        type_averages,
+        tenant_id=tenant_id,
+        academic_year_id=academic_year_id,
+        subject_id=subject_id,
+        student_id=student_id,
+        class_id=class_id,
+    )
 
 
 def _academic_year_date_bounds(academic_year):
@@ -879,24 +876,42 @@ def register_parent_routes(api_bp):
         else:
             grade_query = grade_query.filter(False)
 
+        tenant_id = resolve_tenant_id(user)
         grade_rows = grade_query.order_by(Grade.created_at.desc(), Grade.id.desc()).all()
-        grouped = defaultdict(lambda: defaultdict(list))
+        grouped = {}
         for row in grade_rows:
             subject_name = row.subject.name if row.subject else (row.majlis_subject.name if row.majlis_subject else "-")
+            subject_key = row.subject_id if row.subject_id is not None else f"majlis:{row.majlis_subject_id or subject_name}"
+            grouped.setdefault(
+                subject_key,
+                {
+                    "subject_name": subject_name,
+                    "subject_id": row.subject_id,
+                    "academic_year_id": row.academic_year_id,
+                    "scores": defaultdict(list),
+                },
+            )
             if row.type:
-                grouped[subject_name][row.type.name].append(float(row.score or 0))
+                grouped[subject_key]["scores"][row.type.name].append(float(row.score or 0))
 
         summary_rows = []
-        for subject_name, type_map in grouped.items():
+        for subject_data in grouped.values():
             type_averages = {}
-            for grade_type, scores in type_map.items():
+            for grade_type, scores in subject_data["scores"].items():
                 if scores:
                     type_averages[grade_type] = round(sum(scores) / len(scores), 2)
             summary_rows.append(
                 {
-                    "subject_name": subject_name,
+                    "subject_name": subject_data["subject_name"],
                     "type_averages": type_averages,
-                    "final_score": _calculate_weighted_final(type_averages),
+                    "final_score": _calculate_weighted_final(
+                        type_averages,
+                        tenant_id=tenant_id,
+                        academic_year_id=subject_data["academic_year_id"],
+                        subject_id=subject_data["subject_id"],
+                        student_id=selected_child.id,
+                        class_id=selected_child.current_class_id,
+                    ),
                 }
             )
         summary_rows.sort(key=lambda item: (item.get("subject_name") or "").lower())
