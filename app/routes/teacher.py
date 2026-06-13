@@ -19,7 +19,13 @@ from app.decorators import role_required
 from app.services.rumah_quran_service import is_rumah_quran_classroom, list_rumah_quran_students_for_class
 from app.services.bahasa_service import is_bahasa_classroom, list_bahasa_students_for_class
 from app.services.formal_service import is_formal_classroom, list_formal_students_for_class
-from app.services.grade_formula_service import calculate_report_final_detail, calculate_weighted_final
+from app.services.grade_formula_service import (
+    REPORT_ADJUSTMENT_SOURCE_TAHFIDZ,
+    REPORT_ADJUSTMENT_SOURCE_TAHFIDZ_EVALUATION,
+    calculate_report_final_detail,
+    calculate_weighted_final,
+    resolve_report_score_adjustment,
+)
 from app.services.staff_assignment_service import (
     list_teacher_homeroom_classes_from_assignments,
     list_teacher_subject_classes_from_assignments,
@@ -1122,7 +1128,43 @@ def _behavior_summary_from_indicator_rows(rows):
     }
 
 
-def _quran_report_payload_for_homeroom(tahfidz_rows, recitation_rows, evaluation_rows):
+def _quran_adjusted_summary(source_type, scores, count, tenant_id=None, student_id=None, academic_year_id=None, class_id=None):
+    average_score = round(sum(scores) / len(scores), 2) if scores else 0
+    adjustment = resolve_report_score_adjustment(
+        tenant_id=tenant_id,
+        student_id=student_id,
+        academic_year_id=academic_year_id,
+        class_id=class_id,
+        source_type=source_type,
+    )
+    if not adjustment:
+        return {
+            'count': count,
+            'average_score': average_score,
+            'original_score': average_score,
+            'is_adjusted': False,
+            'adjustment_reference': None,
+            'adjustment_reason': None,
+        }
+    return {
+        'count': count,
+        'average_score': round(float(adjustment.adjusted_score or 0), 2),
+        'original_score': round(float(adjustment.original_score or average_score), 2),
+        'is_adjusted': True,
+        'adjustment_reference': adjustment.approval_reference,
+        'adjustment_reason': adjustment.reason,
+    }
+
+
+def _quran_report_payload_for_homeroom(
+    tahfidz_rows,
+    recitation_rows,
+    evaluation_rows,
+    tenant_id=None,
+    student_id=None,
+    academic_year_id=None,
+    class_id=None,
+):
     tahfidz_scores = [float(item.score or 0) for item in tahfidz_rows]
     recitation_scores = [float(item.score or 0) for item in recitation_rows]
     evaluation_scores = [float(item.score or 0) for item in evaluation_rows]
@@ -1175,18 +1217,28 @@ def _quran_report_payload_for_homeroom(tahfidz_rows, recitation_rows, evaluation
         })
 
     return {
-        'tahfidz_summary': {
-            'count': len(tahfidz_rows),
-            'average_score': round(sum(tahfidz_scores) / len(tahfidz_scores), 2) if tahfidz_scores else 0,
-        },
+        'tahfidz_summary': _quran_adjusted_summary(
+            REPORT_ADJUSTMENT_SOURCE_TAHFIDZ,
+            tahfidz_scores,
+            len(tahfidz_rows),
+            tenant_id=tenant_id,
+            student_id=student_id,
+            academic_year_id=academic_year_id,
+            class_id=class_id,
+        ),
         'recitation_summary': {
             'count': len(recitation_rows),
             'average_score': round(sum(recitation_scores) / len(recitation_scores), 2) if recitation_scores else 0,
         },
-        'evaluation_summary': {
-            'count': len(evaluation_rows),
-            'average_score': round(sum(evaluation_scores) / len(evaluation_scores), 2) if evaluation_scores else 0,
-        },
+        'evaluation_summary': _quran_adjusted_summary(
+            REPORT_ADJUSTMENT_SOURCE_TAHFIDZ_EVALUATION,
+            evaluation_scores,
+            len(evaluation_rows),
+            tenant_id=tenant_id,
+            student_id=student_id,
+            academic_year_id=academic_year_id,
+            class_id=class_id,
+        ),
         'tahfidz_history': tahfidz_history,
         'recitation_history': recitation_history,
         'evaluation_history': evaluation_history,
@@ -3196,7 +3248,15 @@ def homeroom_student_detail(student_id):
         .limit(history_limit)
         .all()
     )
-    quran_report = _quran_report_payload_for_homeroom(tahfidz_rows, recitation_rows, evaluation_rows)
+    quran_report = _quran_report_payload_for_homeroom(
+        tahfidz_rows,
+        recitation_rows,
+        evaluation_rows,
+        tenant_id=_teacher_tenant_id(teacher),
+        student_id=selected_student.id,
+        academic_year_id=selected_academic_year.id if selected_academic_year else None,
+        class_id=selected_class.id,
+    )
 
     return render_template(
         'teacher/homeroom_student_detail.html',

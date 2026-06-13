@@ -34,11 +34,11 @@
             <div class="card-header bg-rqdf-dark py-4">
 
                 <div class="d-flex align-items-center justify-content-center mb-4">
-                    <img src="{{ url_for('static', filename='img/logo-rqdf-white.png') }}"
-                         alt="Logo Sekolah"
+                    <img src="{{ tenant_logo_url }}"
+                         alt="Logo {{ tenant_brand_name or 'Lembaga' }}"
                          class="img-fluid me-3"
                          style="max-height: 85px; width: auto;"> <div class="text-start text-white lh-sm">
-                        <h3 class="fw-bold mb-0">RQDF</h3>
+                        <h3 class="fw-bold mb-0">{{ tenant_brand_name or 'RQDF' }}</h3>
                         <h6 class="mb-0 fw-bold ls-1">MANAGEMENT<br>SYSTEM</h6>
                     </div>
                 </div>
@@ -94,7 +94,7 @@
                 </form>
             </div>
             <div class="card-footer text-center bg-light py-3">
-                <small class="text-muted">RQDF Management System <br> © {{ now.year if now else '2026' }} Yayasan RQC All Right Reserved</small>
+                <small class="text-muted">{{ tenant_brand_name or 'RQDF Management System' }} <br> &copy; {{ now.year if now else '2026' }} All Rights Reserved</small>
             </div>
         </div>
     </div>

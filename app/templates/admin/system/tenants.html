@@ -12,7 +12,7 @@
                 <h6 class="m-0 fw-bold text-primary">Tambah Tenant Baru</h6>
             </div>
             <div class="card-body">
-                <form method="POST" class="row g-2">
+                <form method="POST" class="row g-2" enctype="multipart/form-data">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="create_tenant">
                     <div class="col-md-7">
@@ -42,6 +42,14 @@
                     <div class="col-md-6">
                         <label class="small text-muted">Telepon</label>
                         <input type="text" name="institution_phone" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="small text-muted">Domain/Subdomain</label>
+                        <input type="text" name="tenant_domain" class="form-control form-control-sm" placeholder="rqdf.nizamiya.co.id">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="small text-muted">Logo</label>
+                        <input type="file" name="institution_logo" class="form-control form-control-sm" accept=".png,.jpg,.jpeg,.webp">
                     </div>
                     <div class="col-12">
                         <label class="small text-muted">Alamat</label>
@@ -140,6 +148,8 @@
                         <th>Timezone</th>
                         <th>Alamat</th>
                         <th>Telepon</th>
+                        <th>Domain</th>
+                        <th>Logo</th>
                         <th>Admin Tenant</th>
                         <th>Aksi</th>
                     </tr>
@@ -178,6 +188,21 @@
                         <td>
                             <input type="text" name="institution_phone" class="form-control form-control-sm" value="{{ config_map.get((tenant.id, 'institution_phone'), '') }}" placeholder="No telp lembaga" form="tenant-form-{{ tenant.id }}">
                         </td>
+                        <td style="min-width: 180px;">
+                            <input type="text" name="tenant_domain" class="form-control form-control-sm" value="{{ config_map.get((tenant.id, 'tenant_domain'), '') }}" placeholder="tenant.nizamiya.co.id" form="tenant-form-{{ tenant.id }}">
+                        </td>
+                        <td style="min-width: 170px;">
+                            {% set logo_path = config_map.get((tenant.id, 'institution_logo'), '') %}
+                            {% if logo_path %}
+                                <img src="{{ url_for('static', filename=logo_path) }}" alt="Logo {{ tenant.name }}" style="max-height: 38px; max-width: 120px;" class="d-block mb-1">
+                                <label class="small text-muted">
+                                    <input type="checkbox" name="remove_logo" value="1" form="tenant-form-{{ tenant.id }}"> Reset
+                                </label>
+                            {% else %}
+                                <div class="small text-muted mb-1">Default</div>
+                            {% endif %}
+                            <input type="file" name="institution_logo" class="form-control form-control-sm" accept=".png,.jpg,.jpeg,.webp" form="tenant-form-{{ tenant.id }}">
+                        </td>
                         <td style="min-width: 220px;">
                             {% set admins = admin_map.get(tenant.id, []) %}
                             {% if admins %}
@@ -189,7 +214,7 @@
                             {% endif %}
                         </td>
                         <td class="text-nowrap">
-                            <form method="POST" id="tenant-form-{{ tenant.id }}">
+                            <form method="POST" id="tenant-form-{{ tenant.id }}" enctype="multipart/form-data">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="action" value="update_tenant">
                                 <input type="hidden" name="tenant_id" value="{{ tenant.id }}">
@@ -199,7 +224,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="9" class="text-center text-muted">Tidak ada tenant.</td>
+                        <td colspan="11" class="text-center text-muted">Tidak ada tenant.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

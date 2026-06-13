@@ -259,9 +259,19 @@
         <div class="card-header py-3"><h6 class="m-0 fw-bold text-info">Riwayat Tahfidz / Bacaan / Evaluasi</h6></div>
         <div class="card-body">
             <div class="row mb-3">
-                <div class="col-md-4 mb-2"><span class="badge bg-success">Tahfidz {{ quran.tahfidz_summary.count }} (Avg {{ quran.tahfidz_summary.average_score }})</span></div>
+                <div class="col-md-4 mb-2">
+                    <span class="badge bg-success">Tahfidz {{ quran.tahfidz_summary.count }} (Avg {{ quran.tahfidz_summary.average_score }})</span>
+                    {% if quran.tahfidz_summary.is_adjusted %}
+                    <div class="small text-muted">Adj. dari {{ quran.tahfidz_summary.original_score }} · {{ quran.tahfidz_summary.adjustment_reference }}</div>
+                    {% endif %}
+                </div>
                 <div class="col-md-4 mb-2"><span class="badge bg-primary">Bacaan {{ quran.recitation_summary.count }} (Avg {{ quran.recitation_summary.average_score }})</span></div>
-                <div class="col-md-4 mb-2"><span class="badge bg-warning text-dark">Evaluasi {{ quran.evaluation_summary.count }} (Avg {{ quran.evaluation_summary.average_score }})</span></div>
+                <div class="col-md-4 mb-2">
+                    <span class="badge bg-warning text-dark">Evaluasi {{ quran.evaluation_summary.count }} (Avg {{ quran.evaluation_summary.average_score }})</span>
+                    {% if quran.evaluation_summary.is_adjusted %}
+                    <div class="small text-muted">Adj. dari {{ quran.evaluation_summary.original_score }} · {{ quran.evaluation_summary.adjustment_reference }}</div>
+                    {% endif %}
+                </div>
             </div>
             <div class="row">
                 <div class="col-lg-4 mb-3">

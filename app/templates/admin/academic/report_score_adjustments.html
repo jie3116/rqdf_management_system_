@@ -22,6 +22,14 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="action" value="create">
                     <div class="mb-3">
+                        <label class="small fw-bold">Jenis Nilai</label>
+                        <select name="source_type" id="adjustment-source-type" class="form-select" required>
+                            {% for key, label in source_options.items() %}
+                            <option value="{{ key }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
                         <label class="small fw-bold">Siswa/Santri</label>
                         <select name="student_id" class="form-select select2" required>
                             <option value="">Pilih siswa</option>
@@ -48,9 +56,9 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="mb-3">
+                    <div class="mb-3" id="adjustment-subject-field">
                         <label class="small fw-bold">Mata Pelajaran</label>
-                        <select name="subject_id" class="form-select select2" required>
+                        <select name="subject_id" id="adjustment-subject-id" class="form-select select2">
                             <option value="">Pilih mapel</option>
                             {% for subject in subject_options %}
                             <option value="{{ subject.id }}">{{ subject.name }}</option>
@@ -80,7 +88,7 @@
             </div>
             <div class="card-body">
                 <div class="alert alert-info small">
-                    Gunakan file XLSX dengan kolom: nis, nama_siswa, kelas, tahun_ajaran, semester, mapel, nilai_adjustment, nomor_dokumen, alasan.
+                    Gunakan file XLSX dengan kolom: jenis_nilai, nis, nama_siswa, kelas, tahun_ajaran, semester, mapel, nilai_adjustment, nomor_dokumen, alasan. Isi jenis_nilai dengan AKADEMIK, TAHFIDZ, atau EVALUASI_TAHFIDZ.
                 </div>
                 <form method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
@@ -113,7 +121,7 @@
                                 <th>Dokumen</th>
                                 <th>Siswa</th>
                                 <th>Periode</th>
-                                <th>Mapel</th>
+                                <th>Jenis/Mapel</th>
                                 <th>Nilai</th>
                                 <th>Status</th>
                                 <th>Aksi</th>
@@ -128,7 +136,10 @@
                                 </td>
                                 <td>{{ row.student.full_name if row.student else '-' }}</td>
                                 <td>{{ row.academic_year.name if row.academic_year else '-' }} / {{ row.academic_year.semester if row.academic_year else '-' }}</td>
-                                <td>{{ row.subject.name if row.subject else '-' }}</td>
+                                <td>
+                                    <div class="fw-bold">{{ source_options.get(row.source_type or academic_source, row.source_type or '-') }}</div>
+                                    <div class="small text-muted">{{ row.subject.name if row.subject else '-' }}</div>
+                                </td>
                                 <td>
                                     <span class="text-muted">{{ row.original_score }}</span>
                                     <i class="fas fa-arrow-right mx-1 text-muted"></i>
@@ -182,4 +193,26 @@
         </div>
     </div>
 </div>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const sourceSelect = document.getElementById("adjustment-source-type");
+    const subjectField = document.getElementById("adjustment-subject-field");
+    const subjectSelect = document.getElementById("adjustment-subject-id");
+    if (!sourceSelect || !subjectField || !subjectSelect) {
+        return;
+    }
+    function updateSubjectRequirement() {
+        const isAcademic = sourceSelect.value === "{{ academic_source }}";
+        subjectField.style.display = isAcademic ? "" : "none";
+        if (isAcademic) {
+            subjectSelect.setAttribute("required", "required");
+        } else {
+            subjectSelect.removeAttribute("required");
+            subjectSelect.value = "";
+        }
+    }
+    sourceSelect.addEventListener("change", updateSubjectRequirement);
+    updateSubjectRequirement();
+});
+</script>
 {% endblock %}

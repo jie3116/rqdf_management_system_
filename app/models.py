@@ -1166,7 +1166,8 @@ class ReportScoreAdjustment(BaseModel):
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
     class_id = db.Column(db.Integer, db.ForeignKey('class_rooms.id'), nullable=True, index=True)
     academic_year_id = db.Column(db.Integer, db.ForeignKey('academic_years.id'), nullable=False, index=True)
-    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=False, index=True)
+    subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=True, index=True)
+    source_type = db.Column(db.String(30), default='ACADEMIC', nullable=False, index=True)
     original_score = db.Column(db.Float, nullable=False)
     adjusted_score = db.Column(db.Float, nullable=False)
     reason = db.Column(db.Text, nullable=False)
@@ -1189,7 +1190,7 @@ class ReportScoreAdjustment(BaseModel):
     __table_args__ = (
         db.Index(
             'idx_report_score_adjustment_lookup',
-            'tenant_id', 'student_id', 'academic_year_id', 'subject_id', 'status'
+            'tenant_id', 'student_id', 'academic_year_id', 'subject_id', 'source_type', 'status'
         ),
     )
 

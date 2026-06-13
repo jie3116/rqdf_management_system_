@@ -25,6 +25,7 @@ def create_app(config_class=Config):
         from app.routes.teacher import build_teacher_sidebar_groups
         from app.utils.roles import get_active_role, role_label
         from app.utils.tenant import resolve_tenant_id
+        from app.utils.tenant_branding import build_tenant_brand
         from app.utils.tenant_modules import (
             PACKAGE_FULL,
             PACKAGE_RUMAH_QURAN,
@@ -66,10 +67,14 @@ def create_app(config_class=Config):
         if current_user.is_authenticated and current_user.has_role('teacher'):
             teacher = Teacher.query.filter_by(user_id=current_user.id, is_deleted=False).first()
             teacher_sidebar_groups = build_teacher_sidebar_groups(teacher)
+        tenant_brand = build_tenant_brand()
         return {
             'datetime': datetime,
             'local_now': local_now,
             'local_today': local_today,
+            'tenant_brand': tenant_brand,
+            'tenant_brand_name': tenant_brand['name'],
+            'tenant_logo_url': tenant_brand['logo_url'],
             'active_role': active_role,
             'active_role_value': active_role.value if active_role else None,
             'active_role_label': role_label(active_role) if active_role else '-',

@@ -2,11 +2,14 @@ from datetime import datetime, timedelta, date
 from collections import defaultdict
 import csv
 import json
+import os
 import re
+import uuid
 from urllib.parse import urlsplit
 from io import BytesIO, StringIO, TextIOWrapper
-from flask import Blueprint, Response, jsonify, render_template, redirect, url_for, flash, request
+from flask import Blueprint, Response, current_app, jsonify, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
+from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
 from sqlalchemy import func, or_, and_
 from openpyxl import Workbook, load_workbook
@@ -58,9 +61,13 @@ from app.services.finance_posting_service import (
     reverse_journal,
 )
 from app.services.grade_formula_service import (
+    REPORT_ADJUSTMENT_SOURCE_ACADEMIC,
+    REPORT_ADJUSTMENT_SOURCE_TAHFIDZ,
+    REPORT_ADJUSTMENT_SOURCE_TAHFIDZ_EVALUATION,
     REPORT_ADJUSTMENT_STATUS_ACTIVE,
     REPORT_ADJUSTMENT_STATUS_VOID,
     calculate_report_final_detail,
+    normalize_report_adjustment_source,
 )
 from app.utils.timezone import local_day_bounds_utc_naive, local_now, local_today
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
@@ -110,6 +117,14 @@ from app.utils.tenant import (
     classroom_in_tenant,
     resolve_tenant_id,
     scoped_classrooms_query,
+)
+from app.utils.tenant_branding import (
+    BRAND_ADDRESS_KEY,
+    BRAND_DOMAIN_KEY,
+    BRAND_LOGO_KEY,
+    BRAND_NAME_KEY,
+    BRAND_PHONE_KEY,
+    build_tenant_brand,
 )
 
 admin_bp = Blueprint('admin', __name__)
@@ -219,6 +234,23 @@ def _slugify_tenant(raw_value):
 def _normalize_tenant_code(raw_value):
     code = re.sub(r"[^A-Za-z0-9_-]+", "", (raw_value or "").strip().upper())
     return code
+
+
+def _save_tenant_logo(tenant_id, file_storage):
+    if not file_storage or not file_storage.filename:
+        return None, None
+
+    original_name = secure_filename(file_storage.filename)
+    extension = os.path.splitext(original_name)[1].lower().lstrip(".")
+    allowed_extensions = {"png", "jpg", "jpeg", "webp"}
+    if extension not in allowed_extensions:
+        return None, "Logo harus berupa file PNG, JPG, JPEG, atau WEBP."
+
+    upload_dir = os.path.join(current_app.static_folder, "uploads", "tenant_logos")
+    os.makedirs(upload_dir, exist_ok=True)
+    filename = f"tenant-{tenant_id}-{uuid.uuid4().hex}.{extension}"
+    file_storage.save(os.path.join(upload_dir, filename))
+    return f"uploads/tenant_logos/{filename}", None
 
 
 def _parse_iso_date(value):
@@ -1286,6 +1318,38 @@ def manage_app_config():
         return redirect(url_for('main.dashboard'))
 
     if request.method == 'POST':
+        action = (request.form.get('action') or 'save_config').strip()
+        if action == 'update_branding':
+            tenant = Tenant.query.filter_by(id=tenant_id, is_deleted=False).first_or_404()
+            name = (request.form.get('institution_name') or '').strip()
+            address = request.form.get('institution_address') or ''
+            phone = request.form.get('institution_phone') or ''
+            domain = request.form.get('tenant_domain') or ''
+
+            if not name:
+                flash('Nama lembaga wajib diisi.', 'danger')
+                return redirect(url_for('admin.manage_app_config'))
+
+            tenant.name = name
+            _upsert_tenant_config(tenant_id, BRAND_NAME_KEY, name, 'Nama lembaga untuk branding dan dokumen.')
+            _upsert_tenant_config(tenant_id, BRAND_ADDRESS_KEY, address, 'Alamat lembaga untuk dokumen resmi tenant.')
+            _upsert_tenant_config(tenant_id, BRAND_PHONE_KEY, phone, 'Nomor telepon lembaga untuk dokumen resmi tenant.')
+            _upsert_tenant_config(tenant_id, BRAND_DOMAIN_KEY, domain, 'Domain/subdomain tenant. Pisahkan dengan koma jika lebih dari satu.')
+
+            if request.form.get('remove_logo') == '1':
+                _upsert_tenant_config(tenant_id, BRAND_LOGO_KEY, '', 'Path logo tenant di folder static.')
+
+            logo_path, logo_error = _save_tenant_logo(tenant_id, request.files.get('institution_logo'))
+            if logo_error:
+                flash(logo_error, 'danger')
+                return redirect(url_for('admin.manage_app_config'))
+            if logo_path:
+                _upsert_tenant_config(tenant_id, BRAND_LOGO_KEY, logo_path, 'Path logo tenant di folder static.')
+
+            db.session.commit()
+            flash('Branding lembaga tersimpan.', 'success')
+            return redirect(url_for('admin.manage_app_config'))
+
         key = request.form.get('key')
         value = request.form.get('value')
         description = request.form.get('description')
@@ -1315,7 +1379,8 @@ def manage_app_config():
         )
 
     configs = configs_query.order_by(AppConfig.key.asc()).all()
-    return render_template('admin/system/configs.html', configs=configs, query=query)
+    tenant_brand = build_tenant_brand(Tenant.query.filter_by(id=tenant_id, is_deleted=False).first())
+    return render_template('admin/system/configs.html', configs=configs, query=query, tenant_brand_settings=tenant_brand)
 
 
 def _student_in_tenant_query(tenant_id):
@@ -1354,6 +1419,49 @@ def _calculated_final_for_adjustment(student_id, academic_year_id, subject_id, t
         class_id=class_id,
     )
     return detail['final_score']
+
+
+REPORT_ADJUSTMENT_SOURCE_LABELS = {
+    REPORT_ADJUSTMENT_SOURCE_ACADEMIC: 'Akademik',
+    REPORT_ADJUSTMENT_SOURCE_TAHFIDZ: 'Tahfidz',
+    REPORT_ADJUSTMENT_SOURCE_TAHFIDZ_EVALUATION: 'Evaluasi Tahfidz',
+}
+
+
+def _parse_academic_year_bounds(academic_year):
+    if academic_year is None:
+        return None, None
+    name = (academic_year.name or '').strip()
+    semester = (academic_year.semester or '').strip().lower()
+    parts = [item.strip() for item in name.split('/') if item.strip()]
+    if not parts:
+        return None, None
+    try:
+        start_year = int(parts[0])
+        end_year = int(parts[1]) if len(parts) > 1 else start_year + 1
+    except ValueError:
+        return None, None
+
+    if 'ganjil' in semester or semester.endswith('1'):
+        return datetime(start_year, 7, 1), datetime(start_year + 1, 1, 1)
+    if 'genap' in semester or semester.endswith('2'):
+        return datetime(end_year, 1, 1), datetime(end_year, 7, 1)
+    return datetime(start_year, 7, 1), datetime(end_year, 7, 1)
+
+
+def _calculated_tahfidz_final_for_adjustment(student_id, academic_year, source_type):
+    start_at, end_at = _parse_academic_year_bounds(academic_year)
+    model = TahfidzEvaluation if source_type == REPORT_ADJUSTMENT_SOURCE_TAHFIDZ_EVALUATION else TahfidzRecord
+    query = model.query.filter(
+        model.is_deleted.is_(False),
+        model.participant_type == ParticipantType.STUDENT,
+        model.student_id == student_id,
+    )
+    if start_at and end_at:
+        query = query.filter(model.date >= start_at, model.date < end_at)
+    rows = query.all()
+    scores = [float(row.score or 0) for row in rows]
+    return round(sum(scores) / len(scores), 2) if scores else 0
 
 
 def _row_value(row, *keys):
@@ -1477,24 +1585,42 @@ def _resolve_adjustment_class(row, tenant_id, student):
     return student.current_class, None
 
 
-def _create_report_score_adjustment(student, class_room, academic_year, subject, adjusted_score, approval_reference, reason, tenant_id):
+def _create_report_score_adjustment(student, class_room, academic_year, subject, adjusted_score, approval_reference, reason, tenant_id, source_type=REPORT_ADJUSTMENT_SOURCE_ACADEMIC):
+    source_type = normalize_report_adjustment_source(source_type)
+    if not source_type:
+        raise ValueError('Jenis nilai adjustment tidak valid.')
+    if source_type == REPORT_ADJUSTMENT_SOURCE_ACADEMIC and subject is None:
+        raise ValueError('Mata pelajaran wajib diisi untuk adjustment akademik.')
+
     class_id = class_room.id if class_room else student.current_class_id
-    original_score = _calculated_final_for_adjustment(
-        student_id=student.id,
-        academic_year_id=academic_year.id,
-        subject_id=subject.id,
-        tenant_id=tenant_id,
-        class_id=class_id,
-    )
+    if source_type == REPORT_ADJUSTMENT_SOURCE_ACADEMIC:
+        original_score = _calculated_final_for_adjustment(
+            student_id=student.id,
+            academic_year_id=academic_year.id,
+            subject_id=subject.id,
+            tenant_id=tenant_id,
+            class_id=class_id,
+        )
+    else:
+        original_score = _calculated_tahfidz_final_for_adjustment(
+            student_id=student.id,
+            academic_year=academic_year,
+            source_type=source_type,
+        )
 
     existing_active = ReportScoreAdjustment.query.filter(
         ReportScoreAdjustment.tenant_id == tenant_id,
         ReportScoreAdjustment.student_id == student.id,
         ReportScoreAdjustment.academic_year_id == academic_year.id,
-        ReportScoreAdjustment.subject_id == subject.id,
+        ReportScoreAdjustment.source_type == source_type,
         ReportScoreAdjustment.status == REPORT_ADJUSTMENT_STATUS_ACTIVE,
         ReportScoreAdjustment.is_deleted.is_(False),
-    ).all()
+    )
+    if source_type == REPORT_ADJUSTMENT_SOURCE_ACADEMIC:
+        existing_active = existing_active.filter(ReportScoreAdjustment.subject_id == subject.id)
+    else:
+        existing_active = existing_active.filter(ReportScoreAdjustment.subject_id.is_(None))
+    existing_active = existing_active.all()
     for existing in existing_active:
         existing.status = REPORT_ADJUSTMENT_STATUS_VOID
         existing.void_reason = 'Digantikan oleh adjustment resmi baru.'
@@ -1506,7 +1632,8 @@ def _create_report_score_adjustment(student, class_room, academic_year, subject,
         student_id=student.id,
         class_id=class_id,
         academic_year_id=academic_year.id,
-        subject_id=subject.id,
+        subject_id=subject.id if subject else None,
+        source_type=source_type,
         original_score=original_score,
         adjusted_score=adjusted_score,
         reason=reason,
@@ -1525,6 +1652,7 @@ def report_score_adjustment_template():
         'template_adjustment_nilai_raport.xlsx',
         'Adjustment Nilai',
         [
+            'jenis_nilai',
             'nis',
             'nama_siswa',
             'kelas',
@@ -1537,6 +1665,7 @@ def report_score_adjustment_template():
         ],
         [
             [
+                'AKADEMIK',
                 '12345',
                 'Nama Siswa',
                 'Kelas 7A',
@@ -1546,6 +1675,18 @@ def report_score_adjustment_template():
                 88.5,
                 'BA-NILAI/2026/001',
                 'Adjustment resmi sesuai berita acara.',
+            ],
+            [
+                'TAHFIDZ',
+                '12345',
+                'Nama Siswa',
+                'Kelas 7A',
+                '2025/2026',
+                'Ganjil',
+                '',
+                90,
+                'BA-TAHFIDZ/2026/001',
+                'Adjustment resmi nilai rapor tahfidz.',
             ],
         ],
     )
@@ -1567,6 +1708,7 @@ def manage_report_score_adjustments():
         AcademicYear.semester.asc(),
     ).all()
     subject_options = Subject.query.filter(Subject.is_deleted.is_(False)).order_by(Subject.name.asc()).all()
+    source_options = REPORT_ADJUSTMENT_SOURCE_LABELS
 
     if request.method == 'POST':
         action = (request.form.get('action') or 'create').strip()
@@ -1614,12 +1756,6 @@ def manage_report_score_adjustments():
                     errors.append(f'Baris {idx}: {error}')
                     continue
 
-                subject, error = _resolve_adjustment_subject(row)
-                if error:
-                    skipped += 1
-                    errors.append(f'Baris {idx}: {error}')
-                    continue
-
                 academic_year, error = _resolve_adjustment_academic_year(row)
                 if error:
                     skipped += 1
@@ -1631,6 +1767,23 @@ def manage_report_score_adjustments():
                     skipped += 1
                     errors.append(f'Baris {idx}: {error}')
                     continue
+
+                source_type = normalize_report_adjustment_source(
+                    _row_value(row, 'jenis_nilai', 'source_type', 'tipe_nilai') or REPORT_ADJUSTMENT_SOURCE_ACADEMIC
+                )
+                if not source_type:
+                    skipped += 1
+                    errors.append(f'Baris {idx}: Jenis nilai harus ACADEMIC, TAHFIDZ, atau TAHFIDZ_EVALUATION.')
+                    continue
+
+                if source_type == REPORT_ADJUSTMENT_SOURCE_ACADEMIC:
+                    subject, error = _resolve_adjustment_subject(row)
+                    if error:
+                        skipped += 1
+                        errors.append(f'Baris {idx}: {error}')
+                        continue
+                else:
+                    subject = None
 
                 adjusted_score_raw = _row_value(row, 'nilai_adjustment', 'adjusted_score', 'nilai', 'nilai_akhir')
                 approval_reference = _row_value(row, 'nomor_dokumen', 'approval_reference', 'dokumen', 'no_dokumen')
@@ -1663,6 +1816,7 @@ def manage_report_score_adjustments():
                             approval_reference=approval_reference,
                             reason=reason,
                             tenant_id=tenant_id,
+                            source_type=source_type,
                         )
                         created += 1
                 except Exception as exc:
@@ -1679,12 +1833,13 @@ def manage_report_score_adjustments():
         class_id = request.form.get('class_id', type=int) or None
         academic_year_id = request.form.get('academic_year_id', type=int)
         subject_id = request.form.get('subject_id', type=int)
+        source_type = normalize_report_adjustment_source(request.form.get('source_type'))
         adjusted_score_raw = request.form.get('adjusted_score')
         approval_reference = (request.form.get('approval_reference') or '').strip()
         reason = (request.form.get('reason') or '').strip()
 
         student = _student_in_tenant_query(tenant_id).filter(Student.id == student_id).first()
-        subject = Subject.query.filter_by(id=subject_id, is_deleted=False).first()
+        subject = Subject.query.filter_by(id=subject_id, is_deleted=False).first() if subject_id else None
         academic_year = AcademicYear.query.filter_by(id=academic_year_id, is_deleted=False).first()
         class_room = None
         if class_id:
@@ -1692,8 +1847,11 @@ def manage_report_score_adjustments():
             if not class_room or not classroom_in_tenant(class_room, tenant_id):
                 class_room = None
 
-        if not student or not subject or not academic_year:
-            flash('Siswa, tahun ajaran, atau mata pelajaran tidak valid untuk tenant ini.', 'danger')
+        if not student or not academic_year or not source_type:
+            flash('Siswa, tahun ajaran, atau jenis nilai tidak valid untuk tenant ini.', 'danger')
+            return redirect(url_for('admin.manage_report_score_adjustments'))
+        if source_type == REPORT_ADJUSTMENT_SOURCE_ACADEMIC and not subject:
+            flash('Mata pelajaran wajib dipilih untuk adjustment akademik.', 'danger')
             return redirect(url_for('admin.manage_report_score_adjustments'))
         if class_id and not class_room:
             flash('Kelas tidak valid untuk tenant ini.', 'danger')
@@ -1719,6 +1877,7 @@ def manage_report_score_adjustments():
             approval_reference=approval_reference,
             reason=reason,
             tenant_id=tenant_id,
+            source_type=source_type,
         )
         db.session.commit()
         flash('Adjustment nilai raport resmi tersimpan.', 'success')
@@ -1740,6 +1899,8 @@ def manage_report_score_adjustments():
         student_options=student_options,
         academic_year_options=academic_year_options,
         subject_options=subject_options,
+        source_options=source_options,
+        academic_source=REPORT_ADJUSTMENT_SOURCE_ACADEMIC,
         active_status=REPORT_ADJUSTMENT_STATUS_ACTIVE,
     )
 
@@ -1757,6 +1918,7 @@ def manage_tenants():
             slug = _slugify_tenant(request.form.get('slug') or name)
             timezone = (request.form.get('timezone') or 'Asia/Jakarta').strip()
             package = normalize_tenant_package(request.form.get('module_package'))
+            domain = request.form.get('tenant_domain') or ''
 
             if not name:
                 flash('Nama tenant wajib diisi.', 'danger')
@@ -1782,19 +1944,31 @@ def manage_tenants():
             db.session.add(tenant)
             db.session.flush()
             _upsert_tenant_config(tenant.id, TENANT_PACKAGE_KEY, package, 'Paket modul tenant.')
-            _upsert_tenant_config(tenant.id, 'institution_name', name, 'Nama lembaga penerbit dokumen tenant.')
+            _upsert_tenant_config(tenant.id, BRAND_NAME_KEY, name, 'Nama lembaga penerbit dokumen tenant.')
             _upsert_tenant_config(
                 tenant.id,
-                'institution_address',
+                BRAND_ADDRESS_KEY,
                 request.form.get('institution_address') or '',
                 'Alamat lembaga untuk dokumen resmi tenant.',
             )
             _upsert_tenant_config(
                 tenant.id,
-                'institution_phone',
+                BRAND_PHONE_KEY,
                 request.form.get('institution_phone') or '',
                 'Nomor telepon lembaga untuk dokumen resmi tenant.',
             )
+            _upsert_tenant_config(
+                tenant.id,
+                BRAND_DOMAIN_KEY,
+                domain,
+                'Domain/subdomain tenant. Pisahkan dengan koma jika lebih dari satu.',
+            )
+            logo_path, logo_error = _save_tenant_logo(tenant.id, request.files.get('institution_logo'))
+            if logo_error:
+                flash(logo_error, 'danger')
+                return redirect(url_for('admin.manage_tenants'))
+            if logo_path:
+                _upsert_tenant_config(tenant.id, BRAND_LOGO_KEY, logo_path, 'Path logo tenant di folder static.')
             db.session.commit()
             flash(f'Tenant baru "{code}" berhasil dibuat.', 'success')
             return redirect(url_for('admin.manage_tenants'))
@@ -1850,6 +2024,7 @@ def manage_tenants():
         status = _parse_tenant_status(request.form.get('status'))
         address = request.form.get('institution_address') or ''
         phone = request.form.get('institution_phone') or ''
+        domain = request.form.get('tenant_domain') or ''
         package = normalize_tenant_package(request.form.get('module_package'))
 
         if not name:
@@ -1867,22 +2042,38 @@ def manage_tenants():
         _upsert_tenant_config(tenant.id, TENANT_PACKAGE_KEY, package, 'Paket modul tenant.')
         _upsert_tenant_config(
             tenant.id,
-            'institution_address',
+            BRAND_ADDRESS_KEY,
             address,
             'Alamat lembaga untuk dokumen resmi tenant.',
         )
         _upsert_tenant_config(
             tenant.id,
-            'institution_phone',
+            BRAND_PHONE_KEY,
             phone,
             'Nomor telepon lembaga untuk dokumen resmi tenant.',
         )
         _upsert_tenant_config(
             tenant.id,
-            'institution_name',
+            BRAND_NAME_KEY,
             name,
             'Nama lembaga penerbit dokumen tenant.',
         )
+        _upsert_tenant_config(
+            tenant.id,
+            BRAND_DOMAIN_KEY,
+            domain,
+            'Domain/subdomain tenant. Pisahkan dengan koma jika lebih dari satu.',
+        )
+
+        if request.form.get('remove_logo') == '1':
+            _upsert_tenant_config(tenant.id, BRAND_LOGO_KEY, '', 'Path logo tenant di folder static.')
+
+        logo_path, logo_error = _save_tenant_logo(tenant.id, request.files.get('institution_logo'))
+        if logo_error:
+            flash(logo_error, 'danger')
+            return redirect(url_for('admin.manage_tenants'))
+        if logo_path:
+            _upsert_tenant_config(tenant.id, BRAND_LOGO_KEY, logo_path, 'Path logo tenant di folder static.')
 
         db.session.commit()
         flash(f'Konfigurasi tenant "{tenant.code}" berhasil diperbarui.', 'success')
@@ -1911,7 +2102,7 @@ def manage_tenants():
             AppConfig.query
             .filter(
                 AppConfig.tenant_id.in_(tenant_ids),
-                AppConfig.key.in_(('institution_address', 'institution_phone', TENANT_PACKAGE_KEY)),
+                AppConfig.key.in_((BRAND_ADDRESS_KEY, BRAND_PHONE_KEY, BRAND_DOMAIN_KEY, BRAND_LOGO_KEY, TENANT_PACKAGE_KEY)),
                 AppConfig.is_deleted.is_(False),
             )
             .all()

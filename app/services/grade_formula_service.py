@@ -14,6 +14,29 @@ DEFAULT_GRADE_WEIGHTS = {
 }
 REPORT_ADJUSTMENT_STATUS_ACTIVE = "ACTIVE"
 REPORT_ADJUSTMENT_STATUS_VOID = "VOID"
+REPORT_ADJUSTMENT_SOURCE_ACADEMIC = "ACADEMIC"
+REPORT_ADJUSTMENT_SOURCE_TAHFIDZ = "TAHFIDZ"
+REPORT_ADJUSTMENT_SOURCE_TAHFIDZ_EVALUATION = "TAHFIDZ_EVALUATION"
+
+
+def normalize_report_adjustment_source(source_type):
+    normalized = (source_type or REPORT_ADJUSTMENT_SOURCE_ACADEMIC).strip().upper()
+    normalized = normalized.replace(" ", "_")
+    aliases = {
+        "AKADEMIK": REPORT_ADJUSTMENT_SOURCE_ACADEMIC,
+        "ACADEMIC": REPORT_ADJUSTMENT_SOURCE_ACADEMIC,
+        "TAHFIDZ": REPORT_ADJUSTMENT_SOURCE_TAHFIDZ,
+        "EVALUASI_TAHFIDZ": REPORT_ADJUSTMENT_SOURCE_TAHFIDZ_EVALUATION,
+        "TAHFIDZ_EVALUASI": REPORT_ADJUSTMENT_SOURCE_TAHFIDZ_EVALUATION,
+        "TAHFIDZ_EVALUATION": REPORT_ADJUSTMENT_SOURCE_TAHFIDZ_EVALUATION,
+    }
+    normalized = aliases.get(normalized, normalized)
+    allowed = {
+        REPORT_ADJUSTMENT_SOURCE_ACADEMIC,
+        REPORT_ADJUSTMENT_SOURCE_TAHFIDZ,
+        REPORT_ADJUSTMENT_SOURCE_TAHFIDZ_EVALUATION,
+    }
+    return normalized if normalized in allowed else None
 
 
 def calculate_weighted_final(
@@ -69,6 +92,7 @@ def calculate_report_final_detail(
         academic_year_id=academic_year_id,
         subject_id=subject_id,
         class_id=class_id,
+        source_type=REPORT_ADJUSTMENT_SOURCE_ACADEMIC,
     )
     if not adjustment:
         return {
@@ -87,8 +111,20 @@ def calculate_report_final_detail(
     }
 
 
-def resolve_report_score_adjustment(tenant_id=None, student_id=None, academic_year_id=None, subject_id=None, class_id=None):
-    if not all([tenant_id, student_id, academic_year_id, subject_id]):
+def resolve_report_score_adjustment(
+    tenant_id=None,
+    student_id=None,
+    academic_year_id=None,
+    subject_id=None,
+    class_id=None,
+    source_type=REPORT_ADJUSTMENT_SOURCE_ACADEMIC,
+):
+    source_type = normalize_report_adjustment_source(source_type)
+    if not source_type:
+        return None
+    if not all([tenant_id, student_id, academic_year_id]):
+        return None
+    if source_type == REPORT_ADJUSTMENT_SOURCE_ACADEMIC and not subject_id:
         return None
 
     query = ReportScoreAdjustment.query.filter(
@@ -97,8 +133,12 @@ def resolve_report_score_adjustment(tenant_id=None, student_id=None, academic_ye
         ReportScoreAdjustment.tenant_id == tenant_id,
         ReportScoreAdjustment.student_id == student_id,
         ReportScoreAdjustment.academic_year_id == academic_year_id,
-        ReportScoreAdjustment.subject_id == subject_id,
+        ReportScoreAdjustment.source_type == source_type,
     )
+    if source_type == REPORT_ADJUSTMENT_SOURCE_ACADEMIC:
+        query = query.filter(ReportScoreAdjustment.subject_id == subject_id)
+    else:
+        query = query.filter(ReportScoreAdjustment.subject_id.is_(None))
     if class_id is not None:
         query = query.filter(
             db_or_class_scope(ReportScoreAdjustment.class_id, class_id)
