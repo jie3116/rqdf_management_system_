@@ -3658,6 +3658,85 @@ def manage_finance_settings():
             flash(f'Periode "{name}" berhasil dibuat.', 'success')
             return redirect(url_for('admin.manage_finance_settings'))
 
+        if action == 'edit_period':
+            period_id = request.form.get('period_id', type=int)
+            period = FinancePeriod.query.filter_by(id=period_id, tenant_id=tenant_id).first_or_404()
+            name = (request.form.get('name') or '').strip()
+            start_date = _parse_iso_date(request.form.get('start_date'))
+            end_date = _parse_iso_date(request.form.get('end_date'))
+
+            if period.status == FinancePeriodStatus.LOCKED:
+                flash('Periode LOCKED tidak dapat diedit.', 'warning')
+                return redirect(url_for('admin.manage_finance_settings'))
+            if not start_date or not end_date:
+                flash('Tanggal mulai dan akhir periode wajib valid.', 'warning')
+                return redirect(url_for('admin.manage_finance_settings'))
+            if start_date > end_date:
+                flash('Tanggal mulai periode tidak boleh lebih besar dari tanggal akhir.', 'warning')
+                return redirect(url_for('admin.manage_finance_settings'))
+            if not name:
+                name = f'{start_date.year}-{start_date.month:02d}'
+
+            duplicate_name = FinancePeriod.query.filter(
+                FinancePeriod.tenant_id == tenant_id,
+                FinancePeriod.id != period.id,
+                FinancePeriod.name == name,
+            ).first()
+            if duplicate_name:
+                flash(f'Nama periode "{name}" sudah digunakan.', 'warning')
+                return redirect(url_for('admin.manage_finance_settings'))
+
+            overlap = FinancePeriod.query.filter(
+                FinancePeriod.tenant_id == tenant_id,
+                FinancePeriod.id != period.id,
+                FinancePeriod.start_date <= end_date,
+                FinancePeriod.end_date >= start_date,
+            ).first()
+            if overlap:
+                flash(
+                    f'Periode bentrok dengan periode "{overlap.name}" ({overlap.start_date} s.d {overlap.end_date}).',
+                    'warning'
+                )
+                return redirect(url_for('admin.manage_finance_settings'))
+
+            posted_outside_new_range = FinanceJournal.query.filter(
+                FinanceJournal.tenant_id == tenant_id,
+                FinanceJournal.status == FinanceJournalStatus.POSTED,
+                FinanceJournal.journal_date >= period.start_date,
+                FinanceJournal.journal_date <= period.end_date,
+                or_(
+                    FinanceJournal.journal_date < start_date,
+                    FinanceJournal.journal_date > end_date,
+                ),
+            ).first()
+            if posted_outside_new_range:
+                flash(
+                    'Periode tidak dapat diubah karena ada jurnal POSTED pada rentang lama '
+                    f'yang akan keluar dari rentang baru: {posted_outside_new_range.journal_no}.',
+                    'warning'
+                )
+                return redirect(url_for('admin.manage_finance_settings'))
+
+            old_name = period.name
+            old_start_date = period.start_date
+            old_end_date = period.end_date
+            period.name = name
+            period.start_date = start_date
+            period.end_date = end_date
+            db.session.add(AuditLog(
+                user_id=current_user.id,
+                action='EDIT_FINANCE_PERIOD',
+                details=(
+                    f'Tenant {tenant_id}: periode #{period.id} diubah dari '
+                    f'{old_name} ({old_start_date} s.d {old_end_date}) menjadi '
+                    f'{period.name} ({period.start_date} s.d {period.end_date})'
+                ),
+                ip_address=request.remote_addr,
+            ))
+            db.session.commit()
+            flash(f'Periode "{period.name}" berhasil diperbarui.', 'success')
+            return redirect(url_for('admin.manage_finance_settings'))
+
         if action == 'set_period_status':
             period_id = request.form.get('period_id', type=int)
             status_raw = (request.form.get('status') or '').strip().upper()

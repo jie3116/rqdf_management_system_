@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="row">
-    <div class="col-lg-6 mb-4">
+    <div class="col-12 mb-4">
         <div class="card shadow">
             <div class="card-header py-3 bg-info text-white">
                 <h6 class="m-0 fw-bold"><i class="fas fa-sliders-h me-2"></i>Finance Settings</h6>
@@ -11,92 +11,104 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="action" value="save_defaults"/>
 
-                    <div class="mb-3">
-                        <label class="form-label">Accounting Basis</label>
-                        <select name="accounting_basis" class="form-select">
-                            {% for basis in accounting_basis_options %}
-                            <option value="{{ basis.name }}" {% if settings and settings.accounting_basis == basis %}selected{% endif %}>
-                                {{ basis.value }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Default Kas/Bank</label>
-                        <select name="default_cash_bank_account_id" class="form-select">
-                            <option value="">-- Pilih --</option>
-                            {% for cb in cash_bank_accounts %}
-                            <option value="{{ cb.id }}" {% if settings and settings.default_cash_bank_account_id == cb.id %}selected{% endif %}>
-                                {{ cb.account_name }} ({{ cb.account_type.value }})
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Default Pendapatan SPP</label>
-                        <select name="default_spp_revenue_account_id" class="form-select">
-                            <option value="">-- Pilih --</option>
-                            {% for acc in accounts %}
-                            <option value="{{ acc.id }}" {% if settings and settings.default_spp_revenue_account_id == acc.id %}selected{% endif %}>
-                                {{ acc.code }} - {{ acc.name }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Default Pendapatan Pendaftaran</label>
-                        <select name="default_registration_revenue_account_id" class="form-select">
-                            <option value="">-- Pilih --</option>
-                            {% for acc in accounts %}
-                            <option value="{{ acc.id }}" {% if settings and settings.default_registration_revenue_account_id == acc.id %}selected{% endif %}>
-                                {{ acc.code }} - {{ acc.name }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Default Liabilitas Tabungan Santri</label>
-                        <select name="default_savings_liability_account_id" class="form-select">
-                            <option value="">-- Pilih --</option>
-                            {% for acc in accounts %}
-                            <option value="{{ acc.id }}" {% if settings and settings.default_savings_liability_account_id == acc.id %}selected{% endif %}>
-                                {{ acc.code }} - {{ acc.name }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Default Pendapatan Donasi/Infaq</label>
-                        <select name="default_donation_revenue_account_id" class="form-select">
-                            <option value="">-- Pilih --</option>
-                            {% for acc in accounts %}
-                            <option value="{{ acc.id }}" {% if settings and settings.default_donation_revenue_account_id == acc.id %}selected{% endif %}>
-                                {{ acc.code }} - {{ acc.name }}
-                            </option>
-                            {% endfor %}
-                        </select>
+                    <div class="row">
+                        <div class="col-lg-4 mb-3">
+                            <label class="form-label">Accounting Basis</label>
+                            <select name="accounting_basis" class="form-select">
+                                {% for basis in accounting_basis_options %}
+                                <option value="{{ basis.name }}" {% if settings and settings.accounting_basis == basis %}selected{% endif %}>
+                                    {{ basis.value }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-lg-4 mb-3">
+                            <label class="form-label">Default Kas/Bank</label>
+                            <select name="default_cash_bank_account_id" class="form-select">
+                                <option value="">-- Pilih --</option>
+                                {% for cb in cash_bank_accounts %}
+                                <option value="{{ cb.id }}" {% if settings and settings.default_cash_bank_account_id == cb.id %}selected{% endif %}>
+                                    {{ cb.account_name }} ({{ cb.account_type.value }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-lg-4 mb-3">
+                            <label class="form-label">Default Pendapatan SPP</label>
+                            <select name="default_spp_revenue_account_id" class="form-select">
+                                <option value="">-- Pilih --</option>
+                                {% for acc in accounts %}
+                                <option value="{{ acc.id }}" {% if settings and settings.default_spp_revenue_account_id == acc.id %}selected{% endif %}>
+                                    {{ acc.code }} - {{ acc.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
                     </div>
 
-                    <button type="submit" class="btn btn-info text-white w-100">Simpan Finance Settings</button>
+                    <div class="row">
+                        <div class="col-lg-4 mb-3">
+                            <label class="form-label">Default Pendapatan Pendaftaran</label>
+                            <select name="default_registration_revenue_account_id" class="form-select">
+                                <option value="">-- Pilih --</option>
+                                {% for acc in accounts %}
+                                <option value="{{ acc.id }}" {% if settings and settings.default_registration_revenue_account_id == acc.id %}selected{% endif %}>
+                                    {{ acc.code }} - {{ acc.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-lg-4 mb-3">
+                            <label class="form-label">Default Liabilitas Tabungan Santri</label>
+                            <select name="default_savings_liability_account_id" class="form-select">
+                                <option value="">-- Pilih --</option>
+                                {% for acc in accounts %}
+                                <option value="{{ acc.id }}" {% if settings and settings.default_savings_liability_account_id == acc.id %}selected{% endif %}>
+                                    {{ acc.code }} - {{ acc.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-lg-4 mb-3">
+                            <label class="form-label">Default Pendapatan Donasi/Infaq</label>
+                            <select name="default_donation_revenue_account_id" class="form-select">
+                                <option value="">-- Pilih --</option>
+                                {% for acc in accounts %}
+                                <option value="{{ acc.id }}" {% if settings and settings.default_donation_revenue_account_id == acc.id %}selected{% endif %}>
+                                    {{ acc.code }} - {{ acc.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="text-end">
+                        <button type="submit" class="btn btn-info text-white">Simpan Finance Settings</button>
+                    </div>
                 </form>
             </div>
         </div>
     </div>
+</div>
 
-    <div class="col-lg-6 mb-4">
-        {% if finance_draft_count > 0 %}
-        <div class="alert alert-warning d-flex justify-content-between align-items-center">
-            <div>Terdapat <strong>{{ finance_draft_count }}</strong> jurnal DRAFT.</div>
-            <a href="{{ url_for('admin.finance_reconciliation') }}" class="btn btn-sm btn-outline-warning">
-                Buka Rekonsiliasi
-            </a>
-        </div>
-        {% endif %}
-
+<div class="row">
+    <div class="col-12">
         <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-primary text-white">
+                <h6 class="m-0 fw-bold"><i class="fas fa-calendar-alt me-2"></i>Periode Akuntansi</h6>
+            </div>
             <div class="card-body">
-                <div class="row g-2">
-                    <div class="col-md-6">
+                {% if finance_draft_count > 0 %}
+                <div class="alert alert-warning d-flex justify-content-between align-items-center">
+                    <div>Terdapat <strong>{{ finance_draft_count }}</strong> jurnal DRAFT.</div>
+                    <a href="{{ url_for('admin.finance_reconciliation') }}" class="btn btn-sm btn-outline-warning">
+                        Buka Rekonsiliasi
+                    </a>
+                </div>
+                {% endif %}
+
+                <div class="row g-3 mb-4">
+                    <div class="col-lg-6">
                         <form method="POST">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                             <input type="hidden" name="action" value="ensure_current_period"/>
@@ -105,7 +117,7 @@
                             </button>
                         </form>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-lg-6">
                         <form method="POST">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                             <input type="hidden" name="action" value="lock_old_periods"/>
@@ -115,88 +127,147 @@
                         </form>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <div class="card shadow mb-4">
-            <div class="card-header py-3 bg-primary text-white">
-                <h6 class="m-0 fw-bold"><i class="fas fa-calendar-plus me-2"></i>Buat Periode Akuntansi</h6>
-            </div>
-            <div class="card-body">
-                <form method="POST">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <input type="hidden" name="action" value="create_period"/>
+                <div class="border rounded p-3 mb-4">
+                    <h6 class="fw-bold text-primary mb-3">
+                        <i class="fas fa-calendar-plus me-2"></i>Buat Periode
+                    </h6>
+                    <form method="POST" class="row g-3 align-items-end">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" name="action" value="create_period"/>
 
-                    <div class="mb-3">
-                        <label class="form-label">Nama Periode</label>
-                        <input type="text" name="name" class="form-control" placeholder="Contoh: 2026-05">
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-lg-3">
+                            <label class="form-label">Nama Periode</label>
+                            <input type="text" name="name" class="form-control" placeholder="Contoh: 2026-05">
+                        </div>
+                        <div class="col-lg-2">
                             <label class="form-label">Mulai</label>
                             <input type="date" name="start_date" class="form-control" required>
                         </div>
-                        <div class="col-md-6 mb-3">
+                        <div class="col-lg-2">
                             <label class="form-label">Selesai</label>
                             <input type="date" name="end_date" class="form-control" required>
                         </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Status Awal</label>
-                        <select name="status" class="form-select">
-                            {% for status in period_status_options %}
-                            <option value="{{ status.name }}" {% if status.name == 'OPEN' %}selected{% endif %}>{{ status.value }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Simpan Periode</button>
-                </form>
-            </div>
-        </div>
+                        <div class="col-lg-3">
+                            <label class="form-label">Status Awal</label>
+                            <select name="status" class="form-select">
+                                {% for status in period_status_options %}
+                                <option value="{{ status.name }}" {% if status.name == 'OPEN' %}selected{% endif %}>{{ status.value }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-lg-2">
+                            <button type="submit" class="btn btn-primary w-100">Simpan Periode</button>
+                        </div>
+                    </form>
+                </div>
 
-        <div class="card shadow">
-            <div class="card-header py-3">
-                <h6 class="m-0 fw-bold text-primary">Daftar Periode</h6>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-bordered table-sm align-middle">
-                        <thead>
-                            <tr>
-                                <th>Periode</th>
-                                <th>Rentang</th>
-                                <th>Status</th>
-                                <th>Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for p in periods %}
-                            <tr>
-                                <td class="fw-bold">{{ p.name }}</td>
-                                <td>{{ p.start_date }} s.d {{ p.end_date }}</td>
-                                <td><span class="badge bg-secondary">{{ p.status.value }}</span></td>
-                                <td>
-                                    <form method="POST" class="d-flex gap-2">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                        <input type="hidden" name="action" value="set_period_status"/>
-                                        <input type="hidden" name="period_id" value="{{ p.id }}"/>
-                                        <select name="status" class="form-select form-select-sm">
-                                            {% for st in period_status_options %}
-                                            <option value="{{ st.name }}" {% if p.status == st %}selected{% endif %}>{{ st.value }}</option>
-                                            {% endfor %}
-                                        </select>
-                                        <button type="submit" class="btn btn-sm btn-outline-primary">Update</button>
-                                    </form>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="4" class="text-center text-muted">Belum ada periode.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                <div class="row">
+                    <div class="col-12">
+                        <h6 class="fw-bold text-primary mb-3">Daftar Periode</h6>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle finance-period-table">
+                                <colgroup>
+                                    <col style="width: 120px;">
+                                    <col style="width: 240px;">
+                                    <col style="width: 110px;">
+                                    <col>
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th>Periode</th>
+                                        <th>Rentang</th>
+                                        <th>Status</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for p in periods %}
+                                    <tr>
+                                        <td class="fw-bold text-nowrap">{{ p.name }}</td>
+                                        <td class="text-nowrap">{{ p.start_date }} s.d {{ p.end_date }}</td>
+                                        <td><span class="badge bg-secondary">{{ p.status.value }}</span></td>
+                                        <td>
+                                            {% if p.status.name != 'LOCKED' %}
+                                            <form method="POST" class="row g-2 mb-2 flex-nowrap">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                <input type="hidden" name="action" value="edit_period"/>
+                                                <input type="hidden" name="period_id" value="{{ p.id }}"/>
+                                                <div class="col-auto finance-period-name-field">
+                                                    <input type="text" name="name" value="{{ p.name }}" class="form-control form-control-sm" aria-label="Nama Periode" required>
+                                                </div>
+                                                <div class="col-auto finance-period-date-field">
+                                                    <input type="date" name="start_date" value="{{ p.start_date }}" class="form-control form-control-sm" aria-label="Tanggal Mulai" required>
+                                                </div>
+                                                <div class="col-auto finance-period-date-field">
+                                                    <input type="date" name="end_date" value="{{ p.end_date }}" class="form-control form-control-sm" aria-label="Tanggal Selesai" required>
+                                                </div>
+                                                <div class="col-auto">
+                                                    <button type="submit" class="btn btn-sm btn-outline-success finance-period-icon-btn" title="Edit periode" data-bs-toggle="tooltip" aria-label="Edit periode">
+                                                        <i class="fas fa-edit"></i>
+                                                        <span class="visually-hidden">Edit periode</span>
+                                                    </button>
+                                                </div>
+                                            </form>
+                                            {% else %}
+                                            <div class="text-muted small mb-2">Periode LOCKED tidak dapat diedit.</div>
+                                            {% endif %}
+                                            <form method="POST" class="d-flex gap-2 finance-period-status-form">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                <input type="hidden" name="action" value="set_period_status"/>
+                                                <input type="hidden" name="period_id" value="{{ p.id }}"/>
+                                                <select name="status" class="form-select form-select-sm">
+                                                    {% for st in period_status_options %}
+                                                    <option value="{{ st.name }}" {% if p.status == st %}selected{% endif %}>{{ st.value }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                                <button type="submit" class="btn btn-sm btn-outline-primary finance-period-icon-btn" title="Update status periode" data-bs-toggle="tooltip" aria-label="Update status periode">
+                                                    <i class="fas fa-sync-alt"></i>
+                                                    <span class="visually-hidden">Update status periode</span>
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="4" class="text-center text-muted">Belum ada periode.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<style>
+.finance-period-table {
+    min-width: 920px;
+}
+
+.finance-period-name-field {
+    width: 150px;
+}
+
+.finance-period-date-field {
+    width: 150px;
+}
+
+.finance-period-icon-btn {
+    width: 34px;
+}
+
+.finance-period-status-form .form-select {
+    min-width: 160px;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (element) {
+        new bootstrap.Tooltip(element);
+    });
+});
+</script>
 {% endblock %}
