@@ -7,7 +7,7 @@
 
     <div class="card shadow mb-4">
         <div class="card-header py-3 bg-primary text-white">
-            <h6 class="m-0 fw-bold"><i class="fas fa-bullseye me-2"></i>Target Pengiriman / Penghapusan</h6>
+            <h6 class="m-0 fw-bold"><i class="fas fa-bullseye me-2"></i>Target Tagihan</h6>
         </div>
         <div class="card-body">
             <form method="GET" class="row g-2 align-items-end">
@@ -73,14 +73,7 @@
         <div class="card-body">
             <div class="alert alert-info py-2">
                 Target aktif:
-                <strong>{{ target_scope }}</strong>
-                {% if target_scope == 'PROGRAM' and target_program_type %}
-                    - {{ program_labels.get(target_program_type, target_program_type) }}
-                {% elif target_scope == 'CLASS' and target_class_id %}
-                    - Kelas ID {{ target_class_id }}
-                {% elif target_scope == 'STUDENT' and target_student_id %}
-                    - Siswa ID {{ target_student_id }}
-                {% endif %}
+                <strong>{{ target_label }}</strong>
             </div>
 
             <div class="table-responsive">
@@ -89,7 +82,7 @@
                         <tr>
                             <th>Nama Biaya</th>
                             <th>Nominal Standar</th>
-                            <th style="width: 260px;">Aksi</th>
+                            <th style="width: 220px;">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -109,21 +102,64 @@
                                         <i class="fas fa-paper-plane me-1"></i>Kirim Tagihan
                                     </button>
                                 </form>
-                                <form method="POST" action="{{ url_for('staff.delete_generated_invoices', fee_id=fee.id) }}" onsubmit="return confirm('Hapus invoice (hanya yang belum dibayar dan tanpa transaksi) untuk target aktif?')">
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="text-center text-muted py-4">Belum ada master biaya.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow mb-4 border-start border-warning border-5">
+        <div class="card-header py-3 bg-warning text-dark">
+            <h6 class="m-0 fw-bold"><i class="fas fa-ban me-2"></i>Batalkan Tagihan Berdasarkan Siswa / Kelas / Program</h6>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-warning">
+                <div class="fw-bold mb-1">Pembatalan memakai target aktif: {{ target_label }}</div>
+                <div>Yang dibatalkan hanya tagihan yang belum dibayar dan belum memiliki transaksi. Tagihan yang sudah dibayar sebagian atau penuh akan otomatis dilewati.</div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-bordered align-middle">
+                    <thead>
+                        <tr>
+                            <th>Jenis Biaya</th>
+                            <th>Target Pembatalan</th>
+                            <th style="width: 240px;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for fee in fees %}
+                        <tr>
+                            <td>
+                                <div class="fw-bold">{{ fee.name }}</div>
+                                <div class="small text-muted">Rp {{ "{:,.0f}".format(fee.amount or 0) }}</div>
+                            </td>
+                            <td>{{ target_label }}</td>
+                            <td>
+                                <form method="POST"
+                                      action="{{ url_for('staff.delete_generated_invoices', fee_id=fee.id) }}"
+                                      class="js-cancel-invoice-form"
+                                      data-fee-name="{{ fee.name }}"
+                                      data-target-label="{{ target_label }}">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <input type="hidden" name="selected_fee_id" value="{{ selected_fee_id or '' }}">
                                     <input type="hidden" name="target_scope" value="{{ target_scope }}">
                                     <input type="hidden" name="target_program_type" value="{{ target_program_type or '' }}">
                                     <input type="hidden" name="target_class_id" value="{{ target_class_id or '' }}">
                                     <input type="hidden" name="target_student_id" value="{{ target_student_id or '' }}">
-                                    <button type="submit" class="btn btn-outline-warning btn-sm w-100">
-                                        <i class="fas fa-trash-alt me-1"></i>Hapus Tagihan Salah Kirim
+                                    <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+                                        <i class="fas fa-ban me-1"></i>Batalkan Tagihan
                                     </button>
                                 </form>
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="3" class="text-center text-muted py-4">Belum ada master biaya.</td></tr>
+                        <tr><td colspan="3" class="text-center text-muted py-4">Belum ada master biaya untuk dibatalkan.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -149,6 +185,17 @@
             scopeEl.addEventListener('change', syncTargetFields);
             syncTargetFields();
         }
+
+        document.querySelectorAll('.js-cancel-invoice-form').forEach(function (form) {
+            form.addEventListener('submit', function (event) {
+                const feeName = form.dataset.feeName || 'jenis biaya ini';
+                const targetLabel = form.dataset.targetLabel || 'target aktif';
+                const message = 'Apakah anda akan membatalkan tagihan "' + feeName + '" untuk ' + targetLabel + '?\n\nHanya tagihan yang belum dibayar dan belum memiliki transaksi yang akan dibatalkan.';
+                if (!confirm(message)) {
+                    event.preventDefault();
+                }
+            });
+        });
     })();
 </script>
 {% endblock %}

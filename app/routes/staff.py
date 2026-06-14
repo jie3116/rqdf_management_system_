@@ -258,10 +258,32 @@ def dashboard():
         .scalar()
         or 0
     )
+    pemasukan_per_metode = dict(
+        db.session.query(
+            Transaction.method,
+            func.sum(Transaction.amount),
+        )
+        .join(Invoice, Invoice.id == Transaction.invoice_id)
+        .join(Student, Student.id == Invoice.student_id)
+        .join(User, User.id == Student.user_id)
+        .filter(
+            Transaction.date >= start_utc,
+            Transaction.date < end_utc,
+            Invoice.is_deleted.is_(False),
+            Student.is_deleted.is_(False),
+            User.tenant_id == tenant_id,
+        )
+        .group_by(Transaction.method)
+        .all()
+    )
+    pemasukan_kas_hari_ini = pemasukan_per_metode.get('TUNAI', 0) or 0
+    pemasukan_bank_hari_ini = pemasukan_per_metode.get('TRANSFER', 0) or 0
 
     # 2. Kirim ke HTML
     return render_template('staff/dashboard.html',
-                           pemasukan_hari_ini=pemasukan_hari_ini)
+                           pemasukan_hari_ini=pemasukan_hari_ini,
+                           pemasukan_kas_hari_ini=pemasukan_kas_hari_ini,
+                           pemasukan_bank_hari_ini=pemasukan_bank_hari_ini)
 
 
 # =========================================================
@@ -753,6 +775,22 @@ def send_invoices():
     if target['target_scope'] == 'STUDENT' and target['target_student_id'] not in student_ids:
         target['target_student_id'] = None
 
+    target_label = 'Semua siswa'
+    if target['target_scope'] == 'PROGRAM' and target['target_program_type']:
+        target_label = _program_labels().get(target['target_program_type'], target['target_program_type'])
+    elif target['target_scope'] == 'CLASS':
+        if target['target_class_id']:
+            selected_class = next((class_room for class_room in classes if class_room.id == target['target_class_id']), None)
+            target_label = f"Kelas {selected_class.name}" if selected_class else 'Kelas belum dipilih'
+        else:
+            target_label = 'Kelas belum dipilih'
+    elif target['target_scope'] == 'STUDENT':
+        if target['target_student_id']:
+            selected_student = next((student for student in students if student.id == target['target_student_id']), None)
+            target_label = f"{selected_student.full_name} ({selected_student.nis})" if selected_student else 'Siswa belum dipilih'
+        else:
+            target_label = 'Siswa belum dipilih'
+
     return render_template(
         'staff/send_invoices.html',
         fees=fees,
@@ -761,6 +799,7 @@ def send_invoices():
         classes=classes,
         students=students,
         program_labels=_program_labels(),
+        target_label=target_label,
         target_scope=target['target_scope'],
         target_program_type=target['target_program_type'],
         target_class_id=target['target_class_id'],

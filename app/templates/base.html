@@ -232,7 +232,7 @@
                     <li><a href="{{ url_for('staff.send_invoices') }}"><i class="fas fa-file-invoice-dollar me-2"></i> Kirim Tagihan</a></li>
                     <li><a href="{{ url_for('staff.manage_announcements') }}"><i class="fas fa-bullhorn me-2"></i> Pengumuman</a></li>
                     {% if module_boarding_enabled %}
-                    <li><a href="{{ url_for('boarding.manage_savings') }}"><i class="fas fa-piggy-bank me-2"></i> Tabungan Santri</a></li>
+                    <li><a href="{{ url_for('boarding.manage_savings') }}"><i class="fas fa-wallet me-2"></i> Tabungan Santri</a></li>
                     {% endif %}
                 {% endif %}
 
@@ -243,7 +243,7 @@
                     <li><a href="{{ url_for('parent.majlis_dashboard') }}"><i class="fas fa-mosque me-2"></i> Dashboard Majelis</a></li>
                     {% endif %}
                     {% if module_boarding_enabled %}
-                    <li><a href="{{ url_for('parent.student_savings') }}"><i class="fas fa-piggy-bank me-2"></i> Tabungan Santri</a></li>
+                    <li><a href="{{ url_for('parent.student_savings') }}"><i class="fas fa-wallet me-2"></i> Tabungan Santri</a></li>
                     {% endif %}
                 {% endif %}
 
@@ -251,7 +251,7 @@
                     <div class="nav-header">Asrama</div>
                     <li><a href="{{ url_for('boarding.dashboard') }}"><i class="fas fa-house-user me-2"></i> Dashboard Asrama</a></li>
                     <li><a href="{{ url_for('boarding.input_attendance') }}"><i class="fas fa-clipboard-check me-2"></i> Absensi Harian</a></li>
-                    <li><a href="{{ url_for('boarding.manage_savings') }}"><i class="fas fa-piggy-bank me-2"></i> Tabungan Santri</a></li>
+                    <li><a href="{{ url_for('boarding.manage_savings') }}"><i class="fas fa-wallet me-2"></i> Tabungan Santri</a></li>
                 {% endif %}
 
             </ul>
