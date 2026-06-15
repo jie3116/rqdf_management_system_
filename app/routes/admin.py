@@ -195,6 +195,95 @@ def _infer_user_phone(user):
     return None
 
 
+def _normalize_login_phone(raw_value):
+    return re.sub(r'[\s\-().]+', '', (raw_value or '').strip())
+
+
+def _user_has_protected_admin_role(user):
+    return user.has_role(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+
+
+def _phone_login_profile(user):
+    if user.has_role(UserRole.WALI_MURID) and user.parent_profile:
+        return user.parent_profile, 'phone'
+    if user.has_role(UserRole.MAJLIS_PARTICIPANT) and user.majlis_profile:
+        return user.majlis_profile, 'phone'
+    if user.has_role(UserRole.WALI_ASRAMA) and user.boarding_guardian_profile:
+        return user.boarding_guardian_profile, 'phone'
+    return None, None
+
+
+def _phone_login_conflicts(tenant_id, new_phone, target_user_id):
+    conflicts = []
+
+    user_conflict = User.query.filter(
+        User.tenant_id == tenant_id,
+        User.username == new_phone,
+        User.id != target_user_id,
+        User.is_deleted.is_(False),
+    ).first()
+    if user_conflict:
+        conflicts.append(f'username akun #{user_conflict.id} ({user_conflict.username})')
+
+    teacher_conflict = (
+        Teacher.query.join(User, Teacher.user_id == User.id)
+        .filter(
+            User.tenant_id == tenant_id,
+            User.id != target_user_id,
+            User.is_deleted.is_(False),
+            Teacher.is_deleted.is_(False),
+            Teacher.phone == new_phone,
+        )
+        .first()
+    )
+    if teacher_conflict:
+        conflicts.append(f'profil guru #{teacher_conflict.id} ({teacher_conflict.full_name or "-"})')
+
+    parent_conflict = (
+        Parent.query.join(User, Parent.user_id == User.id)
+        .filter(
+            User.tenant_id == tenant_id,
+            User.id != target_user_id,
+            User.is_deleted.is_(False),
+            Parent.is_deleted.is_(False),
+            Parent.phone == new_phone,
+        )
+        .first()
+    )
+    if parent_conflict:
+        conflicts.append(f'profil wali #{parent_conflict.id} ({parent_conflict.full_name or "-"})')
+
+    majlis_conflict = (
+        MajlisParticipant.query.join(User, MajlisParticipant.user_id == User.id)
+        .filter(
+            User.tenant_id == tenant_id,
+            User.id != target_user_id,
+            User.is_deleted.is_(False),
+            MajlisParticipant.is_deleted.is_(False),
+            MajlisParticipant.phone == new_phone,
+        )
+        .first()
+    )
+    if majlis_conflict:
+        conflicts.append(f'profil majelis #{majlis_conflict.id} ({majlis_conflict.full_name or "-"})')
+
+    guardian_conflict = (
+        BoardingGuardian.query.join(User, BoardingGuardian.user_id == User.id)
+        .filter(
+            User.tenant_id == tenant_id,
+            User.id != target_user_id,
+            User.is_deleted.is_(False),
+            BoardingGuardian.is_deleted.is_(False),
+            BoardingGuardian.phone == new_phone,
+        )
+        .first()
+    )
+    if guardian_conflict:
+        conflicts.append(f'profil wali asrama #{guardian_conflict.id} ({guardian_conflict.full_name or "-"})')
+
+    return conflicts
+
+
 def _parse_tenant_status(raw_value):
     if not raw_value:
         return None
@@ -6302,6 +6391,119 @@ def generic_reset_password():
         flash(f'Gagal mereset password: {str(e)}', 'danger')
 
     return redirect(url_for('admin.manage_users'))
+
+
+@admin_bp.route('/users/change-login-phone', methods=['POST'])
+@login_required
+@role_required(UserRole.ADMIN)
+def change_login_phone():
+    user_id = request.form.get('user_id', type=int)
+    new_phone = _normalize_login_phone(request.form.get('new_phone'))
+    reason = (request.form.get('reason') or '').strip()
+    reset_password = request.form.get('reset_password') == '1'
+    query = (request.form.get('q') or '').strip()
+    role_filter = (request.form.get('role') or 'all').strip().lower()
+
+    redirect_args = {}
+    if role_filter:
+        redirect_args['role'] = role_filter
+    if query:
+        redirect_args['q'] = query
+
+    tenant_id = _current_tenant_id()
+    if tenant_id is None:
+        flash('Tenant default tidak ditemukan.', 'danger')
+        return redirect(url_for('admin.manage_users', **redirect_args))
+
+    if not new_phone or len(new_phone) < 6 or len(new_phone) > 20:
+        flash('Nomor login baru wajib diisi dengan panjang 6-20 karakter.', 'danger')
+        return redirect(url_for('admin.manage_users', **redirect_args))
+
+    if not reason:
+        flash('Alasan perubahan nomor wajib diisi untuk audit.', 'danger')
+        return redirect(url_for('admin.manage_users', **redirect_args))
+
+    user = User.query.filter_by(id=user_id, tenant_id=tenant_id, is_deleted=False).first_or_404()
+    if _user_has_protected_admin_role(user):
+        flash('Nomor login akun admin tidak dapat diubah dari menu ini.', 'danger')
+        return redirect(url_for('admin.manage_users', **redirect_args))
+
+    profile, phone_attr = _phone_login_profile(user)
+    if not profile or not phone_attr:
+        flash('User ini tidak memiliki profil yang memakai nomor telepon sebagai login utama.', 'warning')
+        return redirect(url_for('admin.manage_users', **redirect_args))
+
+    old_username = user.username
+    old_profile_phone = getattr(profile, phone_attr, None)
+    old_phone = (old_profile_phone or old_username or '').strip()
+    if new_phone == old_username and new_phone == old_profile_phone:
+        flash('Nomor login baru sama dengan nomor saat ini.', 'info')
+        return redirect(url_for('admin.manage_users', **redirect_args))
+
+    conflicts = _phone_login_conflicts(tenant_id, new_phone, user.id)
+    if conflicts:
+        flash('Nomor baru tidak bisa dipakai karena sudah terhubung ke: ' + '; '.join(conflicts), 'danger')
+        return redirect(url_for('admin.manage_users', **redirect_args))
+
+    try:
+        user.username = new_phone
+        setattr(profile, phone_attr, new_phone)
+
+        updated_candidates = 0
+        if user.has_role(UserRole.WALI_MURID):
+            candidates = StudentCandidate.query.filter(
+                StudentCandidate.tenant_id == tenant_id,
+                StudentCandidate.is_deleted.is_(False),
+                StudentCandidate.status == RegistrationStatus.ACCEPTED,
+                StudentCandidate.parent_phone == old_phone,
+            ).all()
+            for candidate in candidates:
+                candidate.parent_phone = new_phone
+            updated_candidates = len(candidates)
+        elif user.has_role(UserRole.MAJLIS_PARTICIPANT):
+            candidates = StudentCandidate.query.filter(
+                StudentCandidate.tenant_id == tenant_id,
+                StudentCandidate.is_deleted.is_(False),
+                StudentCandidate.status == RegistrationStatus.ACCEPTED,
+                StudentCandidate.program_type == ProgramType.MAJLIS_TALIM,
+                or_(
+                    StudentCandidate.personal_phone == old_phone,
+                    StudentCandidate.parent_phone == old_phone,
+                ),
+            ).all()
+            for candidate in candidates:
+                if candidate.personal_phone == old_phone:
+                    candidate.personal_phone = new_phone
+                if candidate.parent_phone == old_phone:
+                    candidate.parent_phone = new_phone
+            updated_candidates = len(candidates)
+
+        if reset_password:
+            user.set_password(new_phone)
+            user.must_change_password = True
+
+        db.session.add(AuditLog(
+            user_id=current_user.id,
+            action='CHANGE_LOGIN_PHONE',
+            details=json.dumps({
+                'target_user_id': user.id,
+                'target_role_values': sorted(user.all_role_values()),
+                'old_username': old_username,
+                'old_profile_phone': old_profile_phone,
+                'new_phone': new_phone,
+                'reset_password': reset_password,
+                'updated_candidates': updated_candidates,
+                'reason': reason,
+            }, ensure_ascii=False),
+            ip_address=request.remote_addr,
+        ))
+        db.session.commit()
+        flash(f'Nomor login {old_username} berhasil diubah menjadi {new_phone}.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Gagal mengubah nomor login: {str(e)}', 'danger')
+
+    return redirect(url_for('admin.manage_users', **redirect_args))
 
 
 @admin_bp.route('/users/reset-officer-pin', methods=['POST'])

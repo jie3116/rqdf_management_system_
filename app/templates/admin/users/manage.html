@@ -96,16 +96,49 @@
                                     <button class="btn btn-sm btn-danger shadow-sm"
                                             data-bs-toggle="modal"
                                             data-bs-target="#resetModal"
+                                            data-bs-tooltip="tooltip"
+                                            title="Reset password"
+                                            aria-label="Reset password {{ u.username }}"
                                             onclick="setResetData('{{ u.id }}', '{{ u.username }}')">
-                                        <i class="fas fa-key me-1"></i> Reset Password
+                                        <i class="fas fa-key"></i>
                                     </button>
+
+                                    {% set can_change_phone_login =
+                                        (u.has_role(UserRole.WALI_MURID) and u.parent_profile) or
+                                        (u.has_role(UserRole.MAJLIS_PARTICIPANT) and u.majlis_profile) or
+                                        (u.has_role(UserRole.WALI_ASRAMA) and u.boarding_guardian_profile)
+                                    %}
+                                    {% if can_change_phone_login %}
+                                    {% set profile_phone =
+                                        (u.parent_profile.phone if u.parent_profile else
+                                        (u.majlis_profile.phone if u.majlis_profile else
+                                        (u.boarding_guardian_profile.phone if u.boarding_guardian_profile else '')))
+                                    %}
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-primary js-phone-login-btn"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#phoneLoginModal"
+                                            data-bs-tooltip="tooltip"
+                                            title="Ganti nomor login"
+                                            aria-label="Ganti nomor login {{ u.username }}"
+                                            data-user-id="{{ u.id }}"
+                                            data-username="{{ u.username }}"
+                                            data-profile-phone="{{ profile_phone or '' }}"
+                                            data-owner-name="{% if u.parent_profile %}{{ u.parent_profile.full_name }}{% elif u.majlis_profile %}{{ u.majlis_profile.full_name }}{% elif u.boarding_guardian_profile %}{{ u.boarding_guardian_profile.full_name }}{% endif %}">
+                                        <i class="fas fa-phone"></i>
+                                    </button>
+                                    {% endif %}
 
                                     {% if u.has_role(UserRole.TU, UserRole.WALI_ASRAMA) %}
                                     <form method="POST" action="{{ url_for('admin.reset_officer_pin') }}" onsubmit="return confirm('Reset PIN petugas untuk {{ u.username }}?');">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                         <input type="hidden" name="user_id" value="{{ u.id }}">
-                                        <button type="submit" class="btn btn-sm btn-outline-warning">
-                                            Reset PIN Petugas
+                                        <button type="submit"
+                                                class="btn btn-sm btn-outline-warning"
+                                                data-bs-tooltip="tooltip"
+                                                title="Reset PIN petugas"
+                                                aria-label="Reset PIN petugas {{ u.username }}">
+                                            <i class="fas fa-id-badge"></i>
                                         </button>
                                     </form>
                                     {% endif %}
@@ -114,8 +147,12 @@
                                     <form method="POST" action="{{ url_for('admin.reset_student_pin') }}" onsubmit="return confirm('Reset PIN tabungan santri untuk {{ u.username }}?');">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                         <input type="hidden" name="user_id" value="{{ u.id }}">
-                                        <button type="submit" class="btn btn-sm btn-outline-warning">
-                                            Reset PIN Santri
+                                        <button type="submit"
+                                                class="btn btn-sm btn-outline-warning"
+                                                data-bs-tooltip="tooltip"
+                                                title="Reset PIN santri"
+                                                aria-label="Reset PIN santri {{ u.username }}">
+                                            <i class="fas fa-piggy-bank"></i>
                                         </button>
                                     </form>
                                     {% endif %}
@@ -163,10 +200,86 @@
     </div>
 </div>
 
+<div class="modal fade" id="phoneLoginModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Ganti Nomor Login</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('admin.change_login_phone') }}" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="user_id" id="phoneLoginUserId">
+                <input type="hidden" name="role" value="{{ active_role }}">
+                <input type="hidden" name="q" value="{{ query or '' }}">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <div><strong id="phoneLoginOwnerName">-</strong></div>
+                        <div class="small">Username saat ini: <strong id="phoneLoginUsername">-</strong></div>
+                        <div class="small">Nomor profil saat ini: <strong id="phoneLoginProfilePhone">-</strong></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Nomor Login Baru</label>
+                        <input type="text"
+                               name="new_phone"
+                               id="phoneLoginNewPhone"
+                               class="form-control form-control-lg"
+                               placeholder="08xxxxxxxxxx"
+                               maxlength="20"
+                               required>
+                        <small class="text-muted">Spasi, titik, tanda kurung, dan tanda hubung akan dihapus otomatis.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Alasan Perubahan</label>
+                        <textarea name="reason"
+                                  class="form-control"
+                                  rows="3"
+                                  placeholder="Contoh: wali mengganti nomor WhatsApp aktif"
+                                  required></textarea>
+                    </div>
+
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="1" name="reset_password" id="phoneLoginResetPassword">
+                        <label class="form-check-label" for="phoneLoginResetPassword">
+                            Reset password menjadi nomor baru dan wajibkan user ganti password
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary">Simpan Nomor Baru</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
     function setResetData(id, username) {
         document.getElementById('modalUserId').value = id;
         document.getElementById('modalUsername').innerText = username;
     }
+
+    document.querySelectorAll('.js-phone-login-btn').forEach(function (button) {
+        button.addEventListener('click', function () {
+            const userId = this.dataset.userId || '';
+            const username = this.dataset.username || '-';
+            const profilePhone = this.dataset.profilePhone || '-';
+            const ownerName = this.dataset.ownerName || '-';
+
+            document.getElementById('phoneLoginUserId').value = userId;
+            document.getElementById('phoneLoginUsername').innerText = username;
+            document.getElementById('phoneLoginProfilePhone').innerText = profilePhone;
+            document.getElementById('phoneLoginOwnerName').innerText = ownerName;
+            document.getElementById('phoneLoginNewPhone').value = '';
+            document.getElementById('phoneLoginResetPassword').checked = false;
+        });
+    });
+
+    document.querySelectorAll('[data-bs-tooltip="tooltip"]').forEach(function (el) {
+        new bootstrap.Tooltip(el);
+    });
 </script>
 {% endblock %}
