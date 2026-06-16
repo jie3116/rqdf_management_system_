@@ -8,11 +8,11 @@
         <div class="card-body py-2">
             <form method="GET" action="{{ url_for('teacher.input_tahfidz_evaluation') }}" class="row align-items-center">
                 <div class="col-auto">
-                    <label class="fw-bold mb-0">Pilih Halaqoh/Kelas:</label>
+                    <label class="fw-bold mb-0">Filter Halaqoh/Kelas:</label>
                 </div>
                 <div class="col-md-6">
                     <select name="class_id" class="form-select" onchange="this.form.submit()">
-                        <option value="">-- Pilih Halaqoh --</option>
+                        <option value="">Semua Santri</option>
                         {% for cls in my_classes %}
                         <option value="{{ cls.id }}" {% if selected_class and selected_class.id == cls.id %}selected{% endif %}>
                             {{ cls.name }}
@@ -24,7 +24,6 @@
         </div>
     </div>
 
-    {% if selected_class %}
     <div class="row">
         <div class="col-lg-8">
             <div class="card shadow mb-4">
@@ -34,14 +33,16 @@
                 <div class="card-body">
                     <form method="POST" id="evaluation-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                        <input type="hidden" name="class_id" value="{{ selected_class.id }}">
+                        <input type="hidden" name="class_id" value="{{ selected_class.id if selected_class else '' }}">
 
                         <div class="mb-3">
                             <label class="fw-bold small">Nama Santri</label>
                             <select name="student_id" class="form-select select2" required>
                                 <option value="">-- Pilih Santri --</option>
                                 {% for student in students %}
-                                <option value="S-{{ student.id }}">{{ student.full_name }} (Santri - {{ student.nis }})</option>
+                                <option value="S-{{ student.id }}">
+                                    {{ student.full_name }} (Santri - {{ student.nis }}{% if student.current_class %}, {{ student.current_class.name }}{% endif %})
+                                </option>
                                 {% endfor %}
                                 {% for participant in majlis_participants %}
                                 <option value="M-{{ participant.id }}">{{ participant.full_name }} (Majlis Ta'lim)</option>
@@ -121,6 +122,10 @@
                                         <label class="small fw-bold text-muted">Tahfidz</label>
                                         <input type="number" name="tahfidz_errors" class="form-control evaluation-error-input" min="0" value="0">
                                     </div>
+                                    <div class="col-md-3">
+                                        <label class="small fw-bold text-muted">Tulisan</label>
+                                        <input type="number" name="writing_errors" class="form-control evaluation-error-input" min="0" value="0">
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -150,12 +155,6 @@
             </div>
         </div>
     </div>
-    {% else %}
-    <div class="text-center py-5">
-        <img src="{{ url_for('static', filename='img/undraw_reading_time_re_phf7.svg') }}" style="width: 200px; opacity: 0.5">
-        <h5 class="mt-3 text-gray-500">Silakan Pilih Halaqoh/Kelas Terlebih Dahulu</h5>
-    </div>
-    {% endif %}
 </div>
 
 <script>

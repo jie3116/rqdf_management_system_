@@ -118,6 +118,59 @@
                 {% endif %}
             </tbody>
         </table>
+
+        <h6 class="fw-bold mt-4">C. Evaluasi Tahfidz</h6>
+        <table class="table table-bordered border-dark table-sm table-striped">
+            <thead class="text-center bg-light">
+                <tr>
+                    <th>No</th>
+                    <th>Tanggal</th>
+                    <th>Periode</th>
+                    <th>Jenis Uji</th>
+                    <th>Cakupan Uji</th>
+                    <th>Kesalahan</th>
+                    <th>Nilai</th>
+                    <th>Catatan</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if tahfidz_evaluations %}
+                    {% for row in tahfidz_evaluations %}
+                    <tr>
+                        <td class="text-center">{{ loop.index }}</td>
+                        <td class="text-center">{{ row.date.strftime('%d/%m/%Y') if row.date else '-' }}</td>
+                        <td class="text-center">
+                            {{ row.period_type.value if row.period_type else '-' }}<br>
+                            <small>{{ row.period_label or '-' }}</small>
+                        </td>
+                        <td>{{ evaluation_types.get(row.evaluation_type or 'SAMBUNG_AYAT', row.evaluation_type or '-') }}</td>
+                        <td>
+                            {{ row.surah or '-' }}
+                            {% if row.ayat_start and row.ayat_end %}
+                                ({{ row.ayat_start }}-{{ row.ayat_end }})
+                            {% endif %}
+                            {% if row.question_details %}
+                                <br><small>{{ row.question_details }}</small>
+                            {% endif %}
+                        </td>
+                        <td class="small">
+                            Makhraj: {{ row.makhraj_errors or 0 }},
+                            Tajwid: {{ row.tajwid_errors or 0 }},
+                            Harakat: {{ row.harakat_errors or 0 }},
+                            Hafalan: {{ row.tahfidz_errors or 0 }},
+                            Tulisan: {{ row.writing_errors or 0 }}
+                        </td>
+                        <td class="text-center fw-bold">{{ row.score if row.score is not none else '-' }}</td>
+                        <td>{{ row.notes or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center">Belum ada data evaluasi tahfidz.</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
     </div>
 </body>
 </html>

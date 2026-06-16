@@ -1379,6 +1379,7 @@ class TahfidzEvaluation(BaseModel):
     tajwid_errors = db.Column(db.Integer, default=0)
     harakat_errors = db.Column(db.Integer, default=0)
     tahfidz_errors = db.Column(db.Integer, default=0)
+    writing_errors = db.Column(db.Integer, default=0)
     score = db.Column(db.Integer)
     notes = db.Column(db.Text)
 

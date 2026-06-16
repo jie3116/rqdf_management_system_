@@ -54,6 +54,7 @@ teacher_bp = Blueprint('teacher', __name__)
 TAHFIDZ_EVALUATION_TYPES = {
     'SIMAK_HAFALAN': 'Simak Hafalan',
     'SAMBUNG_AYAT': 'Pertanyaan Sambung Ayat',
+    'MENULIS_QURAN': "Tes Menulis Qur'an",
 }
 
 
@@ -620,6 +621,52 @@ def _get_class_participants(class_id, tenant_id=None):
         is_deleted=False
     ).order_by(MajlisParticipant.full_name).all()
     return students, majlis_participants
+
+
+def _get_tahfidz_evaluation_classes(teacher):
+    tenant_id = _teacher_tenant_id(teacher)
+    return (
+        scoped_classrooms_query(tenant_id)
+        .order_by(ClassRoom.name.asc())
+        .all()
+        if tenant_id
+        else []
+    )
+
+
+def _get_tahfidz_evaluation_participants(teacher, class_id=None):
+    tenant_id = _teacher_tenant_id(teacher)
+    if tenant_id is None:
+        return [], []
+
+    if class_id:
+        class_room = _teacher_classroom_by_id(teacher, class_id)
+        if class_room is None:
+            return [], []
+        return _get_class_participants(class_id, tenant_id=tenant_id)
+
+    student_map = {}
+    participant_map = {}
+    for class_room in _get_tahfidz_evaluation_classes(teacher):
+        class_students, class_participants = _get_class_participants(class_room.id, tenant_id=tenant_id)
+        for student in class_students:
+            student_map[student.id] = student
+        for participant in class_participants:
+            participant_map[participant.id] = participant
+
+    students = sorted(student_map.values(), key=lambda item: (item.full_name or '').lower())
+    majlis_participants = sorted(participant_map.values(), key=lambda item: (item.full_name or '').lower())
+    return students, majlis_participants
+
+
+def _student_in_tahfidz_evaluation_scope(teacher, student_id, class_id=None):
+    students, _ = _get_tahfidz_evaluation_participants(teacher, class_id=class_id)
+    return any(student.id == student_id for student in students)
+
+
+def _majlis_participant_in_tahfidz_evaluation_scope(teacher, participant_id, class_id=None):
+    _, participants = _get_tahfidz_evaluation_participants(teacher, class_id=class_id)
+    return any(participant.id == participant_id for participant in participants)
 
 
 def _student_belongs_to_class(student, class_id):
@@ -1212,6 +1259,11 @@ def _quran_report_payload_for_homeroom(
             'evaluation_type_label': TAHFIDZ_EVALUATION_TYPES.get(row.evaluation_type or 'SAMBUNG_AYAT', '-'),
             'question_count': row.question_count or 0,
             'question_details': row.question_details or '-',
+            'makhraj_errors': row.makhraj_errors or 0,
+            'tajwid_errors': row.tajwid_errors or 0,
+            'harakat_errors': row.harakat_errors or 0,
+            'tahfidz_errors': row.tahfidz_errors or 0,
+            'writing_errors': row.writing_errors or 0,
             'score': row.score or 0,
             'notes': row.notes or '-',
         })
@@ -2299,7 +2351,7 @@ def input_recitation():
 @role_required(UserRole.GURU)
 def input_tahfidz_evaluation():
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
-    my_classes = _get_teacher_tahfidz_classes(teacher)
+    my_classes = _get_tahfidz_evaluation_classes(teacher)
     my_class_ids = {class_room.id for class_room in my_classes}
 
     selected_class_id = request.args.get('class_id', type=int)
@@ -2309,15 +2361,13 @@ def input_tahfidz_evaluation():
 
     if selected_class_id:
         selected_class = _teacher_classroom_by_id(teacher, selected_class_id)
-        if (
-            selected_class
-            and selected_class_id in my_class_ids
-            and _teacher_can_access_tahfidz_class(teacher, selected_class_id)
-        ):
-            students, majlis_participants = _get_class_participants(selected_class_id)
+        if selected_class and selected_class_id in my_class_ids:
+            students, majlis_participants = _get_tahfidz_evaluation_participants(teacher, selected_class_id)
         else:
             flash("Anda tidak memiliki akses ke kelas tersebut.", "danger")
             selected_class = None
+    else:
+        students, majlis_participants = _get_tahfidz_evaluation_participants(teacher)
 
     if request.method == 'POST':
         form_class_id = request.form.get('class_id', type=int)
@@ -2329,11 +2379,7 @@ def input_tahfidz_evaluation():
         notes = request.form.get('notes')
 
         active_class_id = form_class_id or selected_class_id
-        if (
-            not active_class_id
-            or active_class_id not in my_class_ids
-            or not _teacher_can_access_tahfidz_class(teacher, active_class_id)
-        ):
+        if active_class_id and active_class_id not in my_class_ids:
             flash("Kelas tidak valid atau Anda tidak memiliki akses.", "danger")
             return redirect(url_for('teacher.input_tahfidz_evaluation'))
 
@@ -2360,16 +2406,16 @@ def input_tahfidz_evaluation():
             if not student:
                 flash("Data siswa tidak ditemukan.", "danger")
                 return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
-            if active_class_id and not _student_belongs_to_class(student, active_class_id):
-                flash("Siswa tidak berada pada kelas yang dipilih.", "danger")
+            if not _student_in_tahfidz_evaluation_scope(teacher, student_id, active_class_id):
+                flash("Siswa tidak berada pada cakupan evaluasi yang dipilih.", "danger")
                 return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
         else:
             participant = MajlisParticipant.query.filter_by(id=majlis_participant_id, is_deleted=False).first()
             if not participant:
                 flash("Data peserta majlis tidak ditemukan.", "danger")
                 return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
-            if active_class_id and participant.majlis_class_id != active_class_id:
-                flash("Peserta majlis tidak berada pada kelas yang dipilih.", "danger")
+            if not _majlis_participant_in_tahfidz_evaluation_scope(teacher, majlis_participant_id, active_class_id):
+                flash("Peserta tidak berada pada cakupan evaluasi yang dipilih.", "danger")
                 return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         try:
@@ -2377,8 +2423,12 @@ def input_tahfidz_evaluation():
             tajwid_errors = int(request.form.get('tajwid_errors') or 0)
             harakat_errors = int(request.form.get('harakat_errors') or 0)
             tahfidz_errors = int(request.form.get('tahfidz_errors') or 0)
+            writing_errors = int(request.form.get('writing_errors') or 0)
         except ValueError:
             flash("Input jumlah kesalahan harus berupa angka.", "danger")
+            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+        if min(makhraj_errors, tajwid_errors, harakat_errors, tahfidz_errors, writing_errors) < 0:
+            flash("Jumlah kesalahan tidak boleh bernilai negatif.", "danger")
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         question_surahs = request.form.getlist('question_surah[]')
@@ -2415,7 +2465,7 @@ def input_tahfidz_evaluation():
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         question_count = len(normalized_questions)
-        total_errors = makhraj_errors + tajwid_errors + harakat_errors + tahfidz_errors
+        total_errors = makhraj_errors + tajwid_errors + harakat_errors + tahfidz_errors + writing_errors
         score = _calculate_tahfidz_evaluation_score(question_count, total_errors)
         first_question = normalized_questions[0]
         last_question = normalized_questions[-1]
@@ -2441,6 +2491,7 @@ def input_tahfidz_evaluation():
             tajwid_errors=tajwid_errors,
             harakat_errors=harakat_errors,
             tahfidz_errors=tahfidz_errors,
+            writing_errors=writing_errors,
             score=score,
             notes=notes,
             date=utc_now_naive()
@@ -3441,12 +3492,75 @@ def print_attachment(student_id):
         student_id=student_id,
         participant_type=ParticipantType.STUDENT
     ).order_by(RecitationRecord.date.desc()).all()
+
+    tahfidz_evaluations = TahfidzEvaluation.query.filter_by(
+        student_id=student_id,
+        participant_type=ParticipantType.STUDENT
+    ).order_by(TahfidzEvaluation.date.desc(), TahfidzEvaluation.id.desc()).all()
     
     return render_template('teacher/print_attachment.html',
                          student=student,
                          teacher=teacher,
                          tahfidz_records=tahfidz_records,
-                         recitation_records=recitation_records)
+                         recitation_records=recitation_records,
+                         tahfidz_evaluations=tahfidz_evaluations,
+                         evaluation_types=TAHFIDZ_EVALUATION_TYPES)
+
+
+@teacher_bp.route('/cetak-raport-tahfidz/<int:student_id>')
+@login_required
+@role_required(UserRole.GURU)
+def print_tahfidz_report(student_id):
+    teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
+    student = Student.query.filter_by(id=student_id, is_deleted=False).first_or_404()
+
+    my_classes = _get_teacher_classes(teacher)
+    if not any(_student_belongs_to_class(student, class_room.id) for class_room in my_classes):
+        flash("Anda tidak memiliki akses ke siswa tersebut.", "danger")
+        return redirect(url_for('teacher.dashboard'))
+
+    active_year = AcademicYear.query.filter_by(is_active=True).first()
+    tahfidz_records = TahfidzRecord.query.filter_by(
+        student_id=student_id,
+        participant_type=ParticipantType.STUDENT
+    ).order_by(TahfidzRecord.date.asc(), TahfidzRecord.id.asc()).all()
+    recitation_records = RecitationRecord.query.filter_by(
+        student_id=student_id,
+        participant_type=ParticipantType.STUDENT
+    ).order_by(RecitationRecord.date.asc(), RecitationRecord.id.asc()).all()
+    tahfidz_evaluations = TahfidzEvaluation.query.filter_by(
+        student_id=student_id,
+        participant_type=ParticipantType.STUDENT
+    ).order_by(TahfidzEvaluation.date.asc(), TahfidzEvaluation.id.asc()).all()
+
+    grouped_evaluations = {
+        key: [row for row in tahfidz_evaluations if (row.evaluation_type or 'SAMBUNG_AYAT') == key]
+        for key in TAHFIDZ_EVALUATION_TYPES
+    }
+    evaluation_scores = [float(row.score or 0) for row in tahfidz_evaluations]
+    tahfidz_scores = [float(row.score or 0) for row in tahfidz_records]
+    recitation_scores = [float(row.score or 0) for row in recitation_records]
+    final_components = []
+    if tahfidz_scores:
+        final_components.append(sum(tahfidz_scores) / len(tahfidz_scores))
+    if recitation_scores:
+        final_components.append(sum(recitation_scores) / len(recitation_scores))
+    if evaluation_scores:
+        final_components.append(sum(evaluation_scores) / len(evaluation_scores))
+    final_score = round(sum(final_components) / len(final_components), 2) if final_components else 0
+
+    return render_template(
+        'teacher/print_tahfidz_report.html',
+        student=student,
+        teacher=teacher,
+        academic_year=active_year,
+        tahfidz_records=tahfidz_records,
+        recitation_records=recitation_records,
+        grouped_evaluations=grouped_evaluations,
+        evaluation_types=TAHFIDZ_EVALUATION_TYPES,
+        final_score=final_score,
+        report_date_label=local_today().strftime('%d/%m/%Y'),
+    )
 
 
 @teacher_bp.route('/input-absensi', methods=['GET', 'POST'])

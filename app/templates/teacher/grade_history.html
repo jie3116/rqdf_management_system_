@@ -223,6 +223,7 @@
                             <th>Jenis</th>
                             <th>Cakupan Uji</th>
                             <th>Pertanyaan</th>
+                            <th>Kesalahan</th>
                             <th>Nilai</th>
                             <th>Catatan</th>
                         </tr>
@@ -238,6 +239,13 @@
                             <td>
                                 {{ row.question_count or '-' }}
                                 {% if row.question_details %}<br><small class="text-muted">{{ row.question_details }}</small>{% endif %}
+                            </td>
+                            <td class="small">
+                                M: {{ row.makhraj_errors or 0 }},
+                                T: {{ row.tajwid_errors or 0 }},
+                                Hrk: {{ row.harakat_errors or 0 }},
+                                Hfl: {{ row.tahfidz_errors or 0 }},
+                                Tls: {{ row.writing_errors or 0 }}
                             </td>
                             <td class="fw-bold">{{ row.score or '-' }}</td>
                             <td>{{ row.notes or '-' }}</td>

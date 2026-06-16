@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Raport Tahfidz - {{ student.full_name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { font-family: "Times New Roman", serif; color: #000; background: #fff; font-size: 12px; }
+        .page { max-width: 920px; margin: 0 auto; }
+        .kop-surat { border-bottom: 3px double #000; padding-bottom: 8px; margin-bottom: 12px; }
+        .table-bordered, .table-bordered th, .table-bordered td { border: 1px solid #000 !important; }
+        .table th, .table td { padding: 3px 5px; vertical-align: middle; }
+        .section-title { font-weight: bold; margin: 12px 0 5px; }
+        .signature-space { height: 62px; }
+        @media print {
+            .no-print { display: none !important; }
+            @page { margin: 1cm; size: portrait; }
+        }
+    </style>
+</head>
+<body class="p-3">
+<div class="page">
+    <div class="d-flex justify-content-end gap-2 mb-3 no-print">
+        <button onclick="window.print()" class="btn btn-primary btn-sm">Cetak</button>
+        <button onclick="window.close()" class="btn btn-secondary btn-sm">Tutup</button>
+    </div>
+
+    <div class="row align-items-center kop-surat">
+        <div class="col-2 text-center">
+            <img src="{{ url_for('static', filename='img/rqdf-logo.png') }}" alt="Logo" style="width: 72px;">
+        </div>
+        <div class="col-10 text-center">
+            <div class="fw-bold text-uppercase" style="font-size: 18px;">Yayasan Rumah Qur'an Cianjur</div>
+            <div class="fw-bold text-uppercase" style="font-size: 19px;">Pesantren Rumah Qur'an Cianjur</div>
+            <div>Jl. H. Luanda Gg. Bali No.897 Kelurahan Bojongherang Kecamatan Cianjur 43211</div>
+        </div>
+    </div>
+
+    <h6 class="text-center fw-bold text-uppercase mb-2">
+        Laporan Hasil Evaluasi Tahfidz {{ academic_year.name if academic_year else '' }}
+    </h6>
+
+    <table class="table table-borderless table-sm mb-2">
+        <tr>
+            <td style="width: 120px;">Nama Santri</td><td style="width: 10px;">:</td><td class="fw-bold">{{ student.full_name }}</td>
+            <td style="width: 110px;">Kelas</td><td style="width: 10px;">:</td><td>{{ student.current_class.name if student.current_class else '-' }}</td>
+        </tr>
+        <tr>
+            <td>NIS</td><td>:</td><td>{{ student.nis or '-' }}</td>
+            <td>Penguji</td><td>:</td><td>{{ teacher.full_name or '-' }}</td>
+        </tr>
+    </table>
+
+    <div class="section-title">A. Setoran Hafalan</div>
+    <table class="table table-bordered table-sm">
+        <thead class="text-center bg-light">
+            <tr><th>No</th><th>Tanggal</th><th>Jenis</th><th>Materi</th><th>Tajwid</th><th>Makhraj</th><th>Hafalan</th><th>Nilai</th></tr>
+        </thead>
+        <tbody>
+            {% for row in tahfidz_records %}
+            <tr>
+                <td class="text-center">{{ loop.index }}</td>
+                <td class="text-center">{{ row.date.strftime('%d/%m/%Y') if row.date else '-' }}</td>
+                <td>{{ row.type.value if row.type else '-' }}</td>
+                <td>{{ row.surah or '-' }}{% if row.ayat_start and row.ayat_end %} ({{ row.ayat_start }}-{{ row.ayat_end }}){% endif %}</td>
+                <td class="text-center">{{ row.tajwid_errors or 0 }}</td>
+                <td class="text-center">{{ row.makhraj_errors or 0 }}</td>
+                <td class="text-center">{{ row.tahfidz_errors or 0 }}</td>
+                <td class="text-center fw-bold">{{ row.score if row.score is not none else '-' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-center">Belum ada data setoran hafalan.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="section-title">B. Evaluasi Tahfidz</div>
+    {% for type_key, type_label in evaluation_types.items() %}
+    <div class="fw-bold small mt-2">{{ loop.index }}. {{ type_label }}</div>
+    <table class="table table-bordered table-sm mb-2">
+        <thead class="text-center bg-light">
+            <tr>
+                <th>No</th><th>Periode</th><th>Cakupan Uji</th><th>Soal</th>
+                <th>Makhraj</th><th>Tajwid</th><th>Harakat</th><th>Hafalan</th><th>Tulisan</th><th>Nilai</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in grouped_evaluations.get(type_key, []) %}
+            <tr>
+                <td class="text-center">{{ loop.index }}</td>
+                <td>{{ row.period_label or '-' }}</td>
+                <td>{{ row.surah or '-' }}{% if row.ayat_start and row.ayat_end %} ({{ row.ayat_start }}-{{ row.ayat_end }}){% endif %}</td>
+                <td class="text-center">{{ row.question_count or '-' }}</td>
+                <td class="text-center">{{ row.makhraj_errors or 0 }}</td>
+                <td class="text-center">{{ row.tajwid_errors or 0 }}</td>
+                <td class="text-center">{{ row.harakat_errors or 0 }}</td>
+                <td class="text-center">{{ row.tahfidz_errors or 0 }}</td>
+                <td class="text-center">{{ row.writing_errors or 0 }}</td>
+                <td class="text-center fw-bold">{{ row.score if row.score is not none else '-' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="text-center">Belum ada data.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endfor %}
+
+    <div class="section-title">C. Setoran Bacaan / Tashih Tilawah</div>
+    <table class="table table-bordered table-sm">
+        <thead class="text-center bg-light">
+            <tr><th>No</th><th>Tanggal</th><th>Sumber</th><th>Materi</th><th>Tajwid</th><th>Makhraj</th><th>Nilai</th></tr>
+        </thead>
+        <tbody>
+            {% for row in recitation_records %}
+            <tr>
+                <td class="text-center">{{ loop.index }}</td>
+                <td class="text-center">{{ row.date.strftime('%d/%m/%Y') if row.date else '-' }}</td>
+                <td>{{ row.recitation_source.value if row.recitation_source else '-' }}</td>
+                <td>
+                    {% if row.recitation_source and row.recitation_source.name == 'BOOK' %}
+                        {{ row.book_name or '-' }}{% if row.page_start and row.page_end %} (Hal. {{ row.page_start }}-{{ row.page_end }}){% endif %}
+                    {% else %}
+                        {{ row.surah or '-' }}{% if row.ayat_start and row.ayat_end %} ({{ row.ayat_start }}-{{ row.ayat_end }}){% endif %}
+                    {% endif %}
+                </td>
+                <td class="text-center">{{ row.tajwid_errors or 0 }}</td>
+                <td class="text-center">{{ row.makhraj_errors or 0 }}</td>
+                <td class="text-center fw-bold">{{ row.score if row.score is not none else '-' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center">Belum ada data setoran bacaan.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <table class="table table-bordered table-sm mt-2" style="width: 340px;">
+        <tr><td class="fw-bold">Nilai Akhir Tahfidz</td><td class="text-center fw-bold">{{ final_score }}</td></tr>
+        <tr>
+            <td class="fw-bold">Predikat</td>
+            <td class="text-center">
+                {% if final_score >= 85 %}Sangat Baik{% elif final_score >= 75 %}Baik{% elif final_score >= 65 %}Cukup{% elif final_score > 0 %}Kurang{% else %}-{% endif %}
+            </td>
+        </tr>
+    </table>
+
+    <div class="row mt-4">
+        <div class="col-4 text-center">
+            Mengetahui,<br>Orang Tua Santri
+            <div class="signature-space"></div>
+            (................................)
+        </div>
+        <div class="col-4 text-center">
+            Penguji
+            <div class="signature-space"></div>
+            <strong>{{ teacher.full_name or '........................' }}</strong>
+        </div>
+        <div class="col-4 text-center">
+            Cianjur, {{ report_date_label }}<br>Wali Kelas
+            <div class="signature-space"></div>
+            <strong>{{ student.current_class.homeroom_teacher.full_name if student.current_class and student.current_class.homeroom_teacher else '........................' }}</strong>
+        </div>
+    </div>
+</div>
+</body>
+</html>
