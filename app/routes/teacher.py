@@ -55,6 +55,7 @@ TAHFIDZ_EVALUATION_TYPES = {
     'SIMAK_HAFALAN': 'Simak Hafalan',
     'SAMBUNG_AYAT': 'Pertanyaan Sambung Ayat',
     'MENULIS_QURAN': "Tes Menulis Qur'an",
+    'FIQIH': 'Ujian Fiqih',
 }
 
 
@@ -70,6 +71,74 @@ def _calculate_tahfidz_evaluation_score(question_count, total_errors):
         return 0
     total_score = (question_count * 100) - (max(0, total_errors) * 4)
     return round(max(0, total_score) / question_count, 2)
+
+
+def _calculate_tahfidz_item_score(*error_counts):
+    total_errors = sum(max(0, int(value or 0)) for value in error_counts)
+    return round(max(0, 100 - (total_errors * 4)), 2)
+
+
+def _normalize_direct_score(value):
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        raise ValueError
+    if score < 0 or score > 100:
+        raise ValueError
+    return round(score, 2)
+
+
+def _is_direct_score_evaluation(evaluation_type):
+    return evaluation_type in {'MENULIS_QURAN', 'FIQIH'}
+
+
+def _tahfidz_evaluation_question_items(evaluation):
+    def _safe_int(value):
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    if not evaluation or not evaluation.question_items:
+        return []
+    try:
+        items = json.loads(evaluation.question_items)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(items, list):
+        return []
+
+    normalized = []
+    for index, item in enumerate(items, start=1):
+        if not isinstance(item, dict):
+            continue
+        makhraj_errors = _safe_int(item.get('makhraj_errors'))
+        tajwid_errors = _safe_int(item.get('tajwid_errors'))
+        harakat_errors = _safe_int(item.get('harakat_errors'))
+        tahfidz_errors = _safe_int(item.get('tahfidz_errors') or item.get('hafalan_errors'))
+        writing_errors = _safe_int(item.get('writing_errors'))
+        score = item.get('score')
+        if score is None:
+            score = _calculate_tahfidz_item_score(
+                makhraj_errors,
+                tajwid_errors,
+                harakat_errors,
+                tahfidz_errors,
+            )
+        normalized.append({
+            'index': index,
+            'surah': item.get('surah') or '-',
+            'juz': item.get('juz') or '-',
+            'ayat_start': item.get('ayat_start') or item.get('ayat') or '-',
+            'ayat_end': item.get('ayat_end') or item.get('ayat') or '-',
+            'makhraj_errors': makhraj_errors,
+            'tajwid_errors': tajwid_errors,
+            'harakat_errors': harakat_errors,
+            'tahfidz_errors': tahfidz_errors,
+            'writing_errors': writing_errors,
+            'score': round(float(score or 0), 2),
+        })
+    return normalized
 
 
 def _teacher_tenant_id(teacher):
@@ -1259,6 +1328,7 @@ def _quran_report_payload_for_homeroom(
             'evaluation_type_label': TAHFIDZ_EVALUATION_TYPES.get(row.evaluation_type or 'SAMBUNG_AYAT', '-'),
             'question_count': row.question_count or 0,
             'question_details': row.question_details or '-',
+            'question_items': _tahfidz_evaluation_question_items(row),
             'makhraj_errors': row.makhraj_errors or 0,
             'tajwid_errors': row.tajwid_errors or 0,
             'harakat_errors': row.harakat_errors or 0,
@@ -2418,22 +2488,52 @@ def input_tahfidz_evaluation():
                 flash("Peserta tidak berada pada cakupan evaluasi yang dipilih.", "danger")
                 return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
-        try:
-            makhraj_errors = int(request.form.get('makhraj_errors') or 0)
-            tajwid_errors = int(request.form.get('tajwid_errors') or 0)
-            harakat_errors = int(request.form.get('harakat_errors') or 0)
-            tahfidz_errors = int(request.form.get('tahfidz_errors') or 0)
-            writing_errors = int(request.form.get('writing_errors') or 0)
-        except ValueError:
-            flash("Input jumlah kesalahan harus berupa angka.", "danger")
-            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
-        if min(makhraj_errors, tajwid_errors, harakat_errors, tahfidz_errors, writing_errors) < 0:
-            flash("Jumlah kesalahan tidak boleh bernilai negatif.", "danger")
+        is_direct_score = _is_direct_score_evaluation(evaluation_type)
+        if is_direct_score:
+            try:
+                score = _normalize_direct_score(request.form.get('direct_final_score'))
+            except ValueError:
+                flash("Nilai akhir harus berupa angka 0 sampai 100.", "danger")
+                return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+
+            new_evaluation = TahfidzEvaluation(
+                student_id=student_id,
+                majlis_participant_id=majlis_participant_id,
+                participant_type=participant_type,
+                teacher_id=teacher.id,
+                period_type=EvaluationPeriod[period_type],
+                period_label=period_label,
+                evaluation_type=evaluation_type,
+                question_count=0,
+                question_details=question_details,
+                question_items=None,
+                surah=None,
+                ayat_start=None,
+                ayat_end=None,
+                makhraj_errors=0,
+                tajwid_errors=0,
+                harakat_errors=0,
+                tahfidz_errors=0,
+                writing_errors=0,
+                score=score,
+                notes=notes,
+                date=utc_now_naive()
+            )
+            db.session.add(new_evaluation)
+            db.session.commit()
+
+            flash('Evaluasi tahfidz berhasil disimpan!', 'success')
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         question_surahs = request.form.getlist('question_surah[]')
         question_ayat_starts = request.form.getlist('question_ayat_start[]')
         question_ayat_ends = request.form.getlist('question_ayat_end[]')
+        question_juz = request.form.getlist('question_juz[]')
+        question_makhraj_errors = request.form.getlist('question_makhraj_errors[]')
+        question_tajwid_errors = request.form.getlist('question_tajwid_errors[]')
+        question_harakat_errors = request.form.getlist('question_harakat_errors[]')
+        question_tahfidz_errors = request.form.getlist('question_tahfidz_errors[]')
+        question_direct_scores = request.form.getlist('question_direct_score[]')
         legacy_question_ayats = request.form.getlist('question_ayat[]')
         if legacy_question_ayats and not question_ayat_starts and not question_ayat_ends:
             question_ayat_starts = legacy_question_ayats
@@ -2441,23 +2541,68 @@ def input_tahfidz_evaluation():
         if len(question_surahs) != len(question_ayat_starts) or len(question_surahs) != len(question_ayat_ends):
             flash("Setiap item uji harus memiliki surah, ayat awal, dan ayat akhir.", "danger")
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+        question_count = len(question_surahs)
+        error_lists = [
+            question_makhraj_errors,
+            question_tajwid_errors,
+            question_harakat_errors,
+            question_tahfidz_errors,
+        ]
+        if any(values and len(values) != question_count for values in error_lists):
+            flash("Setiap item uji harus memiliki data kesalahan yang lengkap.", "danger")
+            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
+        if is_direct_score and len(question_direct_scores) != question_count:
+            flash("Setiap item evaluasi nilai langsung wajib memiliki nilai.", "danger")
+            return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
         normalized_questions = []
         try:
-            for surah, ayat_start_raw, ayat_end_raw in zip(question_surahs, question_ayat_starts, question_ayat_ends):
+            for index, (surah, ayat_start_raw, ayat_end_raw) in enumerate(zip(question_surahs, question_ayat_starts, question_ayat_ends)):
                 surah = (surah or '').strip()
                 ayat_start = int(ayat_start_raw or 0)
                 ayat_end = int(ayat_end_raw or 0)
                 if not surah or ayat_start < 1 or ayat_end < 1 or ayat_end < ayat_start:
                     raise ValueError
+                if is_direct_score:
+                    item_makhraj_errors = 0
+                    item_tajwid_errors = 0
+                    item_harakat_errors = 0
+                    item_tahfidz_errors = 0
+                    item_writing_errors = 0
+                    item_score = _normalize_direct_score(question_direct_scores[index])
+                else:
+                    item_makhraj_errors = int(question_makhraj_errors[index] or 0) if question_makhraj_errors else 0
+                    item_tajwid_errors = int(question_tajwid_errors[index] or 0) if question_tajwid_errors else 0
+                    item_harakat_errors = int(question_harakat_errors[index] or 0) if question_harakat_errors else 0
+                    item_tahfidz_errors = int(question_tahfidz_errors[index] or 0) if question_tahfidz_errors else 0
+                    item_writing_errors = 0
+                    if min(
+                        item_makhraj_errors,
+                        item_tajwid_errors,
+                        item_harakat_errors,
+                        item_tahfidz_errors,
+                    ) < 0:
+                        raise ValueError
+                    item_score = _calculate_tahfidz_item_score(
+                        item_makhraj_errors,
+                        item_tajwid_errors,
+                        item_harakat_errors,
+                        item_tahfidz_errors,
+                    )
                 normalized_questions.append({
                     'surah': surah,
+                    'juz': (question_juz[index] or '').strip() if len(question_juz) > index else '',
                     'ayat': ayat_start,
                     'ayat_start': ayat_start,
                     'ayat_end': ayat_end,
-                    'score': 100,
+                    'makhraj_errors': item_makhraj_errors,
+                    'tajwid_errors': item_tajwid_errors,
+                    'harakat_errors': item_harakat_errors,
+                    'tahfidz_errors': item_tahfidz_errors,
+                    'writing_errors': item_writing_errors,
+                    'score': item_score,
                 })
         except ValueError:
-            flash("Setiap item uji harus memiliki rentang ayat yang valid.", "danger")
+            flash("Setiap item uji harus memiliki rentang ayat dan jumlah kesalahan yang valid.", "danger")
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         if not normalized_questions:
@@ -2465,8 +2610,12 @@ def input_tahfidz_evaluation():
             return redirect(url_for('teacher.input_tahfidz_evaluation', class_id=active_class_id))
 
         question_count = len(normalized_questions)
-        total_errors = makhraj_errors + tajwid_errors + harakat_errors + tahfidz_errors + writing_errors
-        score = _calculate_tahfidz_evaluation_score(question_count, total_errors)
+        makhraj_errors = sum(item['makhraj_errors'] for item in normalized_questions)
+        tajwid_errors = sum(item['tajwid_errors'] for item in normalized_questions)
+        harakat_errors = sum(item['harakat_errors'] for item in normalized_questions)
+        tahfidz_errors = sum(item['tahfidz_errors'] for item in normalized_questions)
+        writing_errors = sum(item['writing_errors'] for item in normalized_questions)
+        score = round(sum(item['score'] for item in normalized_questions) / question_count, 2)
         first_question = normalized_questions[0]
         last_question = normalized_questions[-1]
         summary_surah = first_question['surah']
@@ -3533,10 +3682,38 @@ def print_tahfidz_report(student_id):
         participant_type=ParticipantType.STUDENT
     ).order_by(TahfidzEvaluation.date.asc(), TahfidzEvaluation.id.asc()).all()
 
-    grouped_evaluations = {
-        key: [row for row in tahfidz_evaluations if (row.evaluation_type or 'SAMBUNG_AYAT') == key]
-        for key in TAHFIDZ_EVALUATION_TYPES
-    }
+    grouped_evaluations = {}
+    for key in TAHFIDZ_EVALUATION_TYPES:
+        grouped_evaluations[key] = []
+    for row in tahfidz_evaluations:
+        evaluation_key = row.evaluation_type or 'SAMBUNG_AYAT'
+        grouped_evaluations.setdefault(evaluation_key, [])
+        items = _tahfidz_evaluation_question_items(row)
+        if items:
+            for item in items:
+                grouped_evaluations[evaluation_key].append({
+                    **item,
+                    'period_label': row.period_label or '-',
+                    'date': row.date,
+                    'evaluation_score': row.score or 0,
+                })
+        else:
+            grouped_evaluations[evaluation_key].append({
+                'index': len(grouped_evaluations[evaluation_key]) + 1,
+                'surah': row.surah or row.question_details or '-',
+                'juz': '-',
+                'ayat_start': row.ayat_start or '-',
+                'ayat_end': row.ayat_end or '-',
+                'makhraj_errors': row.makhraj_errors or 0,
+                'tajwid_errors': row.tajwid_errors or 0,
+                'harakat_errors': row.harakat_errors or 0,
+                'tahfidz_errors': row.tahfidz_errors or 0,
+                'writing_errors': row.writing_errors or 0,
+                'score': row.score or 0,
+                'period_label': row.period_label or '-',
+                'date': row.date,
+                'evaluation_score': row.score or 0,
+            })
     evaluation_scores = [float(row.score or 0) for row in tahfidz_evaluations]
     tahfidz_scores = [float(row.score or 0) for row in tahfidz_records]
     recitation_scores = [float(row.score or 0) for row in recitation_records]

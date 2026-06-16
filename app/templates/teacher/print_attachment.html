@@ -157,8 +157,7 @@
                             Makhraj: {{ row.makhraj_errors or 0 }},
                             Tajwid: {{ row.tajwid_errors or 0 }},
                             Harakat: {{ row.harakat_errors or 0 }},
-                            Hafalan: {{ row.tahfidz_errors or 0 }},
-                            Tulisan: {{ row.writing_errors or 0 }}
+                            Hafalan: {{ row.tahfidz_errors or 0 }}
                         </td>
                         <td class="text-center fw-bold">{{ row.score if row.score is not none else '-' }}</td>
                         <td>{{ row.notes or '-' }}</td>

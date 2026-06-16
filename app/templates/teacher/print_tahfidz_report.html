@@ -77,11 +77,11 @@
     <div class="section-title">B. Evaluasi Tahfidz</div>
     {% for type_key, type_label in evaluation_types.items() %}
     <div class="fw-bold small mt-2">{{ loop.index }}. {{ type_label }}</div>
+    {% if type_key == 'MENULIS_QURAN' or type_key == 'FIQIH' %}
     <table class="table table-bordered table-sm mb-2">
         <thead class="text-center bg-light">
             <tr>
-                <th>No</th><th>Periode</th><th>Cakupan Uji</th><th>Soal</th>
-                <th>Makhraj</th><th>Tajwid</th><th>Harakat</th><th>Hafalan</th><th>Tulisan</th><th>Nilai</th>
+                <th>No</th><th>Periode</th><th>Juz</th><th>Materi Uji</th><th>Nilai</th>
             </tr>
         </thead>
         <tbody>
@@ -89,20 +89,42 @@
             <tr>
                 <td class="text-center">{{ loop.index }}</td>
                 <td>{{ row.period_label or '-' }}</td>
+                <td class="text-center">{{ row.juz or '-' }}</td>
                 <td>{{ row.surah or '-' }}{% if row.ayat_start and row.ayat_end %} ({{ row.ayat_start }}-{{ row.ayat_end }}){% endif %}</td>
-                <td class="text-center">{{ row.question_count or '-' }}</td>
-                <td class="text-center">{{ row.makhraj_errors or 0 }}</td>
-                <td class="text-center">{{ row.tajwid_errors or 0 }}</td>
-                <td class="text-center">{{ row.harakat_errors or 0 }}</td>
-                <td class="text-center">{{ row.tahfidz_errors or 0 }}</td>
-                <td class="text-center">{{ row.writing_errors or 0 }}</td>
                 <td class="text-center fw-bold">{{ row.score if row.score is not none else '-' }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="10" class="text-center">Belum ada data.</td></tr>
+            <tr><td colspan="5" class="text-center">Belum ada data.</td></tr>
             {% endfor %}
         </tbody>
     </table>
+    {% else %}
+    <table class="table table-bordered table-sm mb-2">
+        <thead class="text-center bg-light">
+            <tr>
+                <th>No</th><th>Periode</th><th>Juz</th><th>Cakupan Uji</th>
+                <th>Hafalan</th><th>Tajwid</th><th>Makhraj</th><th>Harakat</th><th>Nilai</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in grouped_evaluations.get(type_key, []) %}
+            <tr>
+                <td class="text-center">{{ loop.index }}</td>
+                <td>{{ row.period_label or '-' }}</td>
+                <td class="text-center">{{ row.juz or '-' }}</td>
+                <td>{{ row.surah or '-' }}{% if row.ayat_start and row.ayat_end %} ({{ row.ayat_start }}-{{ row.ayat_end }}){% endif %}</td>
+                <td class="text-center">{{ row.tahfidz_errors or 0 }}</td>
+                <td class="text-center">{{ row.tajwid_errors or 0 }}</td>
+                <td class="text-center">{{ row.makhraj_errors or 0 }}</td>
+                <td class="text-center">{{ row.harakat_errors or 0 }}</td>
+                <td class="text-center fw-bold">{{ row.score if row.score is not none else '-' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" class="text-center">Belum ada data.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
     {% endfor %}
 
     <div class="section-title">C. Setoran Bacaan / Tashih Tilawah</div>

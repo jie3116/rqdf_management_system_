@@ -74,7 +74,18 @@
                             </div>
                         </div>
 
-                        <div class="card border-0 bg-light mb-3">
+                        <div class="card border-0 bg-light mb-3 d-none" id="direct-score-card">
+                            <div class="card-body">
+                                <div class="row align-items-end">
+                                    <div class="col-md-6">
+                                        <label class="fw-bold small">Nilai Akhir</label>
+                                        <input type="number" name="direct_final_score" id="direct_final_score" class="form-control" min="0" max="100" step="0.01" value="100" disabled>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card border-0 bg-light mb-3" id="question-card">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-center mb-3">
                                     <div>
@@ -92,7 +103,7 @@
                                     <div class="row align-items-center">
                                         <div class="col-md-8">
                                             <div class="fw-bold">Nilai akhir</div>
-                                            <small class="text-muted">Nilai akhir = ((jumlah soal x 100) - (4 x total kesalahan)) / jumlah soal.</small>
+                                            <small class="text-muted">Nilai akhir adalah rata-rata nilai setiap item. Nilai item = 100 - (4 x jumlah kesalahan item).</small>
                                         </div>
                                         <div class="col-md-4 mt-2 mt-md-0">
                                             <input type="text" id="score_preview" class="form-control text-center fw-bold" value="0.00" readonly>
@@ -102,35 +113,7 @@
                             </div>
                         </div>
 
-                        <div class="card border-0 bg-light mb-3">
-                            <div class="card-body">
-                                <h6 class="fw-bold mb-3">Jumlah Kesalahan</h6>
-                                <div class="row g-3">
-                                    <div class="col-md-3">
-                                        <label class="small fw-bold text-muted">Makhraj</label>
-                                        <input type="number" name="makhraj_errors" class="form-control evaluation-error-input" min="0" value="0">
-                                    </div>
-                                    <div class="col-md-3">
-                                        <label class="small fw-bold text-muted">Tajwid</label>
-                                        <input type="number" name="tajwid_errors" class="form-control evaluation-error-input" min="0" value="0">
-                                    </div>
-                                    <div class="col-md-3">
-                                        <label class="small fw-bold text-muted">Harakat</label>
-                                        <input type="number" name="harakat_errors" class="form-control evaluation-error-input" min="0" value="0">
-                                    </div>
-                                    <div class="col-md-3">
-                                        <label class="small fw-bold text-muted">Tahfidz</label>
-                                        <input type="number" name="tahfidz_errors" class="form-control evaluation-error-input" min="0" value="0">
-                                    </div>
-                                    <div class="col-md-3">
-                                        <label class="small fw-bold text-muted">Tulisan</label>
-                                        <input type="number" name="writing_errors" class="form-control evaluation-error-input" min="0" value="0">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
+                        <div class="mb-3" id="question-details-group">
                             <label class="small text-muted">Keterangan materi uji</label>
                             <textarea name="question_details" class="form-control" rows="2" placeholder="Contoh: Simak hafalan juz 30, sambung ayat, atau baca acak."></textarea>
                         </div>
@@ -151,7 +134,7 @@
         <div class="col-lg-4">
             <div class="alert alert-info">
                 <i class="fas fa-info-circle me-2"></i>
-                Tambahkan soal satu per satu sesuai ayat yang diuji. Setiap soal bernilai awal 100 dan berkurang 4 untuk setiap kesalahan.
+                Tambahkan item uji satu per satu. Untuk sambung ayat, satu item adalah satu pertanyaan. Untuk simak hafalan, satu item bisa berupa satu surat, rentang ayat, atau satu lembar.
             </div>
         </div>
     </div>
@@ -231,13 +214,22 @@
         const periodType = document.getElementById("period_type");
         const periodLabel = document.getElementById("period_label");
         const periodLabelText = document.getElementById("period-label-text");
+        const evaluationType = document.getElementById("evaluation_type");
         const addQuestionButton = document.getElementById("add-question-btn");
         const questionList = document.getElementById("question-list");
         const scorePreview = document.getElementById("score_preview");
-        const errorInputs = Array.from(document.querySelectorAll(".evaluation-error-input"));
+        const questionCard = document.getElementById("question-card");
+        const directScoreCard = document.getElementById("direct-score-card");
+        const directFinalScore = document.getElementById("direct_final_score");
+        const questionDetailsGroup = document.getElementById("question-details-group");
+        const questionDetailsInput = questionDetailsGroup ? questionDetailsGroup.querySelector('textarea[name="question_details"]') : null;
 
         if (!periodType || !periodLabel || !periodLabelText || !addQuestionButton || !questionList || !scorePreview) {
             return;
+        }
+
+        function isDirectScoreEvaluation() {
+            return evaluationType && ["MENULIS_QURAN", "FIQIH"].includes(evaluationType.value);
         }
 
         function updatePeriodOptions(forceReset = false) {
@@ -270,16 +262,24 @@
         }
 
         function updateScorePreview() {
-            const questionCount = document.querySelectorAll("[data-question-card]").length;
-            if (!questionCount) {
+            const cards = Array.from(document.querySelectorAll("[data-question-card]"));
+            if (isDirectScoreEvaluation()) {
+                const directScore = parseFloat(directFinalScore ? directFinalScore.value || "0" : "0");
+                scorePreview.value = (Number.isNaN(directScore) ? 0 : Math.max(0, Math.min(100, directScore))).toFixed(2);
+                return;
+            }
+            if (!cards.length) {
                 scorePreview.value = "0.00";
                 return;
             }
-            const totalErrors = errorInputs.reduce((sum, input) => {
-                const value = parseInt(input.value || "0", 10);
-                return sum + (Number.isNaN(value) ? 0 : Math.max(0, value));
+            const totalScore = cards.reduce((sum, card) => {
+                const itemErrors = Array.from(card.querySelectorAll(".evaluation-error-input")).reduce((errorSum, input) => {
+                    const value = parseInt(input.value || "0", 10);
+                    return errorSum + (Number.isNaN(value) ? 0 : Math.max(0, value));
+                }, 0);
+                return sum + Math.max(0, 100 - (itemErrors * 4));
             }, 0);
-            const finalScore = Math.max(0, ((questionCount * 100) - (totalErrors * 4)) / questionCount);
+            const finalScore = totalScore / cards.length;
             scorePreview.value = finalScore.toFixed(2);
         }
 
@@ -289,6 +289,45 @@
             const ayatEndInput = card.querySelector('input[name="question_ayat_end[]"]');
             const surahSelect = card.querySelector('select[name="question_surah[]"]');
             const maxAyatInfo = card.querySelector("[data-max-ayat]");
+            const itemScoreInputs = Array.from(card.querySelectorAll("[data-item-score]"));
+            const directScoreInput = card.querySelector('input[name="question_direct_score[]"]');
+            const errorBlock = card.querySelector("[data-error-block]");
+            const directScoreBlock = card.querySelector("[data-direct-score-block]");
+            const itemErrorInputs = Array.from(card.querySelectorAll(".evaluation-error-input"));
+
+            function updateItemScore() {
+                if (isDirectScoreEvaluation()) {
+                    const directScore = parseFloat(directScoreInput ? directScoreInput.value || "0" : "0");
+                    const scoreValue = (Number.isNaN(directScore) ? 0 : Math.max(0, Math.min(100, directScore))).toFixed(2);
+                    itemScoreInputs.forEach((input) => { input.value = scoreValue; });
+                    updateScorePreview();
+                    return;
+                }
+                const itemErrors = itemErrorInputs.reduce((sum, input) => {
+                    const value = parseInt(input.value || "0", 10);
+                    return sum + (Number.isNaN(value) ? 0 : Math.max(0, value));
+                }, 0);
+                const scoreValue = Math.max(0, 100 - (itemErrors * 4)).toFixed(2);
+                itemScoreInputs.forEach((input) => { input.value = scoreValue; });
+                updateScorePreview();
+            }
+
+            function updateEvaluationMode() {
+                const isDirectScore = isDirectScoreEvaluation();
+                if (errorBlock) {
+                    errorBlock.classList.toggle("d-none", isDirectScore);
+                }
+                if (directScoreBlock) {
+                    directScoreBlock.classList.toggle("d-none", !isDirectScore);
+                }
+                itemErrorInputs.forEach((input) => {
+                    input.disabled = isDirectScore;
+                });
+                if (directScoreInput) {
+                    directScoreInput.disabled = !isDirectScore;
+                }
+                updateItemScore();
+            }
 
             function updateMaxAyat() {
                 const selectedOption = surahSelect.options[surahSelect.selectedIndex];
@@ -330,7 +369,46 @@
             surahSelect.addEventListener("change", updateMaxAyat);
             ayatStartInput.addEventListener("input", updateMaxAyat);
             ayatEndInput.addEventListener("input", updateMaxAyat);
+            itemErrorInputs.forEach((input) => {
+                input.addEventListener("input", updateItemScore);
+            });
+            if (directScoreInput) {
+                directScoreInput.addEventListener("input", updateItemScore);
+            }
+            if (evaluationType) {
+                evaluationType.addEventListener("change", updateEvaluationMode);
+            }
             updateMaxAyat();
+            updateEvaluationMode();
+        }
+
+        function updateEvaluationMode() {
+            const isDirectScore = isDirectScoreEvaluation();
+            if (questionCard) {
+                questionCard.classList.toggle("d-none", isDirectScore);
+            }
+            if (directScoreCard) {
+                directScoreCard.classList.toggle("d-none", !isDirectScore);
+            }
+            if (directFinalScore) {
+                directFinalScore.disabled = !isDirectScore;
+            }
+            if (questionDetailsGroup) {
+                questionDetailsGroup.classList.toggle("d-none", isDirectScore);
+            }
+            if (questionDetailsInput) {
+                questionDetailsInput.disabled = isDirectScore;
+            }
+            questionList.querySelectorAll("input, select, textarea, button").forEach((input) => {
+                if (input.id === "add-question-btn") {
+                    return;
+                }
+                input.disabled = isDirectScore;
+            });
+            if (addQuestionButton) {
+                addQuestionButton.disabled = isDirectScore;
+            }
+            updateScorePreview();
         }
 
         function addQuestionRow() {
@@ -345,22 +423,66 @@
                     </button>
                 </div>
                 <div class="row g-3">
-                    <div class="col-md-6">
+                    <div class="col-lg-2 col-md-3">
+                        <label class="small text-muted fw-bold">Juz</label>
+                        <input type="text" name="question_juz[]" class="form-control" placeholder="30">
+                    </div>
+                    <div class="col-lg-5 col-md-5">
                         <label class="small text-muted fw-bold">Surah yang diuji</label>
                         <select name="question_surah[]" class="form-select" required>
                             ${surahOptionsHtml()}
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-lg-2 col-md-2">
                         <label class="small text-muted fw-bold">Ayat awal</label>
                         <input type="number" name="question_ayat_start[]" class="form-control" min="1" required>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-lg-2 col-md-2">
                         <label class="small text-muted fw-bold">Ayat akhir</label>
                         <input type="number" name="question_ayat_end[]" class="form-control" min="1" required>
                     </div>
                     <div class="col-12">
                         <small class="text-muted" data-max-ayat>Pilih surah untuk melihat jumlah ayat.</small>
+                    </div>
+                    <div class="col-12" data-error-block>
+                        <div class="border-top pt-3 mt-1">
+                            <div class="row g-3 align-items-end">
+                                <div class="col-md-2 col-6">
+                                    <label class="small fw-bold text-muted">Hafalan</label>
+                                    <input type="number" name="question_tahfidz_errors[]" class="form-control evaluation-error-input" min="0" value="0">
+                                </div>
+                                <div class="col-md-2 col-6">
+                                    <label class="small fw-bold text-muted">Tajwid</label>
+                                    <input type="number" name="question_tajwid_errors[]" class="form-control evaluation-error-input" min="0" value="0">
+                                </div>
+                                <div class="col-md-2 col-6">
+                                    <label class="small fw-bold text-muted">Makhraj</label>
+                                    <input type="number" name="question_makhraj_errors[]" class="form-control evaluation-error-input" min="0" value="0">
+                                </div>
+                                <div class="col-md-2 col-6">
+                                    <label class="small fw-bold text-muted">Harakat</label>
+                                    <input type="number" name="question_harakat_errors[]" class="form-control evaluation-error-input" min="0" value="0">
+                                </div>
+                                <div class="col-md-2 col-6">
+                                    <label class="small fw-bold text-muted">Nilai Item</label>
+                                    <input type="text" class="form-control text-center fw-bold" data-item-score value="100.00" readonly>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 d-none" data-direct-score-block>
+                        <div class="border-top pt-3 mt-1">
+                            <div class="row g-3 align-items-end">
+                                <div class="col-md-4">
+                                    <label class="small fw-bold text-muted">Nilai Langsung</label>
+                                    <input type="number" name="question_direct_score[]" class="form-control" min="0" max="100" step="0.01" value="100" disabled>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="small fw-bold text-muted">Nilai Item</label>
+                                    <input type="text" class="form-control text-center fw-bold" data-item-score value="100.00" readonly>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -374,12 +496,16 @@
             updatePeriodOptions(true);
         });
         addQuestionButton.addEventListener("click", addQuestionRow);
-        errorInputs.forEach((input) => {
-            input.addEventListener("input", updateScorePreview);
-        });
+        if (evaluationType) {
+            evaluationType.addEventListener("change", updateEvaluationMode);
+        }
+        if (directFinalScore) {
+            directFinalScore.addEventListener("input", updateScorePreview);
+        }
 
         updatePeriodOptions(true);
         addQuestionRow();
+        updateEvaluationMode();
     });
 </script>
 {% endblock %}
