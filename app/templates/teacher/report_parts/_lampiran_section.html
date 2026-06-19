@@ -1,0 +1,36 @@
+<div class="section-title">Lampiran Absensi</div>
+<table class="table table-bordered table-sm" style="width: 420px;">
+    <tr><td>Hadir</td><td class="text-center">{{ attendance.recap.hadir }}</td></tr>
+    <tr><td>Sakit</td><td class="text-center">{{ attendance.recap.sakit }}</td></tr>
+    <tr><td>Izin</td><td class="text-center">{{ attendance.recap.izin }}</td></tr>
+    <tr><td>Tanpa Keterangan</td><td class="text-center">{{ attendance.recap.alpa }}</td></tr>
+    <tr><td>Tingkat Kehadiran</td><td class="text-center">{{ attendance.attendance_rate }}%</td></tr>
+</table>
+
+<div class="section-title">Lampiran Perilaku</div>
+{% set pos_rows = behavior.matrix.positive %}
+{% set neg_rows = behavior.matrix.negative %}
+{% set row_count = [pos_rows|length, neg_rows|length]|max %}
+<table class="table table-bordered table-sm text-center">
+    <thead class="bg-light">
+        <tr>
+            <th rowspan="2">No</th><th rowspan="2">Sikap Yang Harus Dipertahankan</th><th colspan="4">Frekuensi</th>
+            <th rowspan="2">Sikap Yang Harus Dihindari</th><th colspan="4">Frekuensi</th>
+        </tr>
+        <tr><th>SL</th><th>SR</th><th>K</th><th>TP</th><th>SL</th><th>SR</th><th>K</th><th>TP</th></tr>
+    </thead>
+    <tbody>
+        {% for idx in range(row_count) %}
+        {% set pos = pos_rows[idx] if idx < pos_rows|length else None %}
+        {% set neg = neg_rows[idx] if idx < neg_rows|length else None %}
+        <tr>
+            <td>{{ idx + 1 }}</td>
+            <td class="text-start">{{ pos.label if pos else '-' }}</td>
+            <td>{% if pos and pos.is_SL %}v{% endif %}</td><td>{% if pos and pos.is_SR %}v{% endif %}</td><td>{% if pos and pos.is_K %}v{% endif %}</td><td>{% if pos and pos.is_TP %}v{% endif %}</td>
+            <td class="text-start">{{ neg.label if neg else '-' }}</td>
+            <td>{% if neg and neg.is_SL %}v{% endif %}</td><td>{% if neg and neg.is_SR %}v{% endif %}</td><td>{% if neg and neg.is_K %}v{% endif %}</td><td>{% if neg and neg.is_TP %}v{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<div class="small fw-bold">Keterangan: SL = Selalu, SR = Sering, K = Kurang/Kadang, TP = Tidak Pernah</div>

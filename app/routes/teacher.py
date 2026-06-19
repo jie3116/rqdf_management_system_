@@ -13,12 +13,16 @@ from app.models import (
     GradeType, Subject, MajlisSubject, Attendance, AttendanceStatus, AcademicYear, Schedule, db, UserRole, MajlisParticipant,
     BehaviorReport, BehaviorReportType, Announcement, BoardingAttendance, ProgramType,
     OnlineClassSession, LearningMaterial, LearningAssignment, LearningAssignmentSubmission,
-    AiAssistantDocument, AiAssistantRequest, AiAssistantOutput
+    AiAssistantDocument, AiAssistantRequest, AiAssistantOutput, StudentReportFinalization
 )
 from app.decorators import role_required
-from app.services.rumah_quran_service import is_rumah_quran_classroom, list_rumah_quran_students_for_class
-from app.services.bahasa_service import is_bahasa_classroom, list_bahasa_students_for_class
-from app.services.formal_service import is_formal_classroom, list_formal_students_for_class
+from app.services.rumah_quran_service import (
+    get_student_rumah_quran_classroom,
+    is_rumah_quran_classroom,
+    list_rumah_quran_students_for_class,
+)
+from app.services.bahasa_service import get_student_bahasa_classroom, is_bahasa_classroom, list_bahasa_students_for_class
+from app.services.formal_service import get_student_formal_classroom, is_formal_classroom, list_formal_students_for_class
 from app.services.grade_formula_service import (
     REPORT_ADJUSTMENT_SOURCE_TAHFIDZ,
     REPORT_ADJUSTMENT_SOURCE_TAHFIDZ_EVALUATION,
@@ -44,9 +48,15 @@ from app.services.ai_assistant_service import (
     extract_document_text,
     generate_ai_assistant_output,
 )
+from app.services.report_template_service import (
+    report_template_for,
+    resolve_report_mudir_name,
+    resolve_report_template_profile,
+)
 from app.utils.announcements import get_announcements_for_dashboard, mark_announcements_as_read
 from app.utils.push_notifications import notify_announcement_created
 from app.utils.tenant import classroom_in_tenant, resolve_tenant_id, scoped_classrooms_query
+from app.utils.tenant_branding import build_tenant_brand
 from app.utils.timezone import local_day_bounds_utc_naive, local_now, local_today, utc_now_naive
 
 teacher_bp = Blueprint('teacher', __name__)
@@ -967,6 +977,58 @@ def _behavior_frequency_category(yes_count, total_meetings):
     return {'key': key, 'label': label, 'percentage': percentage}
 
 
+REPORT_BEHAVIOR_CATEGORIES = {'SL', 'SR', 'K', 'TP'}
+
+
+def _report_period_key(period_scope):
+    if period_scope.get('period_type') == 'YEAR':
+        return f"YEAR:{period_scope.get('selected_year_name') or '-'}"
+    selected_year = period_scope.get('selected_academic_year')
+    return f"SEMESTER:{selected_year.id if selected_year else 0}"
+
+
+def _report_finalization(tenant_id, student_id, period_scope):
+    if tenant_id is None:
+        return None
+    return StudentReportFinalization.query.filter(
+        StudentReportFinalization.is_deleted.is_(False),
+        StudentReportFinalization.tenant_id == tenant_id,
+        StudentReportFinalization.student_id == student_id,
+        StudentReportFinalization.period_key == _report_period_key(period_scope),
+    ).first()
+
+
+def _report_behavior_overrides(finalization):
+    if not finalization or not finalization.behavior_overrides:
+        return {}
+    try:
+        values = json.loads(finalization.behavior_overrides)
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(values, dict):
+        return {}
+    return {
+        str(key): str(value).upper()
+        for key, value in values.items()
+        if str(value).upper() in REPORT_BEHAVIOR_CATEGORIES
+    }
+
+
+def _apply_report_behavior_overrides(behavior_report, overrides):
+    for group_rows in (behavior_report.get('matrix') or {}).values():
+        for row in group_rows:
+            override = overrides.get(row.get('key'))
+            row['calculated_category_key'] = row.get('category_key')
+            row['is_adjusted'] = bool(override and override != row.get('category_key'))
+            if not override:
+                continue
+            row['category_key'] = override
+            row['category_label'] = behavior_report['legend'][override]
+            for category in REPORT_BEHAVIOR_CATEGORIES:
+                row[f'is_{category}'] = category == override
+    return behavior_report
+
+
 def _class_meeting_dates(class_id, academic_year_ids=None, start_date=None, end_date=None):
     query = Attendance.query.filter(
         Attendance.is_deleted.is_(False),
@@ -1076,6 +1138,16 @@ def _web_fmt_datetime(value):
     return value.strftime('%d/%m/%Y %H:%M') if value else '-'
 
 
+def _indonesian_month_year(value):
+    if not value:
+        value = local_today()
+    month_names = [
+        'JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI',
+        'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER',
+    ]
+    return f"{month_names[value.month - 1]} {value.year}"
+
+
 def _grade_subject_name(row):
     if row.subject and row.subject.name:
         return row.subject.name
@@ -1095,6 +1167,7 @@ def _academic_report_payload_for_homeroom(rows, include_history=False, history_l
         grouped.setdefault(subject_key, {
             'subject_name': subject_name,
             'subject_id': row.subject_id,
+            'kkm': row.subject.kkm if row.subject and row.subject.kkm is not None else 75,
             'academic_year_id': row.academic_year_id,
             'scores': defaultdict(list),
         })
@@ -1131,6 +1204,8 @@ def _academic_report_payload_for_homeroom(rows, include_history=False, history_l
         adjustment = final_detail.get('adjustment')
         summary_rows.append({
             'subject_name': subject_data['subject_name'],
+            'subject_id': subject_data['subject_id'],
+            'kkm': subject_data['kkm'],
             'type_averages': type_averages,
             'type_counts': type_counts,
             'final_score': final_detail['final_score'],
@@ -1150,6 +1225,164 @@ def _academic_report_payload_for_homeroom(rows, include_history=False, history_l
         'final_average': final_average,
         'summary_rows': summary_rows,
         'history_rows': history_rows,
+    }
+
+
+def _class_grade_subject_ids(class_room):
+    if class_room is None:
+        return set(), set()
+    schedules = Schedule.query.filter(
+        Schedule.is_deleted.is_(False),
+        Schedule.class_id == class_room.id,
+    ).all()
+    subject_ids = {row.subject_id for row in schedules if row.subject_id}
+    majlis_subject_ids = {row.majlis_subject_id for row in schedules if row.majlis_subject_id}
+    return subject_ids, majlis_subject_ids
+
+
+def _filter_grade_rows_for_class(rows, class_room, fallback_all=False):
+    subject_ids, majlis_subject_ids = _class_grade_subject_ids(class_room)
+    if not subject_ids and not majlis_subject_ids:
+        return list(rows or []) if fallback_all else []
+    return [
+        row for row in rows or []
+        if (row.subject_id and row.subject_id in subject_ids)
+        or (row.majlis_subject_id and row.majlis_subject_id in majlis_subject_ids)
+    ]
+
+
+def _report_predicate(score):
+    score = float(score or 0)
+    if score >= 85:
+        return 'A'
+    if score >= 75:
+        return 'B'
+    if score >= 65:
+        return 'C'
+    if score > 0:
+        return 'D'
+    return '-'
+
+
+RQDF_SUBJECT_ARABIC_NAMES = {
+    'tik': 'تقنية المعلومات',
+    'informatika': 'تقنية المعلومات',
+    'matematika': 'الرياضيات',
+    'b. inggris': 'اللغة الإنجليزية',
+    'bahasa inggris': 'اللغة الإنجليزية',
+    'b. arab': 'اللغة العربية',
+    'bahasa arab': 'اللغة العربية',
+    'hadits arba': 'الحديث الأربع',
+    "hadits arba'in": 'الحديث الأربع',
+    'fiqih': 'الفقه',
+    'akidah': 'العقيدة',
+    'aqidah': 'العقيدة',
+    'akhlak': 'الأخلاق',
+    'sejarah': 'التاريخ',
+}
+
+
+def _rqdf_subject_arabic_name(subject_name):
+    normalized = (subject_name or '').strip().lower()
+    for key, arabic_name in RQDF_SUBJECT_ARABIC_NAMES.items():
+        if key in normalized:
+            return arabic_name
+    return '-'
+
+
+def _rqdf_attendance_predicate(attendance_rate):
+    rate = float(attendance_rate or 0)
+    if rate >= 90:
+        return 'A'
+    if rate >= 80:
+        return 'B'
+    if rate >= 70:
+        return 'C'
+    if rate > 0:
+        return 'D'
+    return '-'
+
+
+def _rqdf_academic_rows(formal_report, attendance):
+    attendance_predicate = _rqdf_attendance_predicate(attendance.get('attendance_rate'))
+    rows = []
+    for row in formal_report.get('summary_rows') or []:
+        type_averages = row.get('type_averages') or {}
+        oral_score = type_averages.get('UH')
+        if oral_score is None:
+            oral_score = type_averages.get('UTS')
+        written_score = type_averages.get('UAS')
+        if written_score is None:
+            written_score = type_averages.get('TUGAS')
+        rows.append({
+            **row,
+            'arabic_name': _rqdf_subject_arabic_name(row.get('subject_name')),
+            'oral_score': oral_score if oral_score is not None else '-',
+            'written_score': written_score if written_score is not None else '-',
+            'attendance_predicate': attendance_predicate,
+        })
+    return rows
+
+
+def _rqdf_tahfidz_report_payload(tahfidz_report, bahasa_report):
+    evaluation_by_type = defaultdict(list)
+    for evaluation in tahfidz_report.get('evaluation_history') or []:
+        evaluation_by_type[evaluation.get('evaluation_type') or 'SAMBUNG_AYAT'].append(evaluation)
+
+    def evaluation_items(evaluation_type):
+        items = []
+        for evaluation in evaluation_by_type.get(evaluation_type, []):
+            question_items = evaluation.get('question_items') or []
+            if question_items:
+                for item in question_items:
+                    items.append({
+                        **item,
+                        'date': evaluation.get('date'),
+                        'period_label': evaluation.get('period_label'),
+                    })
+            else:
+                items.append({
+                    'surah': evaluation.get('question_details') or '-',
+                    'juz': '-',
+                    'ayat_start': '-',
+                    'ayat_end': '-',
+                    'makhraj_errors': evaluation.get('makhraj_errors') or 0,
+                    'tajwid_errors': evaluation.get('tajwid_errors') or 0,
+                    'harakat_errors': evaluation.get('harakat_errors') or 0,
+                    'tahfidz_errors': evaluation.get('tahfidz_errors') or 0,
+                    'score': evaluation.get('score') or 0,
+                    'date': evaluation.get('date'),
+                    'period_label': evaluation.get('period_label'),
+                })
+        return items
+
+    def latest_direct_score(evaluation_type):
+        rows = evaluation_by_type.get(evaluation_type) or []
+        return rows[-1].get('score') if rows else '-'
+
+    language_rows = []
+    for row in bahasa_report.get('summary_rows') or []:
+        language_rows.append({
+            'name': row.get('subject_name') or '-',
+            'score': row.get('final_score') or 0,
+            'predicate': _report_predicate(row.get('final_score')),
+        })
+
+    tahfidz_history = tahfidz_report.get('tahfidz_history') or []
+    recitation_history = tahfidz_report.get('recitation_history') or []
+    latest_ziyadah = next(
+        (row for row in reversed(tahfidz_history) if row.get('type') == 'ZIYADAH'),
+        tahfidz_history[-1] if tahfidz_history else None,
+    )
+    latest_recitation = recitation_history[-1] if recitation_history else None
+    return {
+        'simak_items': evaluation_items('SIMAK_HAFALAN'),
+        'sambung_items': evaluation_items('SAMBUNG_AYAT'),
+        'writing_score': latest_direct_score('MENULIS_QURAN'),
+        'fiqih_score': latest_direct_score('FIQIH'),
+        'latest_ziyadah': latest_ziyadah,
+        'latest_recitation': latest_recitation,
+        'language_rows': language_rows,
     }
 
 
@@ -3329,7 +3562,7 @@ def homeroom_students():
                          homeroom_classes=homeroom_classes)
 
 
-@teacher_bp.route('/siswa-wali-kelas/<int:student_id>')
+@teacher_bp.route('/siswa-wali-kelas/<int:student_id>', methods=['GET', 'POST'])
 @login_required
 @role_required(UserRole.GURU)
 def homeroom_student_detail(student_id):
@@ -3365,6 +3598,40 @@ def homeroom_student_detail(student_id):
     selected_year_ids = period_scope['academic_year_ids'] or []
     behavior_start_date = period_scope['start_date']
     behavior_end_date = period_scope['end_date']
+    tenant_id = _teacher_tenant_id(teacher)
+    finalization = _report_finalization(tenant_id, selected_student.id, period_scope)
+
+    if request.method == 'POST' and (request.form.get('action') or '').strip() == 'save_report_finalization':
+        homeroom_note = (request.form.get('homeroom_note') or '').strip()
+        behavior_overrides = {}
+        for indicator in _behavior_indicator_items():
+            selected_category = (request.form.get(f"behavior_{indicator['key']}") or '').strip().upper()
+            if selected_category in REPORT_BEHAVIOR_CATEGORIES:
+                behavior_overrides[indicator['key']] = selected_category
+
+        if finalization is None:
+            finalization = StudentReportFinalization(
+                tenant_id=tenant_id,
+                student_id=selected_student.id,
+                class_id=selected_class.id,
+                teacher_id=teacher.id,
+                period_key=_report_period_key(period_scope),
+            )
+            db.session.add(finalization)
+        finalization.class_id = selected_class.id
+        finalization.teacher_id = teacher.id
+        finalization.homeroom_note = homeroom_note or None
+        finalization.behavior_overrides = json.dumps(behavior_overrides)
+        db.session.commit()
+        flash("Catatan wali kelas dan penilaian sikap final berhasil disimpan.", "success")
+        return redirect(url_for(
+            'teacher.homeroom_student_detail',
+            student_id=selected_student.id,
+            class_id=selected_class.id,
+            period_type=selected_period_type,
+            academic_year_id=selected_academic_year.id if selected_period_type == 'SEMESTER' and selected_academic_year else None,
+            year_name=selected_year_name if selected_period_type == 'YEAR' else None,
+        ))
 
     grade_query = Grade.query.filter(
         Grade.is_deleted.is_(False),
@@ -3409,6 +3676,10 @@ def homeroom_student_detail(student_id):
         start_date=behavior_start_date,
         end_date=behavior_end_date,
         history_limit=history_limit
+    )
+    behavior_report = _apply_report_behavior_overrides(
+        behavior_report,
+        _report_behavior_overrides(finalization),
     )
 
     latest_behavior_note = '-'
@@ -3457,6 +3728,19 @@ def homeroom_student_detail(student_id):
         academic_year_id=selected_academic_year.id if selected_academic_year else None,
         class_id=selected_class.id,
     )
+    formal_class = get_student_formal_classroom(selected_student)
+    tahfidz_class = get_student_rumah_quran_classroom(selected_student)
+    bahasa_class = get_student_bahasa_classroom(selected_student)
+    report_sections = {
+        'formal': bool(formal_class or academic_report.get('summary_rows')),
+        'tahfidz': bool(
+            tahfidz_class
+            or quran_report.get('tahfidz_history')
+            or quran_report.get('recitation_history')
+            or quran_report.get('evaluation_history')
+        ),
+        'bahasa': bool(bahasa_class),
+    }
 
     return render_template(
         'teacher/homeroom_student_detail.html',
@@ -3478,7 +3762,10 @@ def homeroom_student_detail(student_id):
         attendance=attendance_report,
         behavior=behavior_report,
         latest_behavior_note=latest_behavior_note,
-        quran=quran_report
+        quran=quran_report,
+        report_sections=report_sections,
+        report_finalization=finalization,
+        homeroom_note=(finalization.homeroom_note or '') if finalization else '',
     )
 
 
@@ -3541,81 +3828,292 @@ def calculate_student_grades(student_id):
                          active_year=active_year)
 
 
-@teacher_bp.route('/cetak-raport/<int:student_id>')
-@login_required
-@role_required(UserRole.GURU)
-def print_report_card(student_id):
+def _build_student_report_payload(
+    teacher,
+    student,
+    period_type_raw=None,
+    academic_year_id_raw=None,
+    year_name_raw=None,
+    global_note='',
+):
+    period_scope = _resolve_homeroom_report_period(
+        period_type_raw=period_type_raw or 'SEMESTER',
+        academic_year_id_raw=academic_year_id_raw,
+        year_name_raw=year_name_raw or '',
+    )
+    academic_year = period_scope['selected_academic_year']
+    selected_year_ids = period_scope['academic_year_ids'] or []
+    start_date = period_scope['start_date']
+    end_date = period_scope['end_date']
+    tenant_id = _teacher_tenant_id(teacher)
+
+    formal_class = get_student_formal_classroom(student)
+    tahfidz_class = get_student_rumah_quran_classroom(student)
+    bahasa_class = get_student_bahasa_classroom(student)
+    program_classes = [item for item in [formal_class, tahfidz_class, bahasa_class] if item is not None]
+    program_class_ids = sorted({item.id for item in program_classes})
+
+    grade_query = Grade.query.filter(
+        Grade.is_deleted.is_(False),
+        Grade.participant_type == ParticipantType.STUDENT,
+        Grade.student_id == student.id,
+    )
+    if selected_year_ids:
+        grade_query = grade_query.filter(Grade.academic_year_id.in_(selected_year_ids))
+    else:
+        grade_query = grade_query.filter(False)
+    grade_rows = grade_query.order_by(Grade.created_at.desc(), Grade.id.desc()).all()
+
+    bahasa_grade_rows = _filter_grade_rows_for_class(grade_rows, bahasa_class, fallback_all=False)
+    bahasa_grade_ids = {row.id for row in bahasa_grade_rows}
+    formal_grade_rows = _filter_grade_rows_for_class(grade_rows, formal_class, fallback_all=True)
+    if bahasa_grade_ids:
+        formal_grade_rows = [row for row in formal_grade_rows if row.id not in bahasa_grade_ids]
+
+    formal_report = _academic_report_payload_for_homeroom(
+        formal_grade_rows,
+        tenant_id=tenant_id,
+        student_id=student.id,
+        class_id=formal_class.id if formal_class else None,
+    )
+    bahasa_report = _academic_report_payload_for_homeroom(
+        bahasa_grade_rows,
+        tenant_id=tenant_id,
+        student_id=student.id,
+        class_id=bahasa_class.id if bahasa_class else None,
+    )
+
+    tahfidz_query = TahfidzRecord.query.filter(
+        TahfidzRecord.is_deleted.is_(False),
+        TahfidzRecord.participant_type == ParticipantType.STUDENT,
+        TahfidzRecord.student_id == student.id,
+    )
+    recitation_query = RecitationRecord.query.filter(
+        RecitationRecord.is_deleted.is_(False),
+        RecitationRecord.participant_type == ParticipantType.STUDENT,
+        RecitationRecord.student_id == student.id,
+    )
+    evaluation_query = TahfidzEvaluation.query.filter(
+        TahfidzEvaluation.is_deleted.is_(False),
+        TahfidzEvaluation.participant_type == ParticipantType.STUDENT,
+        TahfidzEvaluation.student_id == student.id,
+    )
+    if start_date:
+        tahfidz_query = tahfidz_query.filter(TahfidzRecord.date >= datetime.combine(start_date, datetime.min.time()))
+        recitation_query = recitation_query.filter(RecitationRecord.date >= datetime.combine(start_date, datetime.min.time()))
+        evaluation_query = evaluation_query.filter(TahfidzEvaluation.date >= datetime.combine(start_date, datetime.min.time()))
+    if end_date:
+        tahfidz_query = tahfidz_query.filter(TahfidzRecord.date <= datetime.combine(end_date, datetime.max.time()))
+        recitation_query = recitation_query.filter(RecitationRecord.date <= datetime.combine(end_date, datetime.max.time()))
+        evaluation_query = evaluation_query.filter(TahfidzEvaluation.date <= datetime.combine(end_date, datetime.max.time()))
+    tahfidz_rows = tahfidz_query.order_by(TahfidzRecord.date.asc(), TahfidzRecord.id.asc()).all()
+    recitation_rows = recitation_query.order_by(RecitationRecord.date.asc(), RecitationRecord.id.asc()).all()
+    evaluation_rows = evaluation_query.order_by(TahfidzEvaluation.date.asc(), TahfidzEvaluation.id.asc()).all()
+    tahfidz_report = _quran_report_payload_for_homeroom(
+        tahfidz_rows,
+        recitation_rows,
+        evaluation_rows,
+        tenant_id=tenant_id,
+        student_id=student.id,
+        academic_year_id=academic_year.id if academic_year else None,
+        class_id=tahfidz_class.id if tahfidz_class else None,
+    )
+
+    attendance_query = Attendance.query.filter(
+        Attendance.is_deleted.is_(False),
+        Attendance.participant_type == ParticipantType.STUDENT,
+        Attendance.student_id == student.id,
+    )
+    if selected_year_ids:
+        attendance_query = attendance_query.filter(Attendance.academic_year_id.in_(selected_year_ids))
+    if program_class_ids:
+        attendance_query = attendance_query.filter(Attendance.class_id.in_(program_class_ids))
+    attendance_rows = attendance_query.order_by(Attendance.date.desc(), Attendance.created_at.desc()).all()
+    attendance_report = _attendance_report_payload_for_homeroom(attendance_rows, include_history=True, history_limit=300)
+
+    behavior_report = _behavior_matrix_for_student(
+        student_id=student.id,
+        class_id=formal_class.id if formal_class else (program_class_ids[0] if program_class_ids else student.current_class_id),
+        academic_year_ids=selected_year_ids,
+        start_date=start_date,
+        end_date=end_date,
+        history_limit=300,
+    )
+    finalization = _report_finalization(tenant_id, student.id, period_scope)
+    behavior_report = _apply_report_behavior_overrides(
+        behavior_report,
+        _report_behavior_overrides(finalization),
+    )
+    saved_homeroom_note = (finalization.homeroom_note or '').strip() if finalization else ''
+
+    report_sections = {
+        'formal': bool(formal_class or formal_report['summary_rows']),
+        'tahfidz': bool(tahfidz_class or tahfidz_rows or recitation_rows or evaluation_rows),
+        'bahasa': bool(bahasa_class or bahasa_report['summary_rows']),
+        'lampiran': True,
+    }
+    report_profile = resolve_report_template_profile(tenant_id)
+    parent_name = (
+        student.parent.full_name
+        if student.parent and student.parent.full_name
+        else '-'
+    )
+    mudir_name = resolve_report_mudir_name(tenant_id, report_profile)
+    tenant_brand = build_tenant_brand(getattr(getattr(teacher, 'user', None), 'tenant', None))
+    tenant_brand['report_logo_url'] = (
+        url_for('static', filename='img/rqdf-logo.png')
+        if tenant_brand.get('logo_static') == 'img/logo-rqdf-white.png'
+        else tenant_brand.get('logo_url')
+    )
+    rqdf_report = {
+        'academic_rows': _rqdf_academic_rows(formal_report, attendance_report),
+        'tahfidz': _rqdf_tahfidz_report_payload(tahfidz_report, bahasa_report),
+        'parent_name': parent_name,
+    }
+
+    return {
+        'student': student,
+        'teacher': teacher,
+        'academic_year': academic_year,
+        'period_scope': period_scope,
+        'formal_class': formal_class,
+        'tahfidz_class': tahfidz_class,
+        'bahasa_class': bahasa_class,
+        'formal_report': formal_report,
+        'bahasa_report': bahasa_report,
+        'tahfidz_report': tahfidz_report,
+        'attendance': attendance_report,
+        'behavior': behavior_report,
+        'report_sections': report_sections,
+        'report_profile': report_profile,
+        'tenant_brand': tenant_brand,
+        'rqdf_report': rqdf_report,
+        'parent_name': parent_name,
+        'mudir_name': mudir_name,
+        'global_note': (global_note or '').strip() or saved_homeroom_note,
+        'report_date_label': local_today().strftime('%d/%m/%Y'),
+        'report_signature_date_label': _indonesian_month_year(end_date or local_today()),
+        'predicate_fn': _report_predicate,
+    }
+
+
+def _student_report_payload_from_request(student_id):
     teacher = Teacher.query.filter_by(user_id=current_user.id).first_or_404()
     homeroom_classes = _get_teacher_homeroom_classes(teacher)
 
     if not homeroom_classes:
         flash("Hanya wali kelas yang dapat mencetak raport.", "danger")
-        return redirect(url_for('teacher.dashboard'))
+        return None, redirect(url_for('teacher.dashboard'))
     
     student = Student.query.filter_by(id=student_id, is_deleted=False).first_or_404()
     if not any(_student_belongs_to_class(student, class_room.id) for class_room in homeroom_classes):
         flash("Siswa tidak ada di kelas perwalian Anda.", "danger")
+        return None, redirect(url_for('teacher.homeroom_students'))
+
+    payload = _build_student_report_payload(
+        teacher,
+        student,
+        period_type_raw=(request.args.get('period_type') or 'SEMESTER').strip().upper(),
+        academic_year_id_raw=request.args.get('academic_year_id', type=int),
+        year_name_raw=(request.args.get('year_name') or '').strip(),
+        global_note=request.args.get('global_note') or '',
+    )
+    return payload, None
+
+
+def _render_student_report_section(student_id, section_key, unavailable_message):
+    payload, response = _student_report_payload_from_request(student_id)
+    if response:
+        return response
+    if not payload['report_sections'].get(section_key):
+        flash(unavailable_message, "warning")
+        return redirect(url_for('teacher.homeroom_students'))
+    template_name = report_template_for(payload['report_profile'], section_key)
+    return render_template(template_name, **payload, include_sections=[section_key])
+
+
+@teacher_bp.route('/cetak-raport/<int:student_id>')
+@login_required
+@role_required(UserRole.GURU)
+def print_report_card(student_id):
+    return print_report_package(student_id)
+
+
+@teacher_bp.route('/cetak-raport/paket/<int:student_id>')
+@login_required
+@role_required(UserRole.GURU)
+def print_report_package(student_id):
+    payload, response = _student_report_payload_from_request(student_id)
+    if response:
+        return response
+
+    requested_sections = []
+    for include_value in request.args.getlist('include'):
+        requested_sections.extend(item.strip() for item in include_value.split(',') if item.strip())
+    if not requested_sections:
+        requested_sections = ['formal', 'tahfidz', 'bahasa', 'lampiran']
+
+    allowed_sections = {'formal', 'tahfidz', 'bahasa', 'lampiran'}
+    include_sections = []
+    for section in requested_sections:
+        section_key = (section or '').strip().lower()
+        if section_key in allowed_sections and section_key not in include_sections:
+            if payload['report_sections'].get(section_key):
+                include_sections.append(section_key)
+
+    if not include_sections:
+        flash("Tidak ada bagian raport yang tersedia untuk dicetak.", "warning")
         return redirect(url_for('teacher.homeroom_students'))
 
-    active_year = AcademicYear.query.filter_by(is_active=True).first()
-    final_report = []
-    if active_year:
-        grades = Grade.query.filter_by(student_id=student.id, academic_year_id=active_year.id).all()
-        grouped = defaultdict(lambda: defaultdict(list))
-        for g in grades:
-            grouped[g.subject][g.type.name].append(g.score)
+    return render_template(
+        'teacher/print_report_package.html',
+        **payload,
+        include_sections=include_sections,
+    )
 
-        for sub, data in grouped.items():
-            type_averages = {}
-            for grade_type in ['TUGAS', 'UH', 'UTS', 'UAS']:
-                scores = data.get(grade_type, [])
-                if scores:
-                    type_averages[grade_type] = sum(scores) / len(scores)
-            final_score = _calculate_weighted_final(
-                type_averages,
-                tenant_id=_teacher_tenant_id(teacher),
-                academic_year_id=active_year.id,
-                subject_id=sub.id if sub else None,
-                student_id=student.id,
-                class_id=student.current_class_id,
-            )
-            final_detail = calculate_report_final_detail(
-                type_averages,
-                tenant_id=_teacher_tenant_id(teacher),
-                academic_year_id=active_year.id,
-                subject_id=sub.id if sub else None,
-                student_id=student.id,
-                class_id=student.current_class_id,
-            )
-            predikat = 'A' if final_score >= 85 else 'B' if final_score >= 75 else 'C' if final_score >= 65 else 'D'
-            adjustment = final_detail.get('adjustment')
-            final_report.append({
-                'subject': sub.name,
-                'kkm': sub.kkm or 70,
-                'final': final_score,
-                'predikat': predikat,
-                'original_score': final_detail['original_score'],
-                'is_adjusted': final_detail['is_adjusted'],
-                'adjustment_reference': adjustment.approval_reference if adjustment else None,
-            })
 
-    attendance_stats = {'sakit': 0, 'izin': 0, 'alpa': 0}
-    if active_year:
-        attendances = Attendance.query.filter_by(student_id=student.id, academic_year_id=active_year.id).all()
-        for a in attendances:
-            if a.status.name == 'SAKIT':
-                attendance_stats['sakit'] += 1
-            elif a.status.name == 'IZIN':
-                attendance_stats['izin'] += 1
-            elif a.status.name == 'ALPHA':
-                attendance_stats['alpa'] += 1
+@teacher_bp.route('/cetak-raport/formal/<int:student_id>')
+@login_required
+@role_required(UserRole.GURU)
+def print_report_formal(student_id):
+    return _render_student_report_section(
+        student_id,
+        'formal',
+        "Raport formal belum tersedia untuk santri ini.",
+    )
 
-    return render_template('teacher/print_report.html',
-                          student=student,
-                          teacher=teacher,
-                          academic_year=active_year,
-                          final_report=final_report,
-                          attendance_stats=attendance_stats)
+
+@teacher_bp.route('/cetak-raport/tahfidz/<int:student_id>')
+@login_required
+@role_required(UserRole.GURU)
+def print_report_tahfidz_v2(student_id):
+    return _render_student_report_section(
+        student_id,
+        'tahfidz',
+        "Raport tahfidz belum tersedia untuk santri ini.",
+    )
+
+
+@teacher_bp.route('/cetak-raport/bahasa/<int:student_id>')
+@login_required
+@role_required(UserRole.GURU)
+def print_report_bahasa(student_id):
+    return _render_student_report_section(
+        student_id,
+        'bahasa',
+        "Raport bahasa belum tersedia untuk santri ini.",
+    )
+
+
+@teacher_bp.route('/cetak-raport/lampiran/<int:student_id>')
+@login_required
+@role_required(UserRole.GURU)
+def print_report_lampiran(student_id):
+    return _render_student_report_section(
+        student_id,
+        'lampiran',
+        "Lampiran raport belum tersedia untuk santri ini.",
+    )
 
 
 @teacher_bp.route('/cetak-lampiran/<int:student_id>')

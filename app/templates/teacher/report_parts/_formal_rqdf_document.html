@@ -1,0 +1,125 @@
+{% include "teacher/report_parts/_rqdf_header.html" %}
+<div class="rqdf-title">AKUMULATIF NILAI RAPORT <span class="rqdf-arabic">كشف الدرجات</span></div>
+<div class="rqdf-title">
+    UJIAN {{ academic_year.semester|upper if academic_year else 'SEMESTER' }}
+    <span class="rqdf-arabic">الامتحان لنصف السنة</span>
+</div>
+
+<table class="rqdf-table rqdf-compact rqdf-identity">
+    <colgroup>
+        <col class="identity-label"><col class="identity-colon"><col class="identity-value">
+        <col class="identity-label"><col class="identity-colon"><col class="identity-value">
+    </colgroup>
+    <tr>
+        <td colspan="3"><strong>TAHUN PEMBELAJARAN</strong> : {{ academic_year.name if academic_year else '-' }}</td>
+        <td class="rqdf-arabic right" colspan="3">السنة الدراسية : {{ academic_year.name if academic_year else '-' }}</td>
+    </tr>
+    <tr>
+        <td>Nama Santri</td><td class="identity-colon">:</td><td><strong>{{ student.full_name }}</strong></td>
+        <td class="rqdf-arabic right">اسم الطالب / ة</td><td class="identity-colon">:</td><td>{{ rqdf_report.parent_name }}</td>
+    </tr>
+    <tr>
+        <td>Nomor Induk</td><td class="identity-colon">:</td><td>{{ student.nis or '-' }}</td>
+        <td class="rqdf-arabic right">رقم دفتر القيد</td><td class="identity-colon">:</td><td>{{ formal_class.name if formal_class else '-' }}</td>
+    </tr>
+</table>
+
+<table class="rqdf-table rqdf-compact">
+    <thead>
+        <tr>
+            <th rowspan="4" style="width:5%;">No<br><span class="rqdf-arabic">النمرة</span></th>
+            <th colspan="2" rowspan="4" style="width:31%;">PELAJARAN<br><span class="rqdf-arabic">المواد الدراسية</span></th>
+            <th rowspan="4" style="width:8%;">KKM<br><span class="rqdf-arabic">النهاية الصغرى</span></th>
+            <th colspan="4">NILAI YANG DICAPAI<br><span class="rqdf-arabic">الدرجة المكتسبة</span></th>
+        </tr>
+        <tr>
+            <th>Lisan<br><span class="rqdf-arabic">الشفهي</span></th>
+            <th>Tulisan<br><span class="rqdf-arabic">التحريري</span></th>
+            <th>Kehadiran<br><span class="rqdf-arabic">الحضور</span></th>
+            <th>Rata-rata<br><span class="rqdf-arabic">المعدل التراكمي</span></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in rqdf_report.academic_rows %}
+        <tr>
+            <td class="center">{{ loop.index }}</td>
+            <td class="rqdf-arabic right">{{ row.arabic_name }}</td>
+            <td>{{ row.subject_name }}</td>
+            <td class="center">{{ row.kkm|round(0)|int }}</td>
+            <td class="center">{{ row.oral_score }}</td>
+            <td class="center">{{ row.written_score }}</td>
+            <td class="center">{{ row.attendance_predicate }}</td>
+            <td class="center"><strong>{{ row.final_score }}</strong></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="center">Belum ada data nilai akademik.</td></tr>
+        {% endfor %}
+        <tr>
+            <td colspan="3"><strong>Jumlah Nilai</strong> <span class="rqdf-arabic">مجموعة الدرجات</span></td>
+            <td></td><td></td><td></td><td></td>
+            <td class="center"><strong>{{ rqdf_report.academic_rows|sum(attribute='final_score') if rqdf_report.academic_rows else 0 }}</strong></td>
+        </tr>
+        <tr>
+            <td colspan="3"><strong>Rata-rata</strong> <span class="rqdf-arabic">المعدل التراكمي</span></td>
+            <td></td><td></td><td></td><td></td>
+            <td class="center"><strong>{{ formal_report.final_average }}</strong></td>
+        </tr>
+        <tr>
+            <td colspan="3"><strong>Ranking</strong> <span class="rqdf-arabic">الترتيب</span></td>
+            <td></td><td></td><td></td><td></td><td class="center">-</td>
+        </tr>
+    </tbody>
+</table>
+
+<div class="rqdf-section rqdf-arabic">الأخلاق كل يوم في معهد بيت القرآن دار الفلاح :</div>
+{% set pos_rows = behavior.matrix.positive %}
+{% set neg_rows = behavior.matrix.negative %}
+{% set row_count = [pos_rows|length, neg_rows|length]|max %}
+<table class="rqdf-table rqdf-compact rqdf-attitude">
+    <colgroup>
+        <col style="width:4%;">
+        <col style="width:34%;">
+        <col style="width:3.5%;"><col style="width:3.5%;"><col style="width:3.5%;"><col style="width:3.5%;">
+        <col style="width:34%;">
+        <col style="width:3.5%;"><col style="width:3.5%;"><col style="width:3.5%;"><col style="width:3.5%;">
+    </colgroup>
+    <thead>
+        <tr>
+            <th rowspan="2">No</th>
+            <th rowspan="2" class="attitude-heading">Sikap yang harus ditingkatkan</th>
+            <th colspan="4">Frekuensi</th>
+            <th rowspan="2" class="attitude-heading">Sikap yang harus dihindari</th>
+            <th colspan="4">Frekuensi</th>
+        </tr>
+        <tr><th>SL</th><th>SR</th><th>K</th><th>TP</th><th>SL</th><th>SR</th><th>K</th><th>TP</th></tr>
+    </thead>
+    <tbody>
+        {% for idx in range(row_count) %}
+        {% set pos = pos_rows[idx] if idx < pos_rows|length else None %}
+        {% set neg = neg_rows[idx] if idx < neg_rows|length else None %}
+        <tr>
+            <td class="center">{{ idx + 1 }}</td>
+            <td class="attitude-label">{{ pos.label if pos else '-' }}</td>
+            <td class="center rqdf-checkbox">{% if pos and pos.is_SL %}✓{% endif %}</td>
+            <td class="center rqdf-checkbox">{% if pos and pos.is_SR %}✓{% endif %}</td>
+            <td class="center rqdf-checkbox">{% if pos and pos.is_K %}✓{% endif %}</td>
+            <td class="center rqdf-checkbox">{% if pos and pos.is_TP %}✓{% endif %}</td>
+            <td class="attitude-label">{{ neg.label if neg else '-' }}</td>
+            <td class="center rqdf-checkbox">{% if neg and neg.is_SL %}✓{% endif %}</td>
+            <td class="center rqdf-checkbox">{% if neg and neg.is_SR %}✓{% endif %}</td>
+            <td class="center rqdf-checkbox">{% if neg and neg.is_K %}✓{% endif %}</td>
+            <td class="center rqdf-checkbox">{% if neg and neg.is_TP %}✓{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<div><strong>Keterangan:</strong> SL = Selalu, SR = Sering, K = Kurang, TP = Tidak Pernah</div>
+
+<div class="rqdf-section">CATATAN WALI KELAS:</div>
+<div class="rqdf-note">{{ global_note or '-' }}</div>
+
+<div class="rqdf-signatures">
+    <div>MENGETAHUI,<br>MUDIR RUMAH QURAN,<div class="rqdf-sign-space"></div><strong>{{ mudir_name or '-' }}</strong></div>
+    <div>CIANJUR, {{ report_signature_date_label }}<br>WALI KELAS,<div class="rqdf-sign-space"></div><strong>{{ teacher.full_name or '........................' }}</strong></div>
+    <div class="signature-parent">ORANG TUA SANTRI,<div class="rqdf-sign-space"></div><strong>{{ parent_name or '-' }}</strong></div>
+</div>

@@ -1,0 +1,17 @@
+<div class="row mt-4">
+    <div class="col-6 text-center">
+        Mengetahui,<br>Mudir Rumah Qur'an
+        <div class="signature-space"></div>
+        <strong>{{ mudir_name or '-' }}</strong>
+    </div>
+    <div class="col-6 text-center">
+        Cianjur, {{ report_date_label }}<br>Wali Kelas
+        <div class="signature-space"></div>
+        <strong>{{ teacher.full_name or '........................' }}</strong>
+    </div>
+    <div class="col-6 offset-3 text-center mt-3">
+        Orang Tua/Wali
+        <div class="signature-space"></div>
+        <strong>{{ parent_name or '-' }}</strong>
+    </div>
+</div>

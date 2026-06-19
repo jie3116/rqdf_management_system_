@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Paket Raport - {{ student.full_name }}</title>
+    {% include "teacher/report_parts/_styles.html" %}
+    {% if report_profile == 'rqdf' %}
+    {% include "teacher/report_parts/_rqdf_styles.html" %}
+    {% endif %}
+</head>
+<body class="p-3">
+<div class="page">
+    {% include "teacher/report_parts/_print_controls.html" %}
+    {% for section in include_sections %}
+    <div class="{% if not loop.first %}page-break{% endif %}">
+        {% if section == 'formal' %}
+            {% if report_profile == 'rqdf' %}
+                <div class="rqdf-page rqdf-legal">{% include "teacher/report_parts/_formal_rqdf_document.html" %}</div>
+            {% else %}
+                {% set report_title = "Raport Formal" %}
+                {% include "teacher/report_parts/_header.html" %}
+                {% include "teacher/report_parts/_formal_section.html" %}
+                {% include "teacher/report_parts/_signature.html" %}
+            {% endif %}
+        {% elif section == 'tahfidz' %}
+            {% if report_profile == 'rqdf' %}
+                <div class="rqdf-page">{% include "teacher/report_parts/_tahfidz_rqdf_document.html" %}</div>
+            {% else %}
+                {% set report_title = "Raport Tahfidz Rumah Qur'an" %}
+                {% include "teacher/report_parts/_header.html" %}
+                {% include "teacher/report_parts/_tahfidz_section.html" %}
+                {% include "teacher/report_parts/_signature.html" %}
+            {% endif %}
+        {% elif section == 'bahasa' %}
+            {% set report_title = "Raport Kelas Bahasa" %}
+            {% include "teacher/report_parts/_header.html" %}
+            {% include "teacher/report_parts/_bahasa_section.html" %}
+            {% include "teacher/report_parts/_signature.html" %}
+        {% elif section == 'lampiran' %}
+            {% set report_title = "Lampiran Raport" %}
+            {% include "teacher/report_parts/_header.html" %}
+            {% include "teacher/report_parts/_lampiran_section.html" %}
+            {% include "teacher/report_parts/_signature.html" %}
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+</body>
+</html>

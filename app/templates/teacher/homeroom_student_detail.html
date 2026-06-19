@@ -12,15 +12,133 @@
             <a class="btn btn-outline-secondary" href="{{ url_for('teacher.homeroom_students', class_id=homeroom_class.id, period_type=selected_period_type, academic_year_id=selected_academic_year.id if selected_period_type == 'SEMESTER' and selected_academic_year else None, year_name=selected_year_name if selected_period_type == 'YEAR' else None) }}">
                 <i class="fas fa-arrow-left me-1"></i>Kembali ke List
             </a>
-            <a class="btn btn-primary" href="{{ url_for('teacher.print_report_card', student_id=student.id) }}" target="_blank">
-                <i class="fas fa-file-alt me-1"></i>Cetak Raport
+            <a class="btn btn-primary {% if not report_sections.formal %}disabled{% endif %}" href="{{ url_for('teacher.print_report_formal', student_id=student.id, period_type=selected_period_type, academic_year_id=selected_academic_year.id if selected_period_type == 'SEMESTER' and selected_academic_year else None, year_name=selected_year_name if selected_period_type == 'YEAR' else None) }}" target="_blank">
+                <i class="fas fa-school me-1"></i>Formal
             </a>
-            <a class="btn btn-info" href="{{ url_for('teacher.print_attachment', student_id=student.id) }}" target="_blank">
+            <a class="btn btn-warning {% if not report_sections.tahfidz %}disabled{% endif %}" href="{{ url_for('teacher.print_report_tahfidz_v2', student_id=student.id, period_type=selected_period_type, academic_year_id=selected_academic_year.id if selected_period_type == 'SEMESTER' and selected_academic_year else None, year_name=selected_year_name if selected_period_type == 'YEAR' else None) }}" target="_blank">
+                <i class="fas fa-quran me-1"></i>Tahfidz
+            </a>
+            <a class="btn btn-success {% if not report_sections.bahasa %}disabled{% endif %}" href="{{ url_for('teacher.print_report_bahasa', student_id=student.id, period_type=selected_period_type, academic_year_id=selected_academic_year.id if selected_period_type == 'SEMESTER' and selected_academic_year else None, year_name=selected_year_name if selected_period_type == 'YEAR' else None) }}" target="_blank">
+                <i class="fas fa-language me-1"></i>Bahasa
+            </a>
+            <a class="btn btn-info" href="{{ url_for('teacher.print_report_lampiran', student_id=student.id, period_type=selected_period_type, academic_year_id=selected_academic_year.id if selected_period_type == 'SEMESTER' and selected_academic_year else None, year_name=selected_year_name if selected_period_type == 'YEAR' else None) }}" target="_blank">
                 <i class="fas fa-list-alt me-1"></i>Lampiran
             </a>
-            <a class="btn btn-warning" href="{{ url_for('teacher.print_tahfidz_report', student_id=student.id) }}" target="_blank">
-                <i class="fas fa-quran me-1"></i>Raport Tahfidz
-            </a>
+        </div>
+    </div>
+
+    <div class="card shadow mb-3">
+        <div class="card-header py-3">
+            <h6 class="m-0 fw-bold text-warning">Finalisasi Catatan dan Sikap Raport</h6>
+        </div>
+        <div class="card-body">
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="save_report_finalization">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Catatan Wali Kelas</label>
+                    <textarea name="homeroom_note" class="form-control" rows="4" placeholder="Catatan yang akan tercetak pada raport.">{{ homeroom_note }}</textarea>
+                </div>
+
+                {% set pos_rows = behavior.matrix.positive %}
+                {% set neg_rows = behavior.matrix.negative %}
+                {% set row_count = [pos_rows|length, neg_rows|length]|max %}
+                <div class="table-responsive">
+                    <table class="table table-bordered align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Sikap yang Harus Dipertahankan</th>
+                                <th style="width: 150px;">Nilai Final</th>
+                                <th>Sikap yang Harus Dihindari</th>
+                                <th style="width: 150px;">Nilai Final</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for idx in range(row_count) %}
+                            {% set pos = pos_rows[idx] if idx < pos_rows|length else None %}
+                            {% set neg = neg_rows[idx] if idx < neg_rows|length else None %}
+                            <tr>
+                                <td>
+                                    {{ pos.label if pos else '-' }}
+                                    {% if pos and pos.is_adjusted %}<span class="badge bg-warning text-dark ms-1">Adjusted</span>{% endif %}
+                                </td>
+                                <td>
+                                    {% if pos %}
+                                    <select name="behavior_{{ pos.key }}" class="form-select form-select-sm">
+                                        {% for key, label in behavior.legend.items() %}
+                                        <option value="{{ key }}" {% if pos.category_key == key %}selected{% endif %}>{{ key }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {{ neg.label if neg else '-' }}
+                                    {% if neg and neg.is_adjusted %}<span class="badge bg-warning text-dark ms-1">Adjusted</span>{% endif %}
+                                </td>
+                                <td>
+                                    {% if neg %}
+                                    <select name="behavior_{{ neg.key }}" class="form-select form-select-sm">
+                                        {% for key, label in behavior.legend.items() %}
+                                        <option value="{{ key }}" {% if neg.category_key == key %}selected{% endif %}>{{ key }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <button type="submit" class="btn btn-warning">
+                    <i class="fas fa-save me-1"></i>Simpan Finalisasi Raport
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow mb-3">
+        <div class="card-header py-3"><h6 class="m-0 fw-bold text-primary">Cetak Paket Raport</h6></div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('teacher.print_report_package', student_id=student.id) }}" target="_blank">
+                <input type="hidden" name="period_type" value="{{ selected_period_type }}">
+                {% if selected_period_type == 'SEMESTER' and selected_academic_year %}
+                <input type="hidden" name="academic_year_id" value="{{ selected_academic_year.id }}">
+                {% endif %}
+                {% if selected_period_type == 'YEAR' %}
+                <input type="hidden" name="year_name" value="{{ selected_year_name }}">
+                {% endif %}
+                <div class="row g-2 mb-3">
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="include" value="formal" id="includeFormal" {% if report_sections.formal %}checked{% else %}disabled{% endif %}>
+                            <label class="form-check-label" for="includeFormal">Raport Formal</label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="include" value="tahfidz" id="includeTahfidz" {% if report_sections.tahfidz %}checked{% else %}disabled{% endif %}>
+                            <label class="form-check-label" for="includeTahfidz">Raport Tahfidz</label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="include" value="bahasa" id="includeBahasa" {% if report_sections.bahasa %}checked{% else %}disabled{% endif %}>
+                            <label class="form-check-label" for="includeBahasa">Raport Bahasa</label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="include" value="lampiran" id="includeLampiran" checked>
+                            <label class="form-check-label" for="includeLampiran">Lampiran</label>
+                        </div>
+                    </div>
+                </div>
+                <label class="small fw-bold text-muted">Catatan Global Wali Kelas</label>
+                <textarea name="global_note" class="form-control mb-2" rows="3" placeholder="Catatan untuk diperhatikan oleh santri dan orang tua.">{{ homeroom_note }}</textarea>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-print me-1"></i>Cetak Paket Raport
+                </button>
+            </form>
         </div>
     </div>
 

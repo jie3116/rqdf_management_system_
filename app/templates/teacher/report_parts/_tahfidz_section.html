@@ -1,0 +1,46 @@
+<div class="section-title">Ringkasan Hasil Tahfidz</div>
+<table class="table table-bordered table-sm">
+    <thead class="text-center bg-light">
+        <tr><th>Komponen</th><th>Jumlah Data</th><th>Rata-rata/Nilai</th><th>Catatan</th></tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Setoran Hafalan</td>
+            <td class="text-center">{{ tahfidz_report.tahfidz_summary.count }}</td>
+            <td class="text-center fw-bold">{{ tahfidz_report.tahfidz_summary.average_score }}</td>
+            <td>{% if tahfidz_report.tahfidz_summary.is_adjusted %}Adj. resmi: {{ tahfidz_report.tahfidz_summary.adjustment_reference }}{% else %}-{% endif %}</td>
+        </tr>
+        <tr>
+            <td>Setoran Bacaan / Tashih</td>
+            <td class="text-center">{{ tahfidz_report.recitation_summary.count }}</td>
+            <td class="text-center fw-bold">{{ tahfidz_report.recitation_summary.average_score }}</td>
+            <td>-</td>
+        </tr>
+        <tr>
+            <td>Evaluasi Tahfidz</td>
+            <td class="text-center">{{ tahfidz_report.evaluation_summary.count }}</td>
+            <td class="text-center fw-bold">{{ tahfidz_report.evaluation_summary.average_score }}</td>
+            <td>{% if tahfidz_report.evaluation_summary.is_adjusted %}Adj. resmi: {{ tahfidz_report.evaluation_summary.adjustment_reference }}{% else %}-{% endif %}</td>
+        </tr>
+    </tbody>
+</table>
+
+<div class="section-title">Riwayat Evaluasi Tahfidz</div>
+<table class="table table-bordered table-sm">
+    <thead class="text-center bg-light">
+        <tr><th>No</th><th>Tanggal</th><th>Jenis</th><th>Periode</th><th>Nilai</th></tr>
+    </thead>
+    <tbody>
+        {% for row in tahfidz_report.evaluation_history %}
+        <tr>
+            <td class="text-center">{{ loop.index }}</td>
+            <td class="text-center">{{ row.date }}</td>
+            <td>{{ row.evaluation_type_label }}</td>
+            <td>{{ row.period_type_label }} - {{ row.period_label }}</td>
+            <td class="text-center fw-bold">{{ row.score }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center">Belum ada data evaluasi tahfidz.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>

@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Raport Tahfidz RQDF - {{ student.full_name }}</title>
+    {% include "teacher/report_parts/_rqdf_styles.html" %}
+    <style>@media print { @page { size: A4 portrait; margin: 10mm 15mm; } }</style>
+</head>
+<body>
+<div class="rqdf-page">
+    {% include "teacher/report_parts/_print_controls.html" %}
+    {% include "teacher/report_parts/_tahfidz_rqdf_document.html" %}
+</div>
+</body>
+</html>

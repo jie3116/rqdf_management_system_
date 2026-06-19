@@ -1,0 +1,35 @@
+<div class="row align-items-center kop-surat">
+    <div class="col-2 text-center">
+        <img src="{{ url_for('static', filename='img/rqdf-logo.png') }}" alt="Logo" style="width: 72px;">
+    </div>
+    <div class="col-10 text-center">
+        <div class="fw-bold text-uppercase" style="font-size: 18px;">Yayasan Rumah Qur'an Cianjur</div>
+        <div class="fw-bold text-uppercase" style="font-size: 19px;">Pesantren Rumah Qur'an Cianjur</div>
+        <div>Jl. H. Luanda Gg. Bali No.897 Kelurahan Bojongherang Kecamatan Cianjur 43211</div>
+    </div>
+</div>
+
+<h6 class="text-center fw-bold text-uppercase mb-2">
+    {{ report_title }}
+    {% if academic_year %}<br>{{ academic_year.name }} - {{ academic_year.semester }}{% endif %}
+</h6>
+
+<table class="table table-borderless table-sm mb-2">
+    <tr>
+        <td style="width: 130px;">Nama Santri</td><td style="width: 10px;">:</td><td class="fw-bold">{{ student.full_name }}</td>
+        <td style="width: 130px;">NIS</td><td style="width: 10px;">:</td><td>{{ student.nis or '-' }}</td>
+    </tr>
+    <tr>
+        <td>Kelas Formal</td><td>:</td><td>{{ formal_class.name if formal_class else '-' }}</td>
+        <td>Halaqah Tahfidz</td><td>:</td><td>{{ tahfidz_class.name if tahfidz_class else '-' }}</td>
+    </tr>
+    <tr>
+        <td>Kelas Bahasa</td><td>:</td><td>{{ bahasa_class.name if bahasa_class else '-' }}</td>
+        <td>Wali Kelas</td><td>:</td><td>{{ teacher.full_name or '-' }}</td>
+    </tr>
+</table>
+
+{% if global_note %}
+<div class="section-title">Catatan Wali Kelas</div>
+<div class="note-box mb-2">{{ global_note }}</div>
+{% endif %}

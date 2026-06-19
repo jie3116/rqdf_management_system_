@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Raport Tahfidz - {{ student.full_name }}</title>
+    {% include "teacher/report_parts/_styles.html" %}
+</head>
+<body class="p-3">
+<div class="page">
+    {% include "teacher/report_parts/_print_controls.html" %}
+    {% set report_title = "Raport Tahfidz Rumah Qur'an" %}
+    {% include "teacher/report_parts/_header.html" %}
+    {% include "teacher/report_parts/_tahfidz_section.html" %}
+    {% include "teacher/report_parts/_signature.html" %}
+</div>
+</body>
+</html>

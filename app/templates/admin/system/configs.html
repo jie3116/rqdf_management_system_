@@ -47,6 +47,31 @@
         </div>
 
         <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-success text-white">
+                <h6 class="m-0 fw-bold"><i class="fas fa-file-alt me-2"></i>Format Raport Tenant</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="action" value="update_report_template">
+                    <div class="mb-3">
+                        <label class="fw-bold small">Profil Format</label>
+                        <select name="report_template_profile" class="form-select">
+                            <option value="generic" {% if report_template_profile == 'generic' %}selected{% endif %}>Generic</option>
+                            <option value="rqdf" {% if report_template_profile == 'rqdf' %}selected{% endif %}>RQDF Bilingual</option>
+                        </select>
+                        <div class="form-text">RQDF Bilingual mengikuti format akademik dan tahfidz khusus RQDF.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="fw-bold small">Nama Mudir</label>
+                        <input type="text" name="report_mudir_name" class="form-control" value="{{ report_mudir_name or '' }}" placeholder="Nama lengkap dan gelar">
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Simpan Format Raport</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow mb-4">
             <div class="card-header py-3 bg-primary text-white">
                 <h6 class="m-0 fw-bold"><i class="fas fa-sliders-h me-2"></i>Konfigurasi PPDB</h6>
             </div>

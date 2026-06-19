@@ -1,0 +1,27 @@
+<div class="section-title">Nilai Kelas Bahasa</div>
+<table class="table table-bordered table-sm">
+    <thead class="text-center bg-light">
+        <tr><th>No</th><th>Komponen Bahasa</th><th>Tugas</th><th>UH</th><th>UTS</th><th>UAS</th><th>Nilai Akhir</th><th>Predikat</th></tr>
+    </thead>
+    <tbody>
+        {% for row in bahasa_report.summary_rows %}
+        <tr>
+            <td class="text-center">{{ loop.index }}</td>
+            <td>{{ row.subject_name }}</td>
+            <td class="text-center">{{ row.type_averages.get('TUGAS', '-') }}</td>
+            <td class="text-center">{{ row.type_averages.get('UH', '-') }}</td>
+            <td class="text-center">{{ row.type_averages.get('UTS', '-') }}</td>
+            <td class="text-center">{{ row.type_averages.get('UAS', '-') }}</td>
+            <td class="text-center fw-bold">{{ row.final_score }}</td>
+            <td class="text-center">{{ predicate_fn(row.final_score) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center">Belum ada data nilai bahasa.</td></tr>
+        {% endfor %}
+        <tr>
+            <td colspan="6" class="text-end fw-bold">Rata-rata</td>
+            <td class="text-center fw-bold">{{ bahasa_report.final_average }}</td>
+            <td></td>
+        </tr>
+    </tbody>
+</table>

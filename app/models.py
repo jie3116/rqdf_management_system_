@@ -1155,6 +1155,32 @@ class ReportCard(BaseModel):
     description = db.Column(db.Text)  # Catatan Guru Mapel
 
 
+class StudentReportFinalization(BaseModel):
+    __tablename__ = 'student_report_finalizations'
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    class_id = db.Column(db.Integer, db.ForeignKey('class_rooms.id'), nullable=True, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False, index=True)
+    period_key = db.Column(db.String(100), nullable=False, index=True)
+    homeroom_note = db.Column(db.Text, nullable=True)
+    behavior_overrides = db.Column(db.Text, nullable=True)
+
+    tenant = db.relationship('Tenant', backref='student_report_finalizations')
+    student = db.relationship('Student', backref='report_finalizations')
+    class_room = db.relationship('ClassRoom', backref='student_report_finalizations')
+    teacher = db.relationship('Teacher', backref='student_report_finalizations')
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            'tenant_id',
+            'student_id',
+            'period_key',
+            name='uq_student_report_finalization_period',
+        ),
+    )
+
+
 class ReportScoreAdjustment(BaseModel):
     """
     Adjustment resmi nilai akhir raport.

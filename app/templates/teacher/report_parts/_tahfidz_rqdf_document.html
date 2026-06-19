@@ -1,0 +1,115 @@
+{% include "teacher/report_parts/_rqdf_header.html" %}
+<div class="rqdf-title">LAPORAN HASIL UJIAN AKHIR {{ academic_year.semester|upper if academic_year else 'SEMESTER' }}</div>
+<div class="rqdf-title">TAHUN {{ academic_year.name if academic_year else '-' }}</div>
+
+<table class="rqdf-table rqdf-identity">
+    <colgroup>
+        <col class="identity-label"><col class="identity-colon"><col class="identity-value">
+        <col class="identity-label"><col class="identity-colon"><col class="identity-value">
+    </colgroup>
+    <tr><td>NAMA SANTRI</td><td class="identity-colon">:</td><td><strong>{{ student.full_name }}</strong></td><td>TANGGAL UJIAN</td><td class="identity-colon">:</td><td>{{ report_date_label }}</td></tr>
+    <tr><td>KELAS</td><td class="identity-colon">:</td><td>{{ tahfidz_class.name if tahfidz_class else '-' }}</td><td>PENGUJI</td><td class="identity-colon">:</td><td>{{ teacher.full_name or '-' }}</td></tr>
+</table>
+
+<div class="rqdf-section">HAFALAN SURAT</div>
+<table class="rqdf-table rqdf-compact">
+    <thead>
+        <tr><th rowspan="2" style="width:5%;">NO</th><th rowspan="2">NAMA SURAT / CAKUPAN</th><th colspan="4">KESALAHAN</th><th rowspan="2" style="width:10%;">NILAI</th></tr>
+        <tr><th>HAFALAN</th><th>TAJWID</th><th>MAKHRAJ</th><th>HARAKAT</th></tr>
+    </thead>
+    <tbody>
+        {% for row in rqdf_report.tahfidz.simak_items %}
+        <tr>
+            <td class="center">{{ loop.index }}</td>
+            <td>{{ row.surah }}{% if row.ayat_start != '-' %}, ayat {{ row.ayat_start }}{% if row.ayat_end != row.ayat_start %}-{{ row.ayat_end }}{% endif %}{% endif %}</td>
+            <td class="center">{{ row.tahfidz_errors }}</td><td class="center">{{ row.tajwid_errors }}</td><td class="center">{{ row.makhraj_errors }}</td><td class="center">{{ row.harakat_errors }}</td><td class="center"><strong>{{ row.score }}</strong></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="center">Belum ada data simak hafalan.</td></tr>
+        {% endfor %}
+        <tr><td colspan="6"><strong>RATA-RATA</strong></td><td class="center"><strong>{{ tahfidz_report.evaluation_summary.average_score }}</strong></td></tr>
+        <tr><td colspan="6"><strong>PREDIKAT</strong></td><td class="center">{{ predicate_fn(tahfidz_report.evaluation_summary.average_score) }}</td></tr>
+    </tbody>
+</table>
+
+<div class="rqdf-section">SOAL SAMBUNG AYAT</div>
+<table class="rqdf-table rqdf-compact">
+    <thead>
+        <tr><th rowspan="2" style="width:5%;">NO</th><th rowspan="2">NAMA SURAT &amp; AYAT</th><th rowspan="2" style="width:8%;">JUZ</th><th colspan="3">KESALAHAN</th><th rowspan="2" style="width:10%;">NILAI</th></tr>
+        <tr><th>TAJWID</th><th>HAFALAN</th><th>MAKHRAJ</th></tr>
+    </thead>
+    <tbody>
+        {% for row in rqdf_report.tahfidz.sambung_items %}
+        <tr>
+            <td class="center">{{ loop.index }}</td>
+            <td>{{ row.surah }}, ayat {{ row.ayat_start }}{% if row.ayat_end != row.ayat_start %}-{{ row.ayat_end }}{% endif %}</td>
+            <td class="center">{{ row.juz }}</td><td class="center">{{ row.tajwid_errors }}</td><td class="center">{{ row.tahfidz_errors }}</td><td class="center">{{ row.makhraj_errors }}</td><td class="center"><strong>{{ row.score }}</strong></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="center">Belum ada data sambung ayat.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="rqdf-section">ADAPUN ZIYADAH / PENAMBAHAN HAFALAN YANG SUDAH DISETORKAN ADALAH SAMPAI:</div>
+<table class="rqdf-table">
+    <tr><th>SURAT</th><th>AYAT</th><th>KELANCARAN</th><th>TAJWID</th><th>CATATAN MAKHRAJ / TAJWID</th></tr>
+    {% set ziyadah = rqdf_report.tahfidz.latest_ziyadah %}
+    <tr>
+        <td>{{ ziyadah.surah if ziyadah else '-' }}</td>
+        <td class="center">{{ ziyadah.ayat_end if ziyadah else '-' }}</td>
+        <td class="center">{{ ziyadah.score if ziyadah else '-' }}</td>
+        <td class="center">-</td>
+        <td>{{ ziyadah.notes if ziyadah else '-' }}</td>
+    </tr>
+</table>
+
+<div class="rqdf-section">TAHSIN AL-QURAN</div>
+<table class="rqdf-table">
+    <tr><th>NAMA KITAB / BACAAN</th><th>HALAMAN / AYAT TERAKHIR</th><th>DESKRIPSI</th><th>NILAI</th><th>CATATAN SEPUTAR BACAAN</th></tr>
+    {% set recitation = rqdf_report.tahfidz.latest_recitation %}
+    <tr><td>{{ recitation.book_name if recitation and recitation.recitation_source == 'BOOK' else (recitation.surah if recitation else '-') }}</td><td class="center">{{ recitation.page_end if recitation and recitation.recitation_source == 'BOOK' else (recitation.ayat_end if recitation else '-') }}</td><td>Kelancaran / Tajwid</td><td class="center">{{ recitation.score if recitation else '-' }}</td><td>{{ recitation.notes if recitation else '-' }}</td></tr>
+    <tr><td>NILAI UJIAN TULIS QURAN</td><td class="center">-</td><td class="center">-</td><td class="center"><strong>{{ rqdf_report.tahfidz.writing_score }}</strong></td><td>-</td></tr>
+    <tr><td>NILAI UJIAN FIQIH</td><td class="center">-</td><td class="center">-</td><td class="center"><strong>{{ rqdf_report.tahfidz.fiqih_score }}</strong></td><td>-</td></tr>
+</table>
+
+<div class="rqdf-section">NILAI BAHASA</div>
+<table class="rqdf-table">
+    <tr><th>BAHASA</th><th>KEHADIRAN</th><th>NILAI</th><th>CATATAN</th></tr>
+    {% for row in rqdf_report.tahfidz.language_rows %}
+    <tr><td>{{ row.name }}</td><td class="center">{{ attendance.attendance_rate }}%</td><td class="center">{{ row.score }}</td><td class="center">{{ row.predicate }}</td></tr>
+    {% else %}
+    <tr><td>INGGRIS</td><td class="center">-</td><td class="center">-</td><td>-</td></tr>
+    <tr><td>ARAB</td><td class="center">-</td><td class="center">-</td><td>-</td></tr>
+    {% endfor %}
+</table>
+
+<div class="rqdf-section">SIKAP SEHARI-HARI DI RUMAH QURAN</div>
+{% set pos_rows = behavior.matrix.positive %}
+{% set neg_rows = behavior.matrix.negative %}
+{% set row_count = [pos_rows|length, neg_rows|length]|max %}
+<table class="rqdf-table rqdf-compact rqdf-attitude">
+    <colgroup>
+        <col style="width:4%;">
+        <col style="width:34%;">
+        <col style="width:3.5%;"><col style="width:3.5%;"><col style="width:3.5%;"><col style="width:3.5%;">
+        <col style="width:34%;">
+        <col style="width:3.5%;"><col style="width:3.5%;"><col style="width:3.5%;"><col style="width:3.5%;">
+    </colgroup>
+    <thead><tr><th rowspan="2">NO</th><th rowspan="2" class="attitude-heading">SIKAP YANG HARUS DIPERTAHANKAN</th><th colspan="4">FREKUENSI</th><th rowspan="2" class="attitude-heading">SIKAP YANG HARUS DIHINDARI</th><th colspan="4">FREKUENSI</th></tr><tr><th>SL</th><th>SR</th><th>K</th><th>TP</th><th>SL</th><th>SR</th><th>K</th><th>TP</th></tr></thead>
+    <tbody>
+        {% for idx in range(row_count) %}
+        {% set pos = pos_rows[idx] if idx < pos_rows|length else None %}
+        {% set neg = neg_rows[idx] if idx < neg_rows|length else None %}
+        <tr><td class="center">{{ idx + 1 }}</td><td class="attitude-label">{{ pos.label if pos else '-' }}</td><td class="center">{% if pos and pos.is_SL %}✓{% endif %}</td><td class="center">{% if pos and pos.is_SR %}✓{% endif %}</td><td class="center">{% if pos and pos.is_K %}✓{% endif %}</td><td class="center">{% if pos and pos.is_TP %}✓{% endif %}</td><td class="attitude-label">{{ neg.label if neg else '-' }}</td><td class="center">{% if neg and neg.is_SL %}✓{% endif %}</td><td class="center">{% if neg and neg.is_SR %}✓{% endif %}</td><td class="center">{% if neg and neg.is_K %}✓{% endif %}</td><td class="center">{% if neg and neg.is_TP %}✓{% endif %}</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+<div><strong>KETERANGAN:</strong> SL: SELALU &nbsp; SR: SERING &nbsp; K: KURANG &nbsp; TP: TIDAK PERNAH</div>
+
+<div class="rqdf-section">CATATAN WALI KELAS:</div><div class="rqdf-note">{{ global_note or '-' }}</div>
+<div class="rqdf-signatures">
+    <div>MENGETAHUI,<br>MUDIR RUMAH QURAN<div class="rqdf-sign-space"></div><strong>{{ mudir_name or '-' }}</strong></div>
+    <div>CIANJUR, {{ report_signature_date_label }}<br>WALI KELAS<div class="rqdf-sign-space"></div><strong>{{ teacher.full_name or '........................' }}</strong></div>
+    <div class="signature-parent">ORANG TUA SANTRI<div class="rqdf-sign-space"></div><strong>{{ parent_name or '-' }}</strong></div>
+</div>

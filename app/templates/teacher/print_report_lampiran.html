@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Lampiran Raport - {{ student.full_name }}</title>
+    {% include "teacher/report_parts/_styles.html" %}
+</head>
+<body class="p-3">
+<div class="page">
+    {% include "teacher/report_parts/_print_controls.html" %}
+    {% set report_title = "Lampiran Raport" %}
+    {% include "teacher/report_parts/_header.html" %}
+    {% include "teacher/report_parts/_lampiran_section.html" %}
+    {% include "teacher/report_parts/_signature.html" %}
+</div>
+</body>
+</html>

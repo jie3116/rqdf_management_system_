@@ -69,6 +69,14 @@ from app.services.grade_formula_service import (
     calculate_report_final_detail,
     normalize_report_adjustment_source,
 )
+from app.services.report_template_service import (
+    GENERIC_REPORT_PROFILE,
+    REPORT_MUDIR_NAME_KEY,
+    REPORT_TEMPLATE_PROFILE_KEY,
+    RQDF_REPORT_PROFILE,
+    resolve_report_mudir_name,
+    resolve_report_template_profile,
+)
 from app.utils.timezone import local_day_bounds_utc_naive, local_now, local_today
 from app.forms import StudentForm, FeeTypeForm  # Pastikan Anda punya form untuk Guru/Mapel nanti
 from app.models import (
@@ -1408,6 +1416,28 @@ def manage_app_config():
 
     if request.method == 'POST':
         action = (request.form.get('action') or 'save_config').strip()
+        if action == 'update_report_template':
+            report_profile = (request.form.get('report_template_profile') or '').strip().lower()
+            if report_profile not in {GENERIC_REPORT_PROFILE, RQDF_REPORT_PROFILE}:
+                flash('Profil template raport tidak valid.', 'danger')
+                return redirect(url_for('admin.manage_app_config'))
+            _upsert_tenant_config(
+                tenant_id,
+                REPORT_TEMPLATE_PROFILE_KEY,
+                report_profile,
+                'Profil format cetak raport tenant: generic atau rqdf.',
+            )
+            mudir_name = (request.form.get('report_mudir_name') or '').strip()
+            _upsert_tenant_config(
+                tenant_id,
+                REPORT_MUDIR_NAME_KEY,
+                mudir_name,
+                'Nama Mudir yang dicetak pada tanda tangan raport.',
+            )
+            db.session.commit()
+            flash('Format raport tenant berhasil disimpan.', 'success')
+            return redirect(url_for('admin.manage_app_config'))
+
         if action == 'update_branding':
             tenant = Tenant.query.filter_by(id=tenant_id, is_deleted=False).first_or_404()
             name = (request.form.get('institution_name') or '').strip()
@@ -1469,7 +1499,14 @@ def manage_app_config():
 
     configs = configs_query.order_by(AppConfig.key.asc()).all()
     tenant_brand = build_tenant_brand(Tenant.query.filter_by(id=tenant_id, is_deleted=False).first())
-    return render_template('admin/system/configs.html', configs=configs, query=query, tenant_brand_settings=tenant_brand)
+    return render_template(
+        'admin/system/configs.html',
+        configs=configs,
+        query=query,
+        tenant_brand_settings=tenant_brand,
+        report_template_profile=resolve_report_template_profile(tenant_id),
+        report_mudir_name=resolve_report_mudir_name(tenant_id),
+    )
 
 
 def _student_in_tenant_query(tenant_id):

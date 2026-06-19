@@ -95,10 +95,10 @@
                             <td class="text-center">{{ row.attendance.hadir }}/{{ row.attendance.sakit }}/{{ row.attendance.izin }}/{{ row.attendance.alpa }}</td>
                             <td class="text-center">{{ row.behavior.positive_yes }}/{{ row.behavior.negative_yes }}</td>
                             <td class="text-center">
-                                <a class="btn btn-primary btn-sm mb-1" href="{{ url_for('teacher.print_report_card', student_id=row.id) }}" target="_blank">
-                                    <i class="fas fa-file-alt me-1"></i> Raport
+                                <a class="btn btn-primary btn-sm mb-1" href="{{ url_for('teacher.print_report_package', student_id=row.id, period_type=selected_period_type, academic_year_id=selected_academic_year.id if selected_period_type == 'SEMESTER' and selected_academic_year else None, year_name=selected_year_name if selected_period_type == 'YEAR' else None) }}" target="_blank">
+                                    <i class="fas fa-file-alt me-1"></i> Paket Raport
                                 </a>
-                                <a class="btn btn-info btn-sm mb-1" href="{{ url_for('teacher.print_attachment', student_id=row.id) }}" target="_blank">
+                                <a class="btn btn-info btn-sm mb-1" href="{{ url_for('teacher.print_report_lampiran', student_id=row.id, period_type=selected_period_type, academic_year_id=selected_academic_year.id if selected_period_type == 'SEMESTER' and selected_academic_year else None, year_name=selected_year_name if selected_period_type == 'YEAR' else None) }}" target="_blank">
                                     <i class="fas fa-list-alt me-1"></i> Lampiran
                                 </a>
                             </td>
