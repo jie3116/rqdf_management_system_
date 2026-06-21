@@ -571,7 +571,7 @@ def _resolve_report_period(raw_period_type, raw_academic_year_id, raw_year_name)
 
 def register_teacher_routes(api_bp):
     @api_bp.get("/teacher/dashboard")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_dashboard():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -807,7 +807,7 @@ def register_teacher_routes(api_bp):
         )
 
     @api_bp.get("/teacher/input-grades")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_input_grades_form():
         _, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -875,7 +875,7 @@ def register_teacher_routes(api_bp):
         )
 
     @api_bp.post("/teacher/input-grades")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_input_grades_submit():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -955,7 +955,7 @@ def register_teacher_routes(api_bp):
         return api_success({"saved_count": created_count}, message="Nilai berhasil disimpan.")
 
     @api_bp.get("/teacher/input-attendance")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_input_attendance_form():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -1016,7 +1016,7 @@ def register_teacher_routes(api_bp):
         )
 
     @api_bp.post("/teacher/input-attendance")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_input_attendance_submit():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -1082,7 +1082,7 @@ def register_teacher_routes(api_bp):
         return api_success({"saved_count": saved_count}, message="Absensi berhasil disimpan.")
 
     @api_bp.get("/teacher/input-tahfidz")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_input_tahfidz_form():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -1133,7 +1133,7 @@ def register_teacher_routes(api_bp):
         )
 
     @api_bp.post("/teacher/input-tahfidz")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_input_tahfidz_submit():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -1211,7 +1211,7 @@ def register_teacher_routes(api_bp):
         return api_success({"record_id": new_record.id}, message="Setoran tahfidz berhasil disimpan.")
 
     @api_bp.get("/teacher/input-recitation")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_input_recitation_form():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -1261,7 +1261,7 @@ def register_teacher_routes(api_bp):
         )
 
     @api_bp.post("/teacher/input-recitation")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_input_recitation_submit():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -1342,7 +1342,7 @@ def register_teacher_routes(api_bp):
         return api_success({"record_id": new_record.id}, message="Setoran bacaan berhasil disimpan.")
 
     @api_bp.get("/teacher/input-evaluation")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_input_evaluation_form():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -1396,7 +1396,7 @@ def register_teacher_routes(api_bp):
         )
 
     @api_bp.post("/teacher/input-evaluation")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_input_evaluation_submit():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -1488,7 +1488,7 @@ def register_teacher_routes(api_bp):
         return api_success({"record_id": new_row.id}, message="Evaluasi tahfidz berhasil disimpan.")
 
     @api_bp.get("/teacher/input-behavior")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_input_behavior_form():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -1551,7 +1551,7 @@ def register_teacher_routes(api_bp):
         )
 
     @api_bp.post("/teacher/input-behavior")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_input_behavior_submit():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -1646,7 +1646,7 @@ def register_teacher_routes(api_bp):
         )
 
     @api_bp.get("/teacher/grade-history")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_grade_history():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -1732,7 +1732,7 @@ def register_teacher_routes(api_bp):
         )
 
     @api_bp.get("/teacher/attendance-history")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_attendance_history():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -1837,7 +1837,7 @@ def register_teacher_routes(api_bp):
         )
 
     @api_bp.get("/teacher/homeroom-students")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_homeroom_students():
         user, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -2111,7 +2111,7 @@ def register_teacher_routes(api_bp):
         )
 
     @api_bp.get("/teacher/class-announcements")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_class_announcements():
         _, teacher = _teacher_from_mobile_user()
         if teacher is None:
@@ -2148,7 +2148,7 @@ def register_teacher_routes(api_bp):
         )
 
     @api_bp.post("/teacher/class-announcements")
-    @mobile_auth_required(UserRole.GURU)
+    @mobile_auth_required(UserRole.GURU, capability="teacher")
     def teacher_class_announcements_submit():
         _, teacher = _teacher_from_mobile_user()
         if teacher is None:

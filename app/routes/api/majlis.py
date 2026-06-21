@@ -80,7 +80,7 @@ def majlis_announcements_query(user, profile, parent_profile, show_all=False):
 
 def register_majlis_routes(api_bp):
     @api_bp.get("/majlis/announcements")
-    @mobile_auth_required(UserRole.MAJLIS_PARTICIPANT, UserRole.WALI_MURID)
+    @mobile_auth_required(UserRole.MAJLIS_PARTICIPANT, UserRole.WALI_MURID, capability="majlis")
     def majlis_announcements():
         user = g.mobile_user
         profile, parent_profile, _ = resolve_majlis_context(user)
@@ -108,7 +108,7 @@ def register_majlis_routes(api_bp):
         )
 
     @api_bp.get("/majlis/dashboard")
-    @mobile_auth_required(UserRole.MAJLIS_PARTICIPANT, UserRole.WALI_MURID)
+    @mobile_auth_required(UserRole.MAJLIS_PARTICIPANT, UserRole.WALI_MURID, capability="majlis")
     def majlis_dashboard():
         user = g.mobile_user
         profile, parent_profile, majlis_class = resolve_majlis_context(user)

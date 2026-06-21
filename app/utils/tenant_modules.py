@@ -8,6 +8,66 @@ PACKAGE_RUMAH_QURAN = "rumah_quran"
 PACKAGE_SEKOLAH = "sekolah"
 PACKAGE_OPTIONS = (PACKAGE_FULL, PACKAGE_RUMAH_QURAN, PACKAGE_SEKOLAH)
 
+CAPABILITY_QURAN = "quran"
+CAPABILITY_SCHOOL_ACADEMIC = "school_academic"
+CAPABILITY_TEACHER = "teacher"
+CAPABILITY_STUDENT = "student"
+CAPABILITY_PARENT = "parent"
+CAPABILITY_BOARDING = "boarding"
+CAPABILITY_MAJLIS = "majlis"
+CAPABILITY_FINANCE = "finance"
+CAPABILITY_PPDB = "ppdb"
+CAPABILITY_ONLINE_CLASS = "online_class"
+CAPABILITY_AI_ASSISTANT = "ai_assistant"
+CAPABILITY_ANALYTICS = "analytics"
+CAPABILITY_ANNOUNCEMENT = "announcement"
+
+BASE_CAPABILITIES = frozenset(
+    {
+        CAPABILITY_QURAN,
+        CAPABILITY_SCHOOL_ACADEMIC,
+        CAPABILITY_TEACHER,
+        CAPABILITY_STUDENT,
+        CAPABILITY_PARENT,
+        CAPABILITY_BOARDING,
+        CAPABILITY_MAJLIS,
+        CAPABILITY_ANALYTICS,
+        CAPABILITY_ANNOUNCEMENT,
+    }
+)
+
+ADD_ON_CAPABILITIES = frozenset(
+    {
+        CAPABILITY_FINANCE,
+        CAPABILITY_PPDB,
+        CAPABILITY_ONLINE_CLASS,
+        CAPABILITY_AI_ASSISTANT,
+    }
+)
+
+ALL_CAPABILITIES = BASE_CAPABILITIES | ADD_ON_CAPABILITIES
+
+SCHOOL_CAPABILITIES = frozenset(
+    {
+        CAPABILITY_SCHOOL_ACADEMIC,
+        CAPABILITY_TEACHER,
+        CAPABILITY_STUDENT,
+        CAPABILITY_PARENT,
+        CAPABILITY_ANALYTICS,
+        CAPABILITY_ANNOUNCEMENT,
+    }
+)
+
+QURAN_CAPABILITIES = frozenset(
+    {
+        CAPABILITY_QURAN,
+        CAPABILITY_PARENT,
+        CAPABILITY_MAJLIS,
+        CAPABILITY_ANALYTICS,
+        CAPABILITY_ANNOUNCEMENT,
+    }
+)
+
 
 _RUMAH_QURAN_BLOCKED_ADMIN_ENDPOINTS = {
     "admin.manage_academic_years",
@@ -41,6 +101,26 @@ def get_tenant_package(tenant_id):
         is_deleted=False,
     ).first()
     return normalize_tenant_package(row.value if row else PACKAGE_FULL)
+
+
+def capabilities_for_package(package):
+    package = normalize_tenant_package(package)
+    if package == PACKAGE_FULL:
+        return ALL_CAPABILITIES
+    if package == PACKAGE_SEKOLAH:
+        return SCHOOL_CAPABILITIES
+    if package == PACKAGE_RUMAH_QURAN:
+        return QURAN_CAPABILITIES
+    return frozenset()
+
+
+def tenant_has_capability(tenant_id, capability):
+    if not capability:
+        return True
+    if tenant_id is None:
+        return False
+    package = get_tenant_package(tenant_id)
+    return capability in capabilities_for_package(package)
 
 
 def role_allowed_for_package(role, package):

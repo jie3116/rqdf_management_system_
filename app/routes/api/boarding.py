@@ -186,7 +186,7 @@ def _savings_student_payload(student, account=None):
 
 def register_boarding_routes(api_bp):
     @api_bp.get("/boarding/dashboard")
-    @mobile_auth_required(UserRole.WALI_ASRAMA)
+    @mobile_auth_required(UserRole.WALI_ASRAMA, capability="boarding")
     def boarding_dashboard():
         user = g.mobile_user
         tenant_id = resolve_tenant_id(user)
@@ -238,7 +238,7 @@ def register_boarding_routes(api_bp):
         )
 
     @api_bp.get("/boarding/attendance")
-    @mobile_auth_required(UserRole.WALI_ASRAMA)
+    @mobile_auth_required(UserRole.WALI_ASRAMA, capability="boarding")
     def boarding_attendance_form():
         user = g.mobile_user
         tenant_id = resolve_tenant_id(user)
@@ -297,7 +297,7 @@ def register_boarding_routes(api_bp):
         )
 
     @api_bp.post("/boarding/attendance")
-    @mobile_auth_required(UserRole.WALI_ASRAMA)
+    @mobile_auth_required(UserRole.WALI_ASRAMA, capability="boarding")
     def boarding_attendance_save():
         user = g.mobile_user
         tenant_id = resolve_tenant_id(user)
@@ -377,7 +377,7 @@ def register_boarding_routes(api_bp):
         return api_success({"saved": saved}, message=f"Absensi asrama tersimpan ({saved} santri).")
 
     @api_bp.get("/boarding/savings")
-    @mobile_auth_required(UserRole.WALI_ASRAMA)
+    @mobile_auth_required(UserRole.WALI_ASRAMA, capability="boarding")
     def boarding_savings():
         user = g.mobile_user
         tenant_id = resolve_tenant_id(user)
@@ -411,7 +411,7 @@ def register_boarding_routes(api_bp):
         )
 
     @api_bp.post("/boarding/savings/officer-pin")
-    @mobile_auth_required(UserRole.WALI_ASRAMA)
+    @mobile_auth_required(UserRole.WALI_ASRAMA, capability="boarding")
     def boarding_savings_set_officer_pin():
         user = g.mobile_user
         payload = request.get_json(silent=True) or {}
@@ -435,7 +435,7 @@ def register_boarding_routes(api_bp):
         return api_success({"officer_pin_exists": True}, message="PIN petugas berhasil disimpan.")
 
     @api_bp.post("/boarding/savings/withdraw")
-    @mobile_auth_required(UserRole.WALI_ASRAMA)
+    @mobile_auth_required(UserRole.WALI_ASRAMA, capability="boarding")
     def boarding_savings_withdraw():
         user = g.mobile_user
         tenant_id = resolve_tenant_id(user)

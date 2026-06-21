@@ -8,6 +8,7 @@ from app.services.formal_service import get_student_formal_classroom
 from app.utils.mobile_api_auth import TOKEN_TYPE_ACCESS, decode_mobile_token
 from app.utils.roles import get_default_role
 from app.utils.tenant import is_user_tenant_active, resolve_tenant_id, scoped_classrooms_query
+from app.utils.tenant_modules import tenant_has_capability
 
 
 DAY_NAMES = {
@@ -156,7 +157,7 @@ def parent_children_for_tenant(user, parent):
     )
 
 
-def mobile_auth_required(*roles):
+def mobile_auth_required(*roles, capability=None):
     def decorator(fn):
         @wraps(fn)
         def wrapped(*args, **kwargs):
@@ -181,6 +182,14 @@ def mobile_auth_required(*roles):
 
             if roles and not user.has_role(*roles):
                 return api_error("forbidden", "Akses role tidak diizinkan.", 403)
+            if capability and not user.has_role("super_admin"):
+                tenant_id = resolve_tenant_id(user, fallback_default=False)
+                if not tenant_has_capability(tenant_id, capability):
+                    return api_error(
+                        "capability_disabled",
+                        "Modul ini tidak aktif untuk tenant Anda.",
+                        403,
+                    )
 
             g.mobile_user = user
             g.mobile_access_token = access_token
