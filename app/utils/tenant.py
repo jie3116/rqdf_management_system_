@@ -1,6 +1,6 @@
 from sqlalchemy import and_, or_
 
-from app.models import BoardingDormitory, ClassRoom, ProgramGroup, Tenant, User
+from app.models import BoardingDormitory, ClassRoom, ProgramGroup, Tenant, TenantStatus, User
 
 
 def get_default_tenant():
@@ -19,6 +19,20 @@ def resolve_tenant_id(user=None, fallback_default=True):
     if fallback_default:
         return get_default_tenant_id()
     return None
+
+
+def is_user_tenant_active(user):
+    tenant_id = getattr(user, "tenant_id", None) if user else None
+    if tenant_id is None:
+        return False
+    return (
+        Tenant.query.filter_by(
+            id=tenant_id,
+            status=TenantStatus.ACTIVE,
+            is_deleted=False,
+        ).first()
+        is not None
+    )
 
 
 def scoped_classrooms_query(tenant_id):

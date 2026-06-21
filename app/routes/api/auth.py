@@ -15,6 +15,7 @@ from app.utils.push_notifications import (
     deactivate_mobile_device_token,
     upsert_mobile_device_token,
 )
+from app.utils.tenant import is_user_tenant_active
 from app.utils.timezone import utc_now_naive
 
 from .common import api_error, api_success, mobile_auth_required, user_payload
@@ -165,6 +166,8 @@ def register_auth_routes(api_bp):
             )
         if user is None or not user.check_password(password):
             return api_error("invalid_credentials", "Username/Email/No identitas atau password salah.", 401)
+        if not is_user_tenant_active(user):
+            return api_error("tenant_inactive", "Tenant akun tidak aktif.", 403)
         if user.must_change_password:
             return api_error(
                 "must_change_password",
@@ -207,6 +210,8 @@ def register_auth_routes(api_bp):
             return api_error("unauthorized", "User tidak ditemukan.", 401)
         if refresh_payload.get("tid") is not None and user.tenant_id != refresh_payload.get("tid"):
             return api_error("unauthorized", "Token tidak valid untuk tenant ini.", 401)
+        if not is_user_tenant_active(user):
+            return api_error("tenant_inactive", "Tenant akun tidak aktif.", 403)
 
         tokens = issue_mobile_token_pair(user)
         revoke_mobile_token(

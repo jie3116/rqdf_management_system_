@@ -7,7 +7,7 @@ from app.models import ClassRoom, Student, User
 from app.services.formal_service import get_student_formal_classroom
 from app.utils.mobile_api_auth import TOKEN_TYPE_ACCESS, decode_mobile_token
 from app.utils.roles import get_default_role
-from app.utils.tenant import resolve_tenant_id, scoped_classrooms_query
+from app.utils.tenant import is_user_tenant_active, resolve_tenant_id, scoped_classrooms_query
 
 
 DAY_NAMES = {
@@ -176,6 +176,8 @@ def mobile_auth_required(*roles):
                 return api_error("unauthorized", "User tidak ditemukan.", 401)
             if token_tenant_id is not None and user.tenant_id != token_tenant_id:
                 return api_error("unauthorized", "Token tidak valid untuk tenant ini.", 401)
+            if not is_user_tenant_active(user):
+                return api_error("tenant_inactive", "Tenant akun tidak aktif.", 403)
 
             if roles and not user.has_role(*roles):
                 return api_error("forbidden", "Akses role tidak diizinkan.", 403)

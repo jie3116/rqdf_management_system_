@@ -117,7 +117,7 @@ def create_app(config_class=Config):
     def _enforce_tenant_module_access():
         from flask import request, flash, redirect, url_for, session
         from flask_login import current_user, logout_user
-        from app.utils.tenant import resolve_tenant_id
+        from app.utils.tenant import is_user_tenant_active, resolve_tenant_id
         from app.utils.tenant_modules import (
             endpoint_allowed_for_package,
             get_tenant_package,
@@ -129,6 +129,12 @@ def create_app(config_class=Config):
 
         if current_user.has_role("super_admin"):
             return None
+
+        if not is_user_tenant_active(current_user):
+            flash('Tenant akun ini tidak aktif. Silakan hubungi admin.', 'danger')
+            session.pop('active_role', None)
+            logout_user()
+            return redirect(url_for('auth.login'))
 
         tenant_id = resolve_tenant_id(current_user, fallback_default=False)
         package = get_tenant_package(tenant_id)
