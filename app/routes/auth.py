@@ -7,6 +7,10 @@ from sqlalchemy import or_
 from werkzeug.security import generate_password_hash
 from app.utils.security import is_safe_url
 from app.utils.roles import get_active_role, set_active_role, role_label, get_default_role
+from app.services.auth_rate_limit_service import (
+    check_auth_rate_limit,
+    record_auth_rate_limit_failure,
+)
 
 
 auth_bp = Blueprint('auth', __name__)
@@ -84,14 +88,22 @@ def login():
 
     form = LoginForm()
     if form.validate_on_submit():
-        user, is_ambiguous = _resolve_user_for_login(form.login_id.data)
+        identifier = form.login_id.data
+        rate_limit = check_auth_rate_limit("web_login", identifier)
+        if rate_limit.limited:
+            flash('Terlalu banyak percobaan login. Coba lagi beberapa menit.', 'danger')
+            return render_template('auth/login.html', title='Login', form=form)
+
+        user, is_ambiguous = _resolve_user_for_login(identifier)
 
         if is_ambiguous:
+            record_auth_rate_limit_failure("web_login", identifier)
             flash('Login gagal: identifier terhubung ke lebih dari satu akun. Hubungi admin untuk sinkronisasi data.', 'danger')
             return render_template('auth/login.html', title='Login', form=form)
 
         if user and user.check_password(form.password.data):
             if not user.has_role(UserRole.SUPER_ADMIN) and (not user.tenant or user.tenant.status != TenantStatus.ACTIVE):
+                record_auth_rate_limit_failure("web_login", identifier)
                 flash('Tenant akun ini tidak aktif. Hubungi super admin.', 'danger')
                 return render_template('auth/login.html', title='Login', form=form)
 
@@ -114,6 +126,7 @@ def login():
 
             return redirect(url_for('main.dashboard'))
         else:
+            record_auth_rate_limit_failure("web_login", identifier)
             flash('Login gagal. Cek kembali Username/Email/NIS/NIP/No HP dan password.', 'danger')
 
     return render_template('auth/login.html', title='Login', form=form)

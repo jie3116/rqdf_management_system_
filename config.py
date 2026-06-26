@@ -14,6 +14,16 @@ class Config:
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    AUTH_RATE_LIMIT_ENABLED = os.environ.get('AUTH_RATE_LIMIT_ENABLED', 'true').strip().lower() in {
+        '1', 'true', 'yes', 'on'
+    }
+    AUTH_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get('AUTH_RATE_LIMIT_WINDOW_SECONDS', '300'))
+    AUTH_RATE_LIMIT_IDENTIFIER_ATTEMPTS = int(os.environ.get('AUTH_RATE_LIMIT_IDENTIFIER_ATTEMPTS', '5'))
+    AUTH_RATE_LIMIT_IDENTIFIER_IP_ATTEMPTS = int(os.environ.get('AUTH_RATE_LIMIT_IDENTIFIER_IP_ATTEMPTS', '5'))
+    AUTH_RATE_LIMIT_IP_ATTEMPTS = int(os.environ.get('AUTH_RATE_LIMIT_IP_ATTEMPTS', '30'))
+    AUTH_RATE_LIMIT_CLEANUP_PROBABILITY = float(os.environ.get('AUTH_RATE_LIMIT_CLEANUP_PROBABILITY', '0.01'))
+    AUTH_RATE_LIMIT_HASH_PEPPER = os.environ.get('AUTH_RATE_LIMIT_HASH_PEPPER', '')
+
     # Online meeting backend options:
     # - public_jitsi (default, demo)
     # - jaas (8x8.vc + JWT)

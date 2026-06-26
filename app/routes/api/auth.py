@@ -4,6 +4,10 @@ from sqlalchemy import or_
 from app.extensions import db
 from app.models import BoardingGuardian, MajlisParticipant, Parent, Student, Teacher, Tenant, User
 from app.routes.auth import _resolve_user_for_login
+from app.services.auth_rate_limit_service import (
+    check_auth_rate_limit,
+    record_auth_rate_limit_failure,
+)
 from app.utils.mobile_api_auth import (
     TOKEN_TYPE_ACCESS,
     TOKEN_TYPE_REFRESH,
@@ -52,6 +56,14 @@ def _resolve_tenant_hint(payload):
             return tenant.id
 
     return None
+
+
+def _rate_limit_tenant_hint(payload):
+    return {
+        "tenant_id": payload.get("tenant_id") or request.headers.get("X-Tenant-Id"),
+        "tenant_code": payload.get("tenant_code") or request.headers.get("X-Tenant-Code"),
+        "tenant_slug": payload.get("tenant_slug") or request.headers.get("X-Tenant-Slug"),
+    }
 
 
 def _resolve_user_for_login_tenant(login_id, tenant_id):
@@ -150,6 +162,19 @@ def register_auth_routes(api_bp):
         if not identifier or not password:
             return api_error("invalid_request", "Identifier dan password wajib diisi.", 400)
 
+        tenant_hint = _rate_limit_tenant_hint(payload)
+        rate_limit = check_auth_rate_limit(
+            "mobile_login",
+            identifier,
+            tenant_hint=tenant_hint,
+        )
+        if rate_limit.limited:
+            return api_error(
+                "too_many_requests",
+                "Terlalu banyak percobaan login. Coba lagi beberapa menit.",
+                429,
+            )
+
         user, is_ambiguous = _resolve_user_for_login(identifier)
         if tenant_hint_id is not None and (is_ambiguous or user is None or user.tenant_id != tenant_hint_id):
             tenant_scoped_user, tenant_scoped_ambiguous = _resolve_user_for_login_tenant(identifier, tenant_hint_id)
@@ -159,14 +184,17 @@ def register_auth_routes(api_bp):
                 user, is_ambiguous = tenant_scoped_user, False
 
         if is_ambiguous:
+            record_auth_rate_limit_failure("mobile_login", identifier, tenant_hint=tenant_hint)
             return api_error(
                 "ambiguous_identifier",
                 "Identifier terhubung ke lebih dari satu akun. Tambahkan tenant_code/tenant_slug/tenant_id saat login.",
                 409,
             )
         if user is None or not user.check_password(password):
+            record_auth_rate_limit_failure("mobile_login", identifier, tenant_hint=tenant_hint)
             return api_error("invalid_credentials", "Username/Email/No identitas atau password salah.", 401)
         if not is_user_tenant_active(user):
+            record_auth_rate_limit_failure("mobile_login", identifier, tenant_hint=tenant_hint)
             return api_error("tenant_inactive", "Tenant akun tidak aktif.", 403)
         if user.must_change_password:
             return api_error(
