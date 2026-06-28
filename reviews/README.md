@@ -2,20 +2,38 @@
 
 Folder ini menyimpan output reviewer agent. Reviewer tidak mengubah kode kecuali diminta secara eksplisit.
 
-## Struktur yang disarankan
+## Struktur saat ini
 
 ```text
 reviews/
-  <feature-or-audit-scope>/
-    database_review.md
-    test_report.md
-    security_review.md
-    performance_review.md
-    code_review.md
-    release_readiness.md
+  auth-rbac-tenant/
+    auth_rbac_tenant_audit.md
+    auth_rbac_tenant_remediation_backlog.md
+    auth_rbac_tenant_remediation_status.md
+    auth_rbac_tenant_remediation_changelog.md
+  auth-tenant/
+    auth_tenant_001_test_plan.md
+  auth-package-003/
+    auth_package_003_impact_analysis.md
+    auth_package_003_phase1_review.md
+    package_capability_matrix_v2.md
+  auth-rate-004/
+    auth_rate_004_impact_analysis.md
+    auth_rate_004_verification_gate.md
+    auth_rate_004_phase1_review.md
+  auth-token-005/
+    auth_token_005_impact_analysis.md
+    auth_token_005_verification_gate.md
+    auth_token_005_phase1_code_review.md
+    auth_token_005_migration_deploy_gate.md
+  platform-tenant/
+    platform_tenant_super_admin_policy.md
+    platform_tenant_inventory.md
+    platform_tenant_script_review.md
+  review_template.md
 ```
 
-Gunakan nama scope yang stabil, misalnya `mobile-auth-refresh`, `ppdb-upload`, atau `finance-posting`.
+Gunakan folder per case/remediation agar artifact analysis, verification gate, code review, dan deploy gate mudah ditemukan.
 
 ## Aturan
 

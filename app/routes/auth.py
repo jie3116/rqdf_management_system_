@@ -4,13 +4,13 @@ from app.extensions import db
 from app.models import User, Teacher, Parent, MajlisParticipant, BoardingGuardian, Student, TenantStatus, UserRole
 from app.forms import LoginForm, ChangePasswordForm
 from sqlalchemy import or_
-from werkzeug.security import generate_password_hash
 from app.utils.security import is_safe_url
 from app.utils.roles import get_active_role, set_active_role, role_label, get_default_role
 from app.services.auth_rate_limit_service import (
     check_auth_rate_limit,
     record_auth_rate_limit_failure,
 )
+from app.services.credential_security_service import set_user_password_and_invalidate_tokens
 
 
 auth_bp = Blueprint('auth', __name__)
@@ -144,11 +144,11 @@ def change_password():
             flash('Password lama salah!', 'danger')
             return render_template('auth/change_password.html', form=form)
 
-        # 2. Update Password
-        current_user.password_hash = generate_password_hash(form.new_password.data)
-
-        # 3. MATIKAN FLAG WAJIB GANTI
-        current_user.must_change_password = False
+        set_user_password_and_invalidate_tokens(
+            current_user,
+            form.new_password.data,
+            must_change_password=False,
+        )
 
         db.session.commit()
 

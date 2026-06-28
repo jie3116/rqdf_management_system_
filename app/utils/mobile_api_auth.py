@@ -31,13 +31,14 @@ def _token_hash(token):
     return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
 
 
-def issue_mobile_token(user_id, tenant_id, token_type):
+def issue_mobile_token(user, token_type):
     serializer = _serializer()
     payload = {
-        "uid": int(user_id),
-        "tid": int(tenant_id) if tenant_id is not None else None,
+        "uid": int(user.id),
+        "tid": int(user.tenant_id) if user.tenant_id is not None else None,
         "typ": token_type,
         "jti": uuid.uuid4().hex,
+        "ver": int(getattr(user, "token_version", None) or 0),
     }
     token = serializer.dumps(payload)
     expires_at = utc_now_naive() + timedelta(seconds=_token_ttl_seconds(token_type))
@@ -45,8 +46,8 @@ def issue_mobile_token(user_id, tenant_id, token_type):
 
 
 def issue_mobile_token_pair(user):
-    access_token, access_expires_at = issue_mobile_token(user.id, user.tenant_id, TOKEN_TYPE_ACCESS)
-    refresh_token, refresh_expires_at = issue_mobile_token(user.id, user.tenant_id, TOKEN_TYPE_REFRESH)
+    access_token, access_expires_at = issue_mobile_token(user, TOKEN_TYPE_ACCESS)
+    refresh_token, refresh_expires_at = issue_mobile_token(user, TOKEN_TYPE_REFRESH)
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,

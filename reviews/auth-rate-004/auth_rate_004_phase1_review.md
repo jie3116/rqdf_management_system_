@@ -1,8 +1,22 @@
 # AUTH-RATE-004 Phase 1 Review Gate
 
 Tanggal review: 2026-06-26
+Tanggal post-deploy update: 2026-06-28
 
 Status: APPROVED
+
+## Post-Deploy Status
+
+Status deploy: deployed by human operator.
+
+Post-deploy verification: smoke-tested by human operator, hasil aman.
+
+Catatan:
+
+- Review gate awal dibuat sebelum deploy, sehingga scope review tetap mencatat tidak ada deploy yang dilakukan oleh agent.
+- Deploy dan smoke test dilakukan setelah review gate approved oleh human operator.
+- Tidak ada migration baru pada AUTH-RATE-004 Phase 1.
+- Tidak ada perubahan ProxyFix/trusted proxy handling atau Nginx rate limit pada task ini.
 
 ## Scope Review
 
@@ -25,12 +39,12 @@ Tidak ada migration baru, tidak ada perubahan ProxyFix/trusted proxy, tidak ada 
 - `app/routes/auth.py`
 - `tests/test_auth_rate_limit_service.py`
 - `tests/test_auth_rate_limit_integration.py`
-- `reviews/auth_rate_004_phase1_review.md`
+- `reviews/auth-rate-004/auth_rate_004_phase1_review.md`
 
 Catatan: dokumen analysis dan verification gate AUTH-RATE-004 sudah ada sebagai artefak pendahulu:
 
-- `reviews/auth_rate_004_impact_analysis.md`
-- `reviews/auth_rate_004_verification_gate.md`
+- `reviews/auth-rate-004/auth_rate_004_impact_analysis.md`
+- `reviews/auth-rate-004/auth_rate_004_verification_gate.md`
 
 ## Security Review
 
@@ -137,4 +151,6 @@ Kegagalan full suite:
 
 APPROVED untuk lanjut ke review manusia/commit gate.
 
-Catatan release: sebelum deploy production, pastikan nilai environment production untuk `AUTH_RATE_LIMIT_*` direview, terutama threshold IP untuk lingkungan NAT/shared IP.
+Post-deploy note: AUTH-RATE-004 Phase 1 sudah deployed and smoke-tested by human operator.
+
+Catatan release lanjutan: nilai environment production untuk `AUTH_RATE_LIMIT_*` tetap perlu dimonitor, terutama threshold IP untuk lingkungan NAT/shared IP.

@@ -1,7 +1,7 @@
 # Remediation Backlog — Authentication, RBAC, dan Tenant Isolation
 
 Tanggal: 2026-06-19  
-Sumber: `reviews/auth_rbac_tenant_audit.md`  
+Sumber: `reviews/auth-rbac-tenant/auth_rbac_tenant_audit.md`  
 Mode: planning only, tidak ada perubahan kode
 
 ## Dasar pengurutan

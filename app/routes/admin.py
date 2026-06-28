@@ -16,6 +16,7 @@ from openpyxl import Workbook, load_workbook
 from app.extensions import db
 from app.decorators import role_required
 from app.services.majlis_enrollment_service import ensure_majlis_participant_acceptance, list_active_majlis_participants
+from app.services.credential_security_service import set_user_password_and_invalidate_tokens
 from app.services.rumah_quran_service import (
     apply_rumah_quran_student_filter,
     assign_student_rumah_quran_class,
@@ -2699,8 +2700,11 @@ def edit_teacher(id):
 
             # 3. Update Password (hanya jika diisi)
             if new_password:
-                teacher.user.password_hash = generate_password_hash(new_password)
-                teacher.user.must_change_password = True  # Opsional: paksa ganti pas login
+                set_user_password_and_invalidate_tokens(
+                    teacher.user,
+                    new_password,
+                    must_change_password=True,
+                )
 
             db.session.commit()
             flash('Data Guru berhasil diperbarui.', 'success')
@@ -2834,7 +2838,7 @@ def edit_staff(id):
         # Opsional: Jika ingin admin bisa reset password staff dari sini
         new_password = request.form.get('password')
         if new_password:  # Hanya update jika kolom password diisi
-            staff.user.set_password(new_password)
+            set_user_password_and_invalidate_tokens(staff.user, new_password)
 
         try:
             db.session.commit()
@@ -5873,8 +5877,11 @@ def reset_password(user_id):
         elif user.has_role(UserRole.WALI_ASRAMA) and user.boarding_guardian_profile:
             new_password = user.boarding_guardian_profile.phone or "123456"
 
-        user.password_hash = generate_password_hash(new_password)
-        user.must_change_password = True
+        set_user_password_and_invalidate_tokens(
+            user,
+            new_password,
+            must_change_password=True,
+        )
         db.session.commit()
 
         flash(f'Password user {user.username} berhasil direset menjadi: {new_password}', 'success')
@@ -6417,9 +6424,11 @@ def generic_reset_password():
         return redirect(url_for('admin.manage_users'))
 
     try:
-        user.set_password(new_password)
-        # Opsional: Paksa user ganti password lagi saat login nanti
-        user.must_change_password = False
+        set_user_password_and_invalidate_tokens(
+            user,
+            new_password,
+            must_change_password=False,
+        )
         db.session.commit()
 
         flash(f'Password untuk {user.username} ({user.role.value}) berhasil diubah.', 'success')
@@ -6516,8 +6525,11 @@ def change_login_phone():
             updated_candidates = len(candidates)
 
         if reset_password:
-            user.set_password(new_phone)
-            user.must_change_password = True
+            set_user_password_and_invalidate_tokens(
+                user,
+                new_phone,
+                must_change_password=True,
+            )
 
         db.session.add(AuditLog(
             user_id=current_user.id,

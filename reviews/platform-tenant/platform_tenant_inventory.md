@@ -2,7 +2,7 @@
 
 Tanggal: 2026-06-21  
 Mode: read-only data inventory  
-Sumber policy: `reviews/platform_tenant_super_admin_policy.md`  
+Sumber policy: `reviews/platform-tenant/platform_tenant_super_admin_policy.md`  
 Database scope: database yang dikonfigurasi oleh environment lokal saat inventory dijalankan
 
 ## 1. Executive Summary

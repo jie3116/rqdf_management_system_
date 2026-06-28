@@ -479,6 +479,7 @@ class User(UserMixin, BaseModel):
     username = db.Column(db.String(64), nullable=False)
     email = db.Column(db.String(120), nullable=False)
     password_hash = db.Column(db.String(256))
+    token_version = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     withdrawal_pin_hash = db.Column(db.String(255), nullable=True)
     withdrawal_pin_failed_attempts = db.Column(db.Integer, default=0, nullable=False)
     withdrawal_pin_locked_until = db.Column(db.DateTime, nullable=True)

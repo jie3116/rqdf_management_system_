@@ -4,6 +4,7 @@ from functools import wraps
 from flask import g, jsonify, request
 
 from app.models import ClassRoom, Student, User
+from app.services.credential_security_service import validate_mobile_token_version
 from app.services.formal_service import get_student_formal_classroom
 from app.utils.mobile_api_auth import TOKEN_TYPE_ACCESS, decode_mobile_token
 from app.utils.roles import get_default_role
@@ -177,6 +178,8 @@ def mobile_auth_required(*roles, capability=None):
                 return api_error("unauthorized", "User tidak ditemukan.", 401)
             if token_tenant_id is not None and user.tenant_id != token_tenant_id:
                 return api_error("unauthorized", "Token tidak valid untuk tenant ini.", 401)
+            if not validate_mobile_token_version(payload, user):
+                return api_error("unauthorized", "Sesi sudah tidak berlaku. Silakan login ulang.", 401)
             if not is_user_tenant_active(user):
                 return api_error("tenant_inactive", "Tenant akun tidak aktif.", 403)
 

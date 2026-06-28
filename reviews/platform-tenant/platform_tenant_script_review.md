@@ -7,7 +7,7 @@ Scope:
 
 - `app/scripts/prepare_platform_tenant.py`
 - `docs/agentic/platform_tenant_migration_runbook.md`
-- `reviews/platform_tenant_inventory.md`
+- `reviews/platform-tenant/platform_tenant_inventory.md`
 
 ## 1. Executive Summary
 

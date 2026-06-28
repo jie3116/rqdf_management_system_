@@ -1,13 +1,41 @@
 # AUTH-PACKAGE-003 Phase 1 Review Gate
 
-Tanggal: 2026-06-21  
+Tanggal review awal: 2026-06-21  
+Tanggal re-review final: 2026-06-28  
 Mode: Security Reviewer Agent, Code Review Agent, Testing & QA Agent  
 Scope: file berubah pada AUTH-PACKAGE-003 Phase 1, helper capability baru, mobile capability enforcement, dan test baru.  
-Keputusan akhir: **REQUEST CHANGES**
+Keputusan akhir: **APPROVED**
+
+## Final Re-review Summary
+
+Status blocker awal: **RESOLVED**.
+
+Perbaikan minimum yang diminta pada review awal sudah terverifikasi:
+
+- `tenant_has_capability(None, CAPABILITY_TEACHER)` mengembalikan `False`.
+- `tenant_has_capability(None, CAPABILITY_BOARDING)` mengembalikan `False`.
+- `tenant_has_capability(None, CAPABILITY_MAJLIS)` mengembalikan `False`.
+- Compatibility default legacy `full` tetap hanya berlaku lewat `get_tenant_package()` untuk tenant context valid, bukan untuk missing tenant context pada helper capability.
+
+Relevant test evidence re-review 2026-06-28:
+
+```text
+tests/test_mobile_package_capabilities.py
+15 passed
+
+tests/test_mobile_auth_tenant_status.py
+11 passed
+```
+
+Final decision:
+
+```text
+APPROVED
+```
 
 ## Findings
 
-### MEDIUM - `tenant_has_capability()` belum fail-closed untuk `tenant_id=None`
+### MEDIUM - `tenant_has_capability()` belum fail-closed untuk `tenant_id=None` - RESOLVED
 
 File:
 
@@ -29,6 +57,12 @@ Recommendation:
 - Ubah helper agar `tenant_id is None` mengembalikan `False` bila `capability` diisi.
 - Tambahkan characterization test: `tenant_has_capability(None, CAPABILITY_TEACHER) is False`.
 - Pertahankan compatibility "tenant tanpa config default ke full" hanya untuk tenant_id valid yang row config-nya tidak ada, bukan untuk missing tenant context.
+
+Resolution:
+
+- Helper sudah fail-closed untuk `tenant_id=None`.
+- Regression test sudah ditambahkan untuk `CAPABILITY_TEACHER`, `CAPABILITY_BOARDING`, dan `CAPABILITY_MAJLIS`.
+- Re-review 2026-06-28: blocker tertutup.
 
 ### LOW - Allowed-case tests belum membuktikan endpoint berhasil secara domain-level
 
@@ -76,7 +110,7 @@ Recommendation:
 
 ## Review Checklist
 
-1. `tenant_has_capability()` fail-closed: **REQUEST CHANGES**. Unknown capability fail-closed, tetapi `tenant_id=None` fail-open ke `full`.
+1. `tenant_has_capability()` fail-closed: **OK**. Unknown capability fail-closed, dan `tenant_id=None` sekarang fail-closed untuk capability explicit.
 2. Legacy adapter sesuai matrix v2: **OK**. `full -> all capabilities`, `sekolah -> school capabilities`, `rumah_quran -> quran capabilities`.
 3. SUPER_ADMIN bypass: **OK with test gap**. Bypass hanya capability check; token/user/tenant lifecycle dan role check tetap berjalan.
 4. Auth/common endpoint: **OK**. Auth routes tidak diberi capability; `mobile_auth_required()` default `capability=None` menjaga behavior common/auth.
@@ -98,7 +132,7 @@ $env:PYTHONPATH='.'; .\.venv\Scripts\pytest.exe tests/test_mobile_package_capabi
 Result:
 
 ```text
-12 passed
+15 passed
 ```
 
 Command:
@@ -133,35 +167,35 @@ Full-suite failure:
 
 ## Security Reviewer Decision
 
-**REQUEST CHANGES**
+**APPROVED**
 
 Reason:
 
-- The helper intended as reusable authorization policy is not fail-closed for missing tenant context.
+- Initial missing-tenant-context blocker has been fixed. Helper now fails closed for `tenant_id=None`.
 
 ## Code Review Decision
 
-**REQUEST CHANGES**
+**APPROVED**
 
 Reason:
 
-- Implementation is scoped and clean, but helper contract should be tightened before commit/deploy.
+- Implementation remains scoped, and the reusable helper contract is now tightened for missing tenant context.
 
 ## Testing & QA Decision
 
-**REQUEST CHANGES**
+**APPROVED**
 
 Reason:
 
 - Relevant AUTH-PACKAGE-003 tests pass.
-- Add at least one regression test for `tenant_has_capability(None, capability)`.
-- Full suite has one unrelated finance failure that must be tracked before release.
+- Regression test for `tenant_has_capability(None, capability)` exists for teacher, boarding, and majlis.
+- Full suite finance failure remains unrelated and tracked outside AUTH-PACKAGE-003.
 
 ## Final Decision
 
-**REQUEST CHANGES**
+**APPROVED**
 
-Minimum requested fix before approval:
+Previously requested fix before approval:
 
 1. Make `tenant_has_capability(None, <capability>)` return `False`.
 2. Add a regression test for missing tenant context.
@@ -169,5 +203,9 @@ Minimum requested fix before approval:
    - `tests/test_mobile_package_capabilities.py`
    - `tests/test_mobile_auth_tenant_status.py`
 
-Full-suite finance failure can be tracked separately if human owner accepts it as unrelated to AUTH-PACKAGE-003.
+Status:
+
+- Completed and verified.
+- AUTH-PACKAGE-003 Phase 1 is no longer blocked.
+- Full-suite finance failure can be tracked separately if human owner accepts it as unrelated to AUTH-PACKAGE-003.
 
