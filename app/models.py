@@ -559,6 +559,35 @@ class MobileRevokedToken(db.Model):
     created_at = db.Column(db.DateTime, default=utc_now_naive, nullable=False)
 
 
+class MobileRefreshToken(db.Model):
+    __tablename__ = 'mobile_refresh_tokens'
+
+    STATUS_ACTIVE = "ACTIVE"
+    STATUS_CONSUMED = "CONSUMED"
+    STATUS_REVOKED = "REVOKED"
+    STATUS_REUSED = "REUSED"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenants.id'), nullable=False, index=True)
+    family_id = db.Column(db.String(64), nullable=False, index=True)
+    jti = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    status = db.Column(db.String(20), nullable=False, index=True)
+    issued_at = db.Column(db.DateTime, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    consumed_at = db.Column(db.DateTime, nullable=True)
+    revoked_at = db.Column(db.DateTime, nullable=True)
+    replaced_by_jti = db.Column(db.String(64), nullable=True)
+    reuse_detected_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=utc_now_naive, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now_naive, onupdate=utc_now_naive, nullable=False)
+
+    __table_args__ = (
+        db.Index('ix_mobile_refresh_tokens_user_tenant_status', 'user_id', 'tenant_id', 'status'),
+    )
+
+
 class MobileRateLimitBucket(db.Model):
     __tablename__ = 'mobile_rate_limit_buckets'
 

@@ -31,6 +31,10 @@ def _token_hash(token):
     return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
 
 
+def mobile_token_hash(token):
+    return _token_hash(token)
+
+
 def issue_mobile_token(user, token_type):
     serializer = _serializer()
     payload = {

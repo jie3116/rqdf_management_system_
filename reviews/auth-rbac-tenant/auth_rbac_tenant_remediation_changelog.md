@@ -12,6 +12,51 @@ Scope changelog:
 
 Dokumen ini adalah changelog remediation security, bukan changelog produk umum.
 
+## 2026-06-28
+
+### Added
+
+- Menambahkan artifact `AUTH-TOKEN-005 Phase 1`:
+  - `reviews/auth-token-005/auth_token_005_impact_analysis.md`
+  - `reviews/auth-token-005/auth_token_005_verification_gate.md`
+  - `reviews/auth-token-005/auth_token_005_phase1_code_review.md`
+  - `reviews/auth-token-005/auth_token_005_migration_deploy_gate.md`
+  - `reviews/auth-token-005/auth_token_005_post_deploy_verification.md`
+
+### Implemented
+
+- `AUTH-TOKEN-005 Phase 1` diterapkan untuk invalidasi mobile token setelah password existing user diubah/reset.
+- Migration menambahkan `users.token_version INTEGER NOT NULL DEFAULT 0`.
+- Mobile access dan refresh token baru membawa claim `ver`.
+- Mobile access/refresh token lama, stale, atau tanpa `ver` ditolak dengan controlled `401 unauthorized`.
+- Existing-user password mutation flow dipusatkan lewat credential security service.
+- Logout tetap menggunakan `MobileRevokedToken`.
+
+### Production Verification
+
+- Production migration berhasil:
+  - `ae45fg67hi89 -> af56gh78ij90, add user token version`
+- Production Alembic current/head:
+  - `af56gh78ij90 (head)`
+- Production schema verified:
+  - `token_version integer NOT NULL default 0`
+- Backup sebelum deploy:
+  - `backups/pre_deploy_2026-06-28_140722.dump`
+  - verified with `pg_restore -l`
+- Post-deploy verification:
+  - `POST-DEPLOY VERIFICATION PASSED`
+
+### Decisions
+
+- Strict cutover diterima; token mobile lama tanpa `ver` ditolak.
+- Mobile users mungkin perlu login ulang.
+- `AUTH-REFRESH-006` tetap backlog terpisah karena refresh rotation race belum diselesaikan oleh token version.
+
+### Documentation
+
+- Status roll-up diperbarui agar `AUTH-TOKEN-005 Phase 1` tercatat done/deployed/post-deploy passed.
+- Recommended next work digeser ke `AUTH-REFRESH-006` analysis + test plan only atau active-role semantics decision.
+
 ## 2026-06-26
 
 ### Added
@@ -181,10 +226,7 @@ Selesai:
 - Platform tenant / `SUPER_ADMIN` separation
 - `AUTH-PACKAGE-003 Phase 1`
 - `AUTH-RATE-004 Phase 1`
-
-Belum dimulai:
-
-- `AUTH-TOKEN-005`
+- `AUTH-TOKEN-005 Phase 1`
 
 Hold:
 
@@ -193,15 +235,15 @@ Hold:
 Open hardening:
 
 - Active-role semantics.
-- Refresh-token rotation race window.
+- `AUTH-REFRESH-006` / refresh-token rotation race window.
 - Tenant resolver fallback behavior.
 - Soft-delete contract and `include_deleted=True` usage policy.
 - AUTH-PACKAGE add-on enforcement Phase 2.
 
 ## Next Recommended Work
 
-1. Mulai `AUTH-TOKEN-005` dengan analysis + test plan only.
-2. Jangan membuat migration sebelum verification/design gate.
-3. Jangan menyentuh `TENANT-DATA-006` sampai ownership master akademik diputuskan.
-4. Rapikan audit trail `AUTH-PACKAGE-003 Phase 1` jika ingin semua review doc historis menunjukkan final approval, atau biarkan sebagai review awal dan pakai status roll-up sebagai sumber status terbaru.
-
+1. Mulai `AUTH-REFRESH-006` dengan analysis + test plan only.
+2. Putuskan active-role semantics jika active role akan dijadikan authorization boundary.
+3. Jangan membuat migration sebelum verification/design gate.
+4. Jangan menyentuh `TENANT-DATA-006` sampai ownership master akademik diputuskan.
+5. Lanjutkan `AUTH-PACKAGE-003` Phase 2 hanya setelah data lisensi add-on siap.

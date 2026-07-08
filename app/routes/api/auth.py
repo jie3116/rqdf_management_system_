@@ -1,5 +1,6 @@
 from flask import g, request
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.models import BoardingGuardian, MajlisParticipant, Parent, Student, Teacher, Tenant, User
@@ -8,6 +9,13 @@ from app.services.credential_security_service import validate_mobile_token_versi
 from app.services.auth_rate_limit_service import (
     check_auth_rate_limit,
     record_auth_rate_limit_failure,
+)
+from app.services.mobile_refresh_token_service import (
+    SESSION_EXPIRED_MESSAGE,
+    attach_replacement_refresh_token,
+    consume_refresh_token_for_rotation,
+    create_refresh_token_record,
+    revoke_refresh_token_family_for_payload,
 )
 from app.utils.mobile_api_auth import (
     TOKEN_TYPE_ACCESS,
@@ -205,8 +213,19 @@ def register_auth_routes(api_bp):
             )
 
         tokens = issue_mobile_token_pair(user)
+        refresh_payload = decode_mobile_token(tokens["refresh_token"], TOKEN_TYPE_REFRESH)
+        create_refresh_token_record(
+            user,
+            tokens["refresh_token"],
+            refresh_payload,
+            tokens["refresh_expires_at"],
+        )
         user.last_login = utc_now_naive()
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return api_error("unauthorized", SESSION_EXPIRED_MESSAGE, 401)
 
         return api_success(
             {
@@ -240,17 +259,33 @@ def register_auth_routes(api_bp):
         if refresh_payload.get("tid") is not None and user.tenant_id != refresh_payload.get("tid"):
             return api_error("unauthorized", "Token tidak valid untuk tenant ini.", 401)
         if not validate_mobile_token_version(refresh_payload, user):
-            return api_error("unauthorized", "Sesi sudah tidak berlaku. Silakan login ulang.", 401)
+            return api_error("unauthorized", SESSION_EXPIRED_MESSAGE, 401)
         if not is_user_tenant_active(user):
             return api_error("tenant_inactive", "Tenant akun tidak aktif.", 403)
 
+        old_refresh_record = consume_refresh_token_for_rotation(refresh_token, refresh_payload, user)
+        if old_refresh_record is None:
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+            return api_error("unauthorized", SESSION_EXPIRED_MESSAGE, 401)
+
         tokens = issue_mobile_token_pair(user)
-        revoke_mobile_token(
-            refresh_token,
-            TOKEN_TYPE_REFRESH,
-            expires_at=tokens["refresh_expires_at"],
+        new_refresh_payload = decode_mobile_token(tokens["refresh_token"], TOKEN_TYPE_REFRESH)
+        create_refresh_token_record(
+            user,
+            tokens["refresh_token"],
+            new_refresh_payload,
+            tokens["refresh_expires_at"],
+            family_id=old_refresh_record.family_id,
         )
-        db.session.commit()
+        attach_replacement_refresh_token(old_refresh_record, new_refresh_payload.get("jti"))
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return api_error("unauthorized", SESSION_EXPIRED_MESSAGE, 401)
 
         return api_success(
             {
@@ -271,6 +306,8 @@ def register_auth_routes(api_bp):
 
         if refresh_token:
             try:
+                refresh_payload = decode_mobile_token(refresh_token, TOKEN_TYPE_REFRESH)
+                revoke_refresh_token_family_for_payload(refresh_token, refresh_payload)
                 revoke_mobile_token(refresh_token, TOKEN_TYPE_REFRESH)
             except ValueError:
                 pass

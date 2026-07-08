@@ -1,6 +1,6 @@
 # AUTH/RBAC/Tenant Remediation Status
 
-Tanggal update: 2026-06-26
+Tanggal update: 2026-06-28
 
 Sumber:
 
@@ -12,26 +12,32 @@ Sumber:
 - `reviews/auth-rate-004/auth_rate_004_impact_analysis.md`
 - `reviews/auth-rate-004/auth_rate_004_verification_gate.md`
 - `reviews/auth-rate-004/auth_rate_004_phase1_review.md`
+- `reviews/auth-token-005/auth_token_005_impact_analysis.md`
+- `reviews/auth-token-005/auth_token_005_verification_gate.md`
+- `reviews/auth-token-005/auth_token_005_phase1_code_review.md`
+- `reviews/auth-token-005/auth_token_005_migration_deploy_gate.md`
+- `reviews/auth-token-005/auth_token_005_post_deploy_verification.md`
 - `reviews/platform-tenant/platform_tenant_super_admin_policy.md`
 - `reviews/platform-tenant/platform_tenant_inventory.md`
 - `reviews/platform-tenant/platform_tenant_script_review.md`
 
 ## Executive Summary
 
-Remediation auth, RBAC, tenant lifecycle, mobile package enforcement, dan login rate limiting sudah menyelesaikan empat item awal dari backlog utama:
+Remediation auth, RBAC, tenant lifecycle, mobile package enforcement, login rate limiting, dan mobile token invalidation sudah menyelesaikan lima item awal dari backlog utama:
 
 1. `AUTH-TENANT-001` selesai.
 2. `AUTH-TENANT-002` selesai.
 3. `AUTH-PACKAGE-003` Phase 1 selesai.
 4. `AUTH-RATE-004` Phase 1 selesai, sudah deploy, dan sudah smoke-tested aman oleh human operator.
+5. `AUTH-TOKEN-005` Phase 1 selesai, migration production berhasil, dan post-deploy verification passed.
 
 Sisa pekerjaan utama dari audit awal:
 
-1. `AUTH-TOKEN-005` - token mobile existing belum dibatalkan setelah password change/reset.
-2. `TENANT-DATA-006` - master akademik global masih perlu keputusan ownership sebelum disentuh.
-3. Medium/low hardening lain: active-role semantics, refresh-token race window, soft-delete contract, fallback tenant resolver, dan audit trail.
+1. `TENANT-DATA-006` - master akademik global masih perlu keputusan ownership sebelum disentuh.
+2. `AUTH-REFRESH-006` / refresh-token rotation race window - belum diselesaikan oleh `AUTH-TOKEN-005`.
+3. Medium/low hardening lain: active-role semantics, soft-delete contract, fallback tenant resolver, dan package add-on enforcement.
 
-Rekomendasi next work: lanjut ke `AUTH-TOKEN-005` dengan tahap analysis/design only terlebih dahulu. Jangan mulai `TENANT-DATA-006` sebelum keputusan ownership master akademik dan migration strategy disetujui.
+Rekomendasi next work: lanjut ke `AUTH-REFRESH-006` dengan tahap analysis/design only, atau putuskan lebih dulu active-role semantics jika ingin menjadikannya authorization boundary. Jangan mulai `TENANT-DATA-006` sebelum keputusan ownership master akademik dan migration strategy disetujui.
 
 ## Status Matrix
 
@@ -42,7 +48,7 @@ Rekomendasi next work: lanjut ke `AUTH-TOKEN-005` dengan tahap analysis/design o
 | Platform tenant | `SUPER_ADMIN` perlu platform/internal tenant | Policy dependency | Done | Tidak | Done sebelumnya | Platform tenant sudah dibuat dan `SUPER_ADMIN` sudah dipindahkan berdasarkan konfirmasi proses sebelumnya. |
 | `AUTH-PACKAGE-003` Phase 1 | Mobile API bypass package/module restriction | HIGH | Done | Tidak | Done sebelumnya | Enforcement capability mobile sudah diterapkan untuk `teacher`, `boarding`, dan `majlis`. |
 | `AUTH-RATE-004` Phase 1 | Login web/mobile belum punya application-level rate limiting | MEDIUM | Done | Tidak | Done | Human operator sudah deploy dan test hasil aman. |
-| `AUTH-TOKEN-005` | Password change/reset tidak membatalkan mobile token existing | MEDIUM | Not started | Kemungkinan ya | Belum | Perlu desain token invalidation: `token_version` atau `credentials_changed_at`. |
+| `AUTH-TOKEN-005` Phase 1 | Password change/reset tidak membatalkan mobile token existing | MEDIUM | Done | Ya, applied | Done | `users.token_version` diterapkan; mobile token membawa claim `ver`; token lama/stale ditolak; post-deploy verification passed. |
 | `TENANT-DATA-006` | Master akademik global memungkinkan dampak lintas tenant | HIGH | Hold | Kondisional/kemungkinan ya | Belum | Jangan disentuh sampai keputusan platform-owned vs tenant-owned. |
 
 ## Completed Work Details
@@ -60,7 +66,8 @@ Scope yang sudah diselesaikan:
 
 Residual risk:
 
-- Token invalidation penuh setelah password/role/security change belum masuk scope; dicatat sebagai `AUTH-TOKEN-005`.
+- Password change/reset token invalidation sudah ditangani oleh `AUTH-TOKEN-005` Phase 1.
+- Role change, tenant suspend, dan soft delete tidak melakukan bump token version sesuai keputusan scope `AUTH-TOKEN-005`; tenant suspend dan soft delete tetap bergantung pada tenant/user lifecycle guard existing.
 
 ### AUTH-TENANT-002
 
@@ -175,45 +182,63 @@ Residual risk:
 - Threshold `AUTH_RATE_LIMIT_*` perlu dimonitor di production, terutama untuk NAT/shared IP.
 - Service mencatat failed attempt dengan commit sendiri; acceptable untuk login flow saat ini, tetapi perlu evaluasi jika service digunakan di flow lain.
 
+### AUTH-TOKEN-005 Phase 1
+
+Status: Done, migration applied, deployed, dan post-deploy verification passed.
+
+Scope yang selesai:
+
+- Migration `af56gh78ij90_add_user_token_version.py` menambahkan `users.token_version INTEGER NOT NULL DEFAULT 0`.
+- Mobile access/refresh token baru membawa claim `ver`.
+- Mobile access-token validation menolak token lama/stale/missing `ver` dengan controlled `401 unauthorized`.
+- Mobile refresh-token validation menolak token lama/stale/missing `ver` sebelum menerbitkan token pair baru.
+- Existing-user password mutation flow dipusatkan melalui credential security service untuk bump `token_version`.
+- Logout revocation tetap memakai `MobileRevokedToken`.
+- Strict cutover diterapkan: token mobile lama tanpa `ver` ditolak dan user mobile mungkin perlu login ulang.
+
+Production evidence:
+
+- Migration reported: `ae45fg67hi89 -> af56gh78ij90, add user token version`.
+- Alembic current/head production: `af56gh78ij90 (head)`.
+- Schema production: `token_version integer NOT NULL default 0`.
+- Backup: `backups/pre_deploy_2026-06-28_140722.dump`, verified with `pg_restore -l`.
+- Post-deploy artifact: `reviews/auth-token-005/auth_token_005_post_deploy_verification.md`.
+
+Residual risk:
+
+- `AUTH-REFRESH-006` remains separate; token version does not implement server-side refresh session or atomic refresh rotation.
+- Legacy token without `ver` rejection is intended strict-cutover behavior.
+- Web sessions were not included in token_version invalidation scope.
+
 ## Remaining Findings
 
-### AUTH-TOKEN-005 - Recommended Next
+### AUTH-REFRESH-006 - Recommended Next
 
 Finding:
 
-- Password change/reset tidak membatalkan mobile token existing.
+- Refresh token rotation race window masih belum ditutup oleh `AUTH-TOKEN-005`.
 
 Risiko:
 
-- Access/refresh token yang sudah dicuri tetap dapat dipakai setelah password diganti/reset sampai token expired atau direvoke manual.
+- Jika dua refresh request memakai token lama secara hampir bersamaan, behavior atomic consume/revoke perlu diverifikasi. `token_version` hanya menolak token setelah credential version berubah, bukan menyelesaikan race antar-refresh token valid.
 
 Kenapa ini next:
 
-- Masih satu boundary auth.
-- Scope lebih kecil daripada `TENANT-DATA-006`.
-- Bisa didesain dan ditest secara terpisah.
-- Kemungkinan butuh migration, sehingga perlu analysis/design gate lebih dulu.
+- Masih satu boundary mobile token security.
+- Dapat dianalisis terpisah dari `TENANT-DATA-006`.
+- Bisa mulai dari analysis/design only tanpa langsung migration.
 
 Keputusan manusia yang dibutuhkan:
 
-1. Mekanisme invalidation:
-   - `token_version` per user; atau
-   - `credentials_changed_at`; atau
-   - kombinasi server-side refresh session.
-2. Event yang membatalkan token:
-   - user password change;
-   - admin password reset;
-   - role change;
-   - tenant suspension;
-   - user soft-delete;
-   - forced logout all devices.
-3. Apakah web session juga ikut invalidated atau hanya mobile token.
-4. Apakah rollout boleh memaksa semua mobile user login ulang.
-5. Strategi backward compatibility token lama.
+1. Apakah Phase 1 cukup dengan hardening `MobileRevokedToken`/JTI stateless, atau perlu server-side refresh session.
+2. Apakah refresh token harus one-time use dengan atomic database update.
+3. TTL access/refresh token target.
+4. Apakah migration untuk refresh session table diterima.
+5. Response contract untuk reuse/race token.
 
 Recommended first step:
 
-- Buat `reviews/auth-token-005/auth_token_005_impact_analysis.md`.
+- Buat `reviews/auth-refresh-006/auth_refresh_006_impact_analysis.md`.
 - Tahap awal analysis + test plan only, tanpa migration dan tanpa deploy.
 
 ### TENANT-DATA-006 - Hold
@@ -279,8 +304,9 @@ Status:
 
 Recommendation:
 
-- Gabungkan analisisnya dengan `AUTH-TOKEN-005` jika memilih server-side refresh session/JTI.
+- Jadikan task eksplisit `AUTH-REFRESH-006`.
 - Jika tetap token stateless + revocation list, buat hardening terpisah untuk consume operation yang atomik.
+- Jika memilih server-side refresh session/JTI, siapkan migration dan rollout terpisah.
 
 ### Tenant Resolver Fallback
 
@@ -315,19 +341,18 @@ Recommendation:
 
 ## Recommended Next Sequence
 
-1. `AUTH-TOKEN-005` analysis + test plan only.
-2. `AUTH-TOKEN-005` verification gate untuk migration/model impact.
-3. `AUTH-TOKEN-005` implementation Phase 1 setelah approval.
-4. Active-role semantics decision, jika dibutuhkan sebagai security boundary.
-5. Refresh-token rotation hardening, jika belum tercakup oleh `AUTH-TOKEN-005`.
-6. Tenant resolver fallback hardening.
-7. Soft-delete contract documentation/review rule.
-8. `TENANT-DATA-006` hanya setelah ownership master akademik diputuskan.
+1. `AUTH-REFRESH-006` analysis + test plan only.
+2. Active-role semantics decision, jika dibutuhkan sebagai security boundary.
+3. Tenant resolver fallback hardening.
+4. Soft-delete contract documentation/review rule.
+5. `AUTH-PACKAGE-003` Phase 2 untuk add-on/capability lanjutan, setelah data lisensi siap.
+6. `TENANT-DATA-006` hanya setelah ownership master akademik diputuskan.
 
 ## Current Release Notes
 
 - AUTH-RATE-004 sudah deploy dan smoke-tested aman oleh human operator.
+- AUTH-TOKEN-005 Phase 1 sudah deploy, migration `af56gh78ij90` applied, dan post-deploy verification passed.
 - Tidak ada migration baru pada AUTH-PACKAGE-003 Phase 1 atau AUTH-RATE-004 Phase 1.
+- Strict mobile token cutover sudah aktif; token mobile lama tanpa `ver` ditolak dan user mobile mungkin perlu login ulang.
 - Known full-suite failure finance masih out of scope dan perlu ditangani dalam task finance terpisah.
 - Jangan deploy/migration untuk item berikutnya tanpa gate baru.
-

@@ -27,7 +27,15 @@ Run from the production checkout directory.
 
 ### Verify Current Branch
 
+PowerShell:
+
 ```powershell
+git branch --show-current
+```
+
+Bash:
+
+```bash
 git branch --show-current
 ```
 
@@ -37,7 +45,16 @@ Expected:
 
 ### Verify Latest Commit
 
+PowerShell:
+
 ```powershell
+git log -1 --oneline
+git show --stat --oneline -1
+```
+
+Bash:
+
+```bash
 git log -1 --oneline
 git show --stat --oneline -1
 ```
@@ -49,7 +66,15 @@ Expected:
 
 ### Verify Working Tree
 
+PowerShell:
+
 ```powershell
+git status --short
+```
+
+Bash:
+
+```bash
 git status --short
 ```
 
@@ -62,9 +87,18 @@ Do not deploy if there are unexpected modified application, migration, config, D
 
 ### Verify Migration File Exists
 
+PowerShell:
+
 ```powershell
 Test-Path migrations\versions\af56gh78ij90_add_user_token_version.py
 Get-Content migrations\versions\af56gh78ij90_add_user_token_version.py
+```
+
+Bash:
+
+```bash
+test -f migrations/versions/af56gh78ij90_add_user_token_version.py
+sed -n '1,220p' migrations/versions/af56gh78ij90_add_user_token_version.py
 ```
 
 Expected migration content:
@@ -91,6 +125,13 @@ docker compose exec web flask db current
 docker compose exec web flask db heads
 ```
 
+Bash:
+
+```bash
+docker compose exec web flask db current
+docker compose exec web flask db heads
+```
+
 Expected:
 
 - Current DB revision is before `af56gh78ij90`.
@@ -101,6 +142,12 @@ Optional direct DB check:
 
 ```powershell
 docker compose exec db psql -U $env:POSTGRES_USER -d $env:POSTGRES_DB -c "\d users"
+```
+
+Bash:
+
+```bash
+docker compose exec db sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\d users"'
 ```
 
 Expected before migration:
@@ -164,6 +211,26 @@ Expected:
 - `pg_restore -l` lists database objects without errors.
 - Backup file exists in the timestamped backup directory.
 
+### Preferred Ubuntu Production Backup Commands
+
+Run from the production server checkout directory before migration/deploy:
+
+```bash
+BACKUP_DIR=backups/auth_token_005_$(date +%Y%m%d_%H%M%S)
+mkdir -p "$BACKUP_DIR"
+
+docker compose exec -T db sh -lc 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$BACKUP_DIR/auth_token_005_pre_migration.dump"
+
+ls -lh "$BACKUP_DIR/auth_token_005_pre_migration.dump"
+pg_restore -l "$BACKUP_DIR/auth_token_005_pre_migration.dump" | head
+```
+
+Expected:
+
+- Backup file exists and has non-zero size.
+- `pg_restore -l` lists database objects without errors.
+- Store the backup path in the release notes before continuing.
+
 ## 3. PostgreSQL Version / Lock Awareness
 
 ### Check PostgreSQL Version
@@ -171,6 +238,13 @@ Expected:
 ```powershell
 docker compose exec db psql -U $env:POSTGRES_USER -d $env:POSTGRES_DB -c "SHOW server_version;"
 docker compose exec db psql -U $env:POSTGRES_USER -d $env:POSTGRES_DB -c "SELECT version();"
+```
+
+Bash:
+
+```bash
+docker compose exec db sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SHOW server_version;"'
+docker compose exec db sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT version();"'
 ```
 
 Lock note:
@@ -190,21 +264,73 @@ Optional lock inspection before migration:
 docker compose exec db psql -U $env:POSTGRES_USER -d $env:POSTGRES_DB -c "SELECT pid, state, wait_event_type, wait_event, query FROM pg_stat_activity WHERE datname = current_database() AND state <> 'idle';"
 ```
 
+Bash:
+
+```bash
+docker compose exec db sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT pid, state, wait_event_type, wait_event, query FROM pg_stat_activity WHERE datname = current_database() AND state <> '\''idle'\'';"'
+```
+
+### Linux/Bash DB Inspection Commands
+
+Use these on the Ubuntu production server:
+
+```bash
+docker compose exec web flask db current
+docker compose exec web flask db heads
+
+docker compose exec db sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\d users"'
+
+docker compose exec db sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SHOW server_version;"'
+
+docker compose exec db sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT version();"'
+```
+
 ## 4. Migration Command
+
+## Operator Confirmation Checklist
+
+Before running migration, the human operator must confirm:
+
+- Latest commit has been verified.
+- Working tree is clean or contains only explicitly accepted unrelated docs.
+- Backup file exists.
+- `pg_restore -l` succeeds.
+- PostgreSQL version and lock risk are understood.
+- Old mobile tokens without `ver` will be rejected.
+- Mobile users may need to log in again.
+- Human approves running `flask db upgrade`.
+- Human approves deploying/restarting the web service.
 
 Requires explicit human approval.
 
 Do not run until the human operator says yes.
 
+PowerShell:
+
 ```powershell
+docker compose exec web flask db upgrade
+```
+
+Bash:
+
+```bash
 docker compose exec web flask db upgrade
 ```
 
 Post-migration verification:
 
+PowerShell:
+
 ```powershell
 docker compose exec web flask db current
 docker compose exec db psql -U $env:POSTGRES_USER -d $env:POSTGRES_DB -c "\d users"
+```
+
+Bash:
+
+```bash
+docker compose exec web flask db current
+docker compose exec db sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\d users"'
 ```
 
 Expected:
@@ -218,7 +344,17 @@ Expected production sequence for this repo:
 
 1. Pull or merge the approved AUTH-TOKEN-005 commit.
 
+PowerShell:
+
 ```powershell
+git fetch --all --prune
+git pull --ff-only
+git log -1 --oneline
+```
+
+Bash:
+
+```bash
 git fetch --all --prune
 git pull --ff-only
 git log -1 --oneline
@@ -228,25 +364,57 @@ git log -1 --oneline
 
 If image rebuild is required:
 
+PowerShell:
+
 ```powershell
+docker compose build web
+```
+
+Bash:
+
+```bash
 docker compose build web
 ```
 
 If only recreate/restart is needed:
 
+PowerShell:
+
 ```powershell
+docker compose up -d web
+```
+
+Bash:
+
+```bash
 docker compose up -d web
 ```
 
 3. Run migration at the approved point.
 
+PowerShell:
+
 ```powershell
+docker compose exec web flask db upgrade
+```
+
+Bash:
+
+```bash
 docker compose exec web flask db upgrade
 ```
 
 4. Restart/recreate web service after migration if not already recreated with new code.
 
+PowerShell:
+
 ```powershell
+docker compose up -d web
+```
+
+Bash:
+
+```bash
 docker compose up -d web
 ```
 
@@ -256,8 +424,33 @@ AUTH-TOKEN-005 does not require nginx config changes. Do not reload nginx unless
 
 If nginx reload is explicitly needed:
 
+PowerShell:
+
 ```powershell
 docker compose exec nginx nginx -s reload
+```
+
+Bash:
+
+```bash
+docker compose exec nginx nginx -s reload
+```
+
+### Linux/Bash Deploy Commands
+
+Use these on the Ubuntu production server, with the migration command only after explicit human approval:
+
+```bash
+git fetch --all --prune
+git pull --ff-only
+git log -1 --oneline
+
+docker compose build web
+docker compose up -d web
+
+docker compose exec web flask db upgrade
+
+docker compose logs -f --tail=100 web
 ```
 
 ## 6. Smoke Tests
@@ -282,9 +475,19 @@ GET /dashboard
 
 Example:
 
+PowerShell:
+
 ```powershell
 curl -i -X POST "https://<host>/api/v1/auth/login" `
   -H "Content-Type: application/json" `
+  -d '{"identifier":"<user>","password":"<password>"}'
+```
+
+Bash:
+
+```bash
+curl -i -X POST "https://<host>/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
   -d '{"identifier":"<user>","password":"<password>"}'
 ```
 
@@ -295,8 +498,17 @@ Expected:
 
 ### Mobile `/api/v1/auth/me` Works with New Access Token
 
+PowerShell:
+
 ```powershell
 curl -i "https://<host>/api/v1/auth/me" `
+  -H "Authorization: Bearer <new_access_token>"
+```
+
+Bash:
+
+```bash
+curl -i "https://<host>/api/v1/auth/me" \
   -H "Authorization: Bearer <new_access_token>"
 ```
 
@@ -307,9 +519,19 @@ Expected:
 
 ### Refresh Works with New Refresh Token
 
+PowerShell:
+
 ```powershell
 curl -i -X POST "https://<host>/api/v1/auth/refresh" `
   -H "Content-Type: application/json" `
+  -d '{"refresh_token":"<new_refresh_token>"}'
+```
+
+Bash:
+
+```bash
+curl -i -X POST "https://<host>/api/v1/auth/refresh" \
+  -H "Content-Type: application/json" \
   -d '{"refresh_token":"<new_refresh_token>"}'
 ```
 
@@ -322,8 +544,17 @@ Expected:
 
 Use a pre-deploy mobile token if one is available.
 
+PowerShell:
+
 ```powershell
 curl -i "https://<host>/api/v1/auth/me" `
+  -H "Authorization: Bearer <old_access_token_without_ver>"
+```
+
+Bash:
+
+```bash
+curl -i "https://<host>/api/v1/auth/me" \
   -H "Authorization: Bearer <old_access_token_without_ver>"
 ```
 
@@ -374,7 +605,15 @@ Expected:
 
 Tail web logs during and after deploy:
 
+PowerShell:
+
 ```powershell
+docker compose logs -f --tail=100 web
+```
+
+Bash:
+
+```bash
 docker compose logs -f --tail=100 web
 ```
 
@@ -388,8 +627,16 @@ Watch for:
 
 Optional log search:
 
+PowerShell:
+
 ```powershell
 docker compose logs --tail=500 web | Select-String -Pattern "500|Traceback|token_version|migration|unauthorized"
+```
+
+Bash:
+
+```bash
+docker compose logs --tail=500 web | grep -E "500|Traceback|token_version|migration|unauthorized"
 ```
 
 ## 8. Rollback Notes
@@ -413,7 +660,15 @@ Do not run downgrade casually.
 
 Downgrade command, if explicitly approved:
 
+PowerShell:
+
 ```powershell
+docker compose exec web flask db downgrade -1
+```
+
+Bash:
+
+```bash
 docker compose exec web flask db downgrade -1
 ```
 
@@ -426,4 +681,3 @@ This must only be used after human approval and after confirming app code compat
 **NOT APPROVED TO RUN MIGRATION UNTIL HUMAN SAYS YES**
 
 **NOT APPROVED TO DEPLOY UNTIL HUMAN SAYS YES**
-

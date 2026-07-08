@@ -26,6 +26,7 @@ reviews/
     auth_token_005_verification_gate.md
     auth_token_005_phase1_code_review.md
     auth_token_005_migration_deploy_gate.md
+    auth_token_005_post_deploy_verification.md
   platform-tenant/
     platform_tenant_super_admin_policy.md
     platform_tenant_inventory.md
